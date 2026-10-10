@@ -1,0 +1,47 @@
+# ── Large model binaries (the 11 GB FastText vectors) ──────────────────
+# Not needed for web-inspection v1; must never be pushed.
+pretrained/*.bin
+*.bin
+
+# ── Data and VM artifacts (never belong in git) ────────────────────────
+data/
+*.vdi
+*.vmdk
+*.vhd
+*.ova
+*.iso
+*.jsonl
+*.jsonl.gz
+*.sqlite
+*.db
+*.pcap
+*.parquet
+
+# ── Secrets ────────────────────────────────────────────────────────────
+*.key
+*.pem
+wg0.conf
+.env
+.env.*
+known_hosts_lejet
+
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# ── OS / editor cruft ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.idea/
+.vscode/
