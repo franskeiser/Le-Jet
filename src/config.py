@@ -1,0 +1,43 @@
+# src/config.py
+
+# Shared random seeds — used for ALL stochastic operations:
+# train/val/test splits, Random Forest fits, NN weight initialization, etc.
+SEEDS = [42, 123, 2024]
+
+# Task 1.4 checkpoint 3 — fixed sequence length for padding/truncation.
+# Retested 2026-09-30 against the current production dataset
+# (data/labeled/v2_2026-09-15.csv, 18,885 rows) using the same
+# post-URL-masking/placeholder-fix, pre-padding methodology:
+#   median=19  p90=36  p95=50  p99=79  max=229
+# The original L=40 was fit to the 2026-08-29 dataset (p95=38) and had drifted
+# stale — it was truncating 8.0% of current messages instead of the intended
+# ~5%. L=50 (95th percentile) restores the intended ~5% truncation rate.
+# See experiments/token_count_histogram_retest_2026-09-30.png.
+SEQ_LEN_L = 50
+
+# Phase 0 decisions #2/#3, locked 2026-09-08 (DEV_TEAM_BUILD_PLAN.md:1579-1580). Single
+# source of truth -- notebooks/07_run_phase_c.py, notebooks/08_run_ungated_baseline.py,
+# and load_model() all import these rather than redefining them locally.
+NUM_FILTERS = 64
+DENSE_UNITS = 64
+
+# Label smoothing for every training loss (Phase A, Phase C, ungated baseline). With 2
+# classes, 0.1 trains toward 0.95/0.05 targets instead of hard 1/0, so the model can't
+# drive its logits to the extremes that made the UI show a 100% confidence score.
+# Temperature fitting (notebooks/09) deliberately keeps plain NLL -- calibration is
+# measured against the true labels, not the smoothed ones. Set to 0.0 to reproduce the
+# pre-smoothing runs (backed up under models/backup_pre_label_smoothing/).
+LABEL_SMOOTHING = 0.1
+
+# Active labeled dataset + its split files. Every loader (split_dataset.load_split_df,
+# notebooks/02_build_embeddings.py, tests/test_splits.py) reads these -- flip both back to
+# "data/labeled/v2_2026-09-15.csv" / "data/splits" to reproduce the pre-synthetic runs.
+# v2withSynthetic = v2_2026-09-15 (unchanged, same real split assignment) + 2,143 synthetic
+# legitimate-with-URL messages; see src/data/build_v2_with_synthetic.py.
+DATASET_PATH = "data/labeled/v2withSynthetic_2026-10-01.csv"
+SPLITS_DIR = "data/splits_v2withSynthetic"
+
+# Optional but recommended alongside this:
+DATA_PATH = "data/processed/smishing_dataset.csv"
+LABEL_COLUMN = "subcategory"
+TRAIN_VAL_TEST_SPLIT = (0.7, 0.15, 0.15)
