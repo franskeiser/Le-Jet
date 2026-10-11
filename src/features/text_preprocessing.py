@@ -15,7 +15,13 @@ URL_PATTERN = re.compile(
 )
 
 def mask_urls(text: str) -> str:
-    text = URL_PATTERN.sub('<URL>', text)
+    # Le-Jet: links are found with the same finder that sets has_url and the link features
+    # (src/features/link_features.py), so the CNN's <URL> token and the URL branch always
+    # agree on which messages have a link. URL_PATTERN above is SmishGuard's older detector,
+    # kept only for extract_urls/primary_url callers that have not been ported yet.
+    from src.features.link_features import extract_links
+    for link in reversed(extract_links(text)):
+        text = text[:link["start"]] + '<URL>' + text[link["end"]:]
     text = re.sub(r'<URL>([.,!?)"\'\]]+)', r'<URL>\1 ', text)
     return text
 
@@ -40,16 +46,27 @@ def lowercase(text: str) -> str:
 # normalize_punctuation strips the only thing keeping a tag from fusing into
 # "frm<usdriverlicense>" as a single token.
 PLACEHOLDER_TAG_RE = re.compile(r'<[a-zA-Z_]+>')
+# A few redaction tags were written with a space ("<REAL NAME>", "<REFERENCE NUMBER>");
+# join them so each stays one token instead of splitting into "<real" + "name>".
+SPACED_TAG_RE = re.compile(r'<([A-Z][A-Z_]*(?: [A-Z_]+)+)>')
 
 def space_out_placeholder_tags(text: str) -> str:
+    text = SPACED_TAG_RE.sub(lambda m: '<' + m.group(1).replace(' ', '_') + '>', text)
     return PLACEHOLDER_TAG_RE.sub(lambda m: f' {m.group(0)} ', text)
 
-# Keep letters, digits, whitespace, and !/? — drop everything else.
+# Keep letters, digits, whitespace, and !/? — everything else is punctuation.
 # IGNORECASE so the uppercase letters inside the <URL> placeholder survive.
 PUNCT_RE = re.compile(r'[^a-z0-9\s!?<>]', re.IGNORECASE)
+# Punctuation that JOINS: inside a number (3,862,587.65 / 12:00), hyphens and apostrophes
+# inside words (pag-ibig, pa-share, don't) and underscores inside tags (<DATE_TIME>).
+JOINING_PUNCT_RE = re.compile(r"(?<=\d)[.,:](?=\d)|[-'’_]")
 
 def normalize_punctuation(text: str) -> str:
-    return PUNCT_RE.sub('', text)
+    # Le-Jet: all other punctuation SPLITS words. SmishGuard deleted it, which glued words
+    # into junk tokens ("Username:Rom88" -> "usernamerom88", "tomorrow.call" ->
+    # "tomorrowcall") that fastText can only guess at.
+    text = JOINING_PUNCT_RE.sub('', text)
+    return PUNCT_RE.sub(' ', text)
 
 # Matches whole word tokens (including the <URL> placeholder, since < and >
 # are in the character class) or a single ! or ? as its own token — so
@@ -69,10 +86,13 @@ def pad_or_truncate(tokens: list[str], seq_len: int) -> list[str]:
         return tokens[:seq_len]
     return tokens + [PAD_TOKEN] * (seq_len - len(tokens))
 
-def preprocess(text: str, seq_len: int) -> list[str]:
+def text_tokens(text: str) -> list[str]:
+    # Every cleaning step, without padding/truncation (vocabulary building, length stats).
     text = mask_urls(text)
     text = space_out_placeholder_tags(text)
     text = lowercase(text)
     text = normalize_punctuation(text)
-    tokens = tokenize(text)
-    return pad_or_truncate(tokens, seq_len)
+    return tokenize(text)
+
+def preprocess(text: str, seq_len: int) -> list[str]:
+    return pad_or_truncate(text_tokens(text), seq_len)

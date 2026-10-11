@@ -88,9 +88,13 @@ def extract_links(text: str) -> list[dict]:
             continue
         if not explicit and parts.suffix in _PROSE_TLDS and parts.domain.isalpha():
             continue
+        raw = m.group(0)
         links.append({
-            "raw": m.group(0), "host": host,
+            "raw": raw, "host": host,
             "domain": parts.top_domain_under_public_suffix,
+            # Where the link sits in the text, minus trailing punctuation, so the CNN's
+            # <URL> masking replaces exactly the links has_url counts.
+            "start": m.start(), "end": m.start() + len(raw.rstrip(_TRAILING_JUNK)),
         })
     return links
 

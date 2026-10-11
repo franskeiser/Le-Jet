@@ -3,8 +3,11 @@
 pretrained/
 *.bin
 
-# Trained models (~165 MB); regenerate with python -m src.features.model.rf_extractor
-models/
+# Trained models (~176 MB); regenerate with python -m src.features.model.rf_extractor
+models/*
+# Except the word embeddings (26 MB): rebuilding them needs the 19 GB fastText download,
+# so they are committed and everyone trains on identical vectors.
+!models/embeddings/
 
 # ── Data and VM artifacts (never belong in git) ────────────────────────
 /data/

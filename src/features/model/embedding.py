@@ -42,6 +42,53 @@ def build_embedding_matrix(
         source_counts[source] += 1
     return matrix, word_to_idx, source_counts
 
+class MmapFastTextVectors:
+    """Read word vectors from a Facebook fastText .bin WITHOUT loading it into RAM.
+
+    load_fasttext_vectors() (gensim) reads the whole input matrix into memory -- about
+    7-10 GB at peak for cc.en.300.bin, more than a 16 GB laptop usually has free. This
+    memory-maps the matrix and reads only the rows a word needs, so building the
+    embedding matrix for ~22k words takes well under 1 GB.
+
+    The vectors are the same as gensim's (tests/test_embedding.py compares them): the
+    header, word list and subword hashing are gensim's own code, and a vector is
+    gensim's average of the word's own row (if known) and its character n-gram rows.
+    Offers key_to_index, vector_size and [word], like gensim's FastTextKeyedVectors.
+    """
+
+    def __init__(self, bin_path: str, encoding: str = 'utf-8'):
+        from gensim.models import _fasttext_bin as fb
+
+        with open(bin_path, 'rb') as fin:
+            magic, version = fb._struct_unpack(fin, '@2i')
+            new_format = magic == fb._FASTTEXT_FILEFORMAT_MAGIC
+            spec = fb._NEW_HEADER_FORMAT if new_format else fb._OLD_HEADER_FORMAT
+            header = {name: fb._struct_unpack(fin, fmt)[0] for name, fmt in spec}
+            if not new_format:
+                header['dim'] = magic
+            raw_vocab, _, nwords, _ = fb._load_vocab(fin, new_format, encoding=encoding)
+            if new_format:
+                fb._struct_unpack(fin, '@?')  # quant_input flag
+            rows, dim = fb._struct_unpack(fin, '@2q')
+            offset = fin.tell()
+
+        self.key_to_index = {word: i for i, word in enumerate(raw_vocab)}
+        self.vector_size = dim
+        self.min_n, self.max_n, self.bucket = header['minn'], header['maxn'], header['bucket']
+        self._nwords = len(self.key_to_index)
+        assert rows == self._nwords + self.bucket, 'unexpected input-matrix shape'
+        self._matrix = np.memmap(bin_path, dtype=np.float32, mode='r', offset=offset, shape=(rows, dim))
+
+    def __getitem__(self, word: str) -> np.ndarray:
+        from gensim.models.fasttext import ft_ngram_hashes
+
+        rows = [self._nwords + h for h in ft_ngram_hashes(word, self.min_n, self.max_n, self.bucket)]
+        if word in self.key_to_index:
+            rows.insert(0, self.key_to_index[word])
+        if not rows:
+            return np.zeros(self.vector_size, dtype=np.float32)  # gensim does the same
+        return np.asarray(self._matrix[rows], dtype=np.float32).mean(axis=0)
+
 def oov_coverage_report(vocab: list[str], kv_primary, kv_secondary) -> dict:
     # source_counts from build_embedding_matrix already answers this, but this
     # standalone version is handy for a quick check before building the full matrix.
