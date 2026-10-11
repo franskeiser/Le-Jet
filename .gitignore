@@ -1,6 +1,6 @@
 # ── Large model binaries (the 11 GB FastText vectors) ──────────────────
 # Not needed for web-inspection v1; must never be pushed.
-pretrained/*.bin
+pretrained/
 *.bin
 
 # Trained models (~165 MB); regenerate with python -m src.features.model.rf_extractor

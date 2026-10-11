@@ -7,3 +7,5 @@ joblib==1.5.3
 pytest
 requests==2.34.2
 tldextract==5.4.0
+# random_domain feature (the original nostril is only on GitHub; the PyPI "nostril" is a different, broken package)
+nostril @ git+https://github.com/casics/nostril.git@fbc0c91249283a9fbc9036206391ce1138826fd3

@@ -256,10 +256,13 @@ def extract_p_u(bundle: dict, features: pd.DataFrame) -> pd.DataFrame:
     """P and u from one extractor, ready to concatenate before gating.
 
     `features` holds the extractor's input columns plus has_url. Rows with has_url == 0
-    get P = u = -1. For the old SMS data, call this with the url_only extractor.
+    get P = u = -1, and so do rows whose features are ALL -1 (a link existed but nothing
+    is known about it, e.g. the <URL> placeholder) -- the forest is never asked to score
+    a row of pure sentinels. For the old SMS data, call this with the url_only extractor.
     """
     out = pd.DataFrame({"P": -1.0, "u": -1.0}, index=features.index)
-    has_link = features["has_url"] == 1
+    unknown = (features[bundle["features"]] == -1).all(axis=1)
+    has_link = (features["has_url"] == 1) & ~unknown
     if has_link.any():
         p, u = p_and_u(bundle["model"], features.loc[has_link, bundle["features"]])
         out.loc[has_link, "P"] = p

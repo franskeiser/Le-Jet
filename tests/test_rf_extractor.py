@@ -60,6 +60,12 @@ def test_extract_p_u_sentinel_and_ranges():
 
     no_link = sms["has_url"] == 0
     assert (out.loc[no_link, ["P", "u"]] == -1).all().all()
+
+    # A link that exists but has no known features (<URL> placeholder) is not scored.
+    redacted = sms.head(1).copy()
+    redacted["has_url"] = 1
+    redacted[bundle["features"]] = -1
+    assert (rx.extract_p_u(bundle, redacted)[["P", "u"]] == -1).all().all()
     assert out.loc[~no_link, "P"].between(0, 1).all()
     assert out.loc[~no_link, "u"].between(0, 0.5).all()
     # P is the forest's own probability.

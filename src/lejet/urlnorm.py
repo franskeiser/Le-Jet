@@ -96,7 +96,7 @@ def registrable_domain(host: str) -> Optional[str]:
         return None
     try:
         ext = _extractor(host)
-        return ext.registered_domain or None
+        return ext.top_domain_under_public_suffix or None
     except Exception:
         return None
 
