@@ -29,13 +29,13 @@ DENSE_UNITS = 64
 # pre-smoothing runs (backed up under models/backup_pre_label_smoothing/).
 LABEL_SMOOTHING = 0.1
 
-# Active labeled dataset + its split files. Every loader (split_dataset.load_split_df,
-# notebooks/02_build_embeddings.py, tests/test_splits.py) reads these -- flip both back to
-# "data/labeled/v2_2026-09-15.csv" / "data/splits" to reproduce the pre-synthetic runs.
-# v2withSynthetic = v2_2026-09-15 (unchanged, same real split assignment) + 2,143 synthetic
-# legitimate-with-URL messages; see src/data/build_v2_with_synthetic.py.
-DATASET_PATH = "data/labeled/v2withSynthetic_2026-10-01.csv"
-SPLITS_DIR = "data/splits_v2withSynthetic"
+# Active labeled dataset, its link features and its split files. Every loader
+# (split_dataset.load_split_df and friends) reads these.
+# sms_v2_balanced = v2_2026-09-15 + 3,025 synthetic legitimate-with-link messages
+# (src/data/add_synthetic_legit_links.py, docs/sms_synthetic_legit_links.md).
+DATASET_PATH = "data/processed/sms_v2_balanced.csv"
+LINK_FEATURES_PATH = "data/processed/sms_link_features.csv"  # src/data/build_sms_link_features.py
+SPLITS_DIR = "data/splits"  # src/data/split_dataset.py (grouped by domain / template)
 
 # Optional but recommended alongside this:
 DATA_PATH = "data/processed/smishing_dataset.csv"

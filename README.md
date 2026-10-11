@@ -27,6 +27,8 @@ The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_train
 |---|---|
 | Clean the public web phishing set (32 features) | Done |
 | Train the RF feature extractor | Done (Option C: two extractors, no masking; see [`docs/decision_web_inspection.md`](docs/decision_web_inspection.md)) |
+| Synthetic legitimate SMS with links | Done |
+| Link features for every SMS + grouped splits | Done |
 | Web inspector for SMS links | Planned ([`WEB_INSPECTION_PLAN.md`](WEB_INSPECTION_PLAN.md)) |
 | CNN, gating and fusion classifier | Code carried over from SmishGuard, not yet adapted |
 
@@ -126,6 +128,39 @@ pu = route_p_u(url_only, full, fresh_features)    # columns P, u, extractor
 
 Both need the extractor's input columns plus `has_url`; rows with `has_url == 0` get P = u = -1. `route_p_u` also needs `page_fetched` (1 or 0).
 
+## 3. Add synthetic legitimate messages with links
+
+```powershell
+python -m src.data.add_synthetic_legit_links
+```
+
+Writes `data/processed/sms_v2_balanced.csv` (21,910 rows, 10,955 per class). Details: [`docs/sms_synthetic_legit_links.md`](docs/sms_synthetic_legit_links.md).
+
+## 4. Compute link features for every SMS
+
+```powershell
+python -m src.data.build_sms_link_features
+```
+
+Finds the first link in each message and computes `has_url` plus the 14 link-text features the `url_only` extractor uses. Writes `data/processed/sms_link_features.csv` (joined to the messages by `message_id`). No network access.
+
+- 9 of the 14 features came pre-computed in the public dataset, so `src/features/link_features.py` re-implements the dataset's own definitions. Recomputed from the dataset's `url` column, 13 features match 99.95–100% of rows; `random_domain` matches 92.4% (the original's exact input is unknown).
+- `link_status` is `link`, `redacted` (the text only has the `<URL>` placeholder, so the link itself is lost) or `none`.
+
+## 5. Split the SMS data
+
+```powershell
+python -m src.data.split_dataset
+```
+
+For each seed (42, 123, 2024), writes `data/splits/seed_<s>/{train,rf_fit,test}_ids.txt`: about 75% Training, 10% RF-Fitting and 15% Test, balanced by class. Rows are grouped so a group never spans two splits:
+
+- synthetic rows by template, so synthetic test rows come from templates the model never trained on;
+- real rows with a link by the link's domain (one scam domain has 1,168 messages);
+- other real rows on their own.
+
+Sizes and link shares per split: `experiments/splits/split_report.csv`.
+
 ## Tests
 
 ```powershell
@@ -157,6 +192,7 @@ WEB_INSPECTION_PLAN.md  detailed plan for safely visiting SMS links
 
 ## Notes
 
+- **Before writing any training or evaluation code, read [`docs/training_rules.md`](docs/training_rules.md).** In particular, messages whose link was replaced by `<URL>` are excluded (the split loaders do this by default), and the class imbalance this leaves must be fixed.
 - `CONTEXT.md` and `WEB_INSPECTION_PLAN.md` still describe an earlier 79-feature scope. The 32 features above are the current ones.
 - `sfh` and `ratio_nullHyperlinks` were dropped because they are 0 in every row of the dataset.
 - `dns_record` and `whois_registered_domain` use `1` for the suspicious case (no DNS record; not in WHOIS), as in the dataset. The inspector must follow this direction.

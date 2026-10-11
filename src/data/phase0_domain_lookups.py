@@ -13,14 +13,14 @@ Usage (from the project root):
     python -m src.data.phase0_domain_lookups --per-class 200 --seed 42
 """
 import argparse
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 import requests
-import tldextract
+
+from src.features.link_features import SHORTENERS, extract_links
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SMS = ROOT / "data" / "raw" / "sms" / "v2_2026-09-15.csv"
@@ -33,59 +33,6 @@ IANA_BOOTSTRAP = "https://data.iana.org/rdap/dns.json"
 USER_AGENT = "Le-Jet thesis research (Phase 0 domain liveness)"
 TIMEOUT = 20
 PAUSE = 0.5  # seconds between lookups, to stay well under registry rate limits
-
-# Offline public suffix list (bundled snapshot), private suffixes on, so x.blogspot.com
-# is its own registrable domain -- same rule as lejet.urlnorm.
-_EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
-
-# Candidate link: optional (possibly defanged) scheme, optional www., host labels joined by
-# "." or "[.]", then an optional path.
-_LINK_RE = re.compile(
-    r"(?i)(?P<scheme>h(?:tt|xx)ps?://)?(?P<www>www\.)?"
-    r"(?P<host>(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.|\[\.\]|\(\.\)))+[a-z]{2,24})"
-    r"(?P<path>/[^\s<>\"']*)?"
-)
-# Short TLDs that are also common English words; a bare "ok.so" or "that.is" without a
-# scheme, www. or path is almost always prose, not a link.
-_AMBIGUOUS_BARE = {
-    "am", "as", "at", "be", "by", "do", "go", "hi", "in", "is", "it", "me", "my", "no",
-    "of", "ok", "on", "or", "so", "to", "tv", "up", "us", "we",
-}
-# Word-like gTLDs that catch two words joined by a period ("tomorrow.call", "day.Click").
-# A bare match with one of these is kept only if its name has a digit or hyphen
-# ("my-bdo-advisory.click"), which prose almost never does.
-_PROSE_TLDS = {
-    "call", "click", "download", "google", "how", "hsbc", "ice", "like", "love", "meet",
-    "now", "onion", "pa", "search", "today", "xxx", "you",
-}
-# Shorteners hide the real destination; their own domain lookup says nothing about the scam.
-SHORTENERS = {
-    "bit.ly", "tinyurl.com", "goo.gl", "t.co", "ow.ly", "is.gd", "buff.ly", "rb.gy",
-    "cutt.ly", "shorturl.at", "tiny.cc", "s.id", "rebrand.ly", "t.ly", "bit.do", "v.gd",
-    "shorturl.asia", "u.to", "qr.ae", "lnkd.in",
-}
-
-
-def extract_links(text: str) -> list[dict]:
-    links = []
-    for m in _LINK_RE.finditer(text):
-        if m.start() > 0 and text[m.start() - 1] == "@":
-            continue  # the domain of an email address, not a link
-        host = re.sub(r"\[\.\]|\(\.\)", ".", m.group("host")).lower()
-        parts = _EXTRACT(host)
-        if not parts.suffix or not parts.domain:
-            continue  # not a real domain ending (e.g. "k.then")
-        explicit = m.group("scheme") or m.group("www") or m.group("path")
-        if not explicit and (parts.suffix in _AMBIGUOUS_BARE or len(parts.domain) < 3):
-            continue
-        if not explicit and parts.suffix in _PROSE_TLDS and parts.domain.isalpha():
-            continue
-        links.append({
-            "raw": m.group(0), "host": host,
-            "domain": parts.top_domain_under_public_suffix,
-        })
-    return links
-
 
 def build_links(sms_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     sms = pd.read_csv(sms_path)
