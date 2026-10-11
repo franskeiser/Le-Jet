@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from src.config import LABEL_SMOOTHING
 from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score, balanced_accuracy_score
 
 from src.features.text_preprocessing import preprocess
 
@@ -37,12 +37,15 @@ class SmishDataset(Dataset):
         return self.token_ids[idx], self.labels[idx]
 
 def train_phase_a(model, train_loader, val_loader, epochs, lr, patience=3,
-                  checkpoint_path='models/phase_a_checkpoint.pt'):
+                  checkpoint_path='models/phase_a_checkpoint.pt', class_weights=None,
+                  monitor='balanced_accuracy'):
     # checkpoint_path defaults to the deployed Phase-A path; notebooks/15_run_multiseed.py
     # overrides it so extra seeds never overwrite the deployed seed-42 checkpoint.
+    # class_weights / monitor: same meaning as in train_phase_c (docs/training_rules.md rule 1).
+    assert monitor in ('balanced_accuracy', 'f1'), f"unknown monitor {monitor!r}"
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)  # raw logits in, Section 1.3
-    best_val_f1 = -1.0
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=LABEL_SMOOTHING)  # raw logits in, Section 1.3
+    best_score = -1.0
     best_metrics = None
     epochs_without_improvement = 0
 
@@ -68,12 +71,15 @@ def train_phase_a(model, train_loader, val_loader, epochs, lr, patience=3,
         precision, recall, f1, _ = precision_recall_fscore_support(
             all_labels, all_preds, average='binary', zero_division=0,
         )
-        print(f"epoch {epoch}: val_acc={acc:.4f} val_precision={precision:.4f} "
-              f"val_recall={recall:.4f} val_f1={f1:.4f}")
+        balanced_acc = balanced_accuracy_score(all_labels, all_preds)
+        print(f"epoch {epoch}: val_acc={acc:.4f} val_bal_acc={balanced_acc:.4f} "
+              f"val_precision={precision:.4f} val_recall={recall:.4f} val_f1={f1:.4f}")
 
-        if f1 > best_val_f1:
-            best_val_f1 = f1
-            best_metrics = {'val_accuracy': acc, 'val_precision': precision, 'val_recall': recall, 'val_f1': f1}
+        score = balanced_acc if monitor == 'balanced_accuracy' else f1
+        if score > best_score:
+            best_score = score
+            best_metrics = {'val_accuracy': acc, 'val_balanced_accuracy': balanced_acc,
+                            'val_precision': precision, 'val_recall': recall, 'val_f1': f1}
             epochs_without_improvement = 0
             torch.save(model.state_dict(), checkpoint_path)  # Section 6
         else:
@@ -104,14 +110,43 @@ class FusionDataset(Dataset):
         return self.token_ids[idx], self.url_features[idx], self.labels[idx]
 
 
-def train_phase_c(model, train_loader, val_loader, epochs, lr, checkpoint_path, patience=3):
+class MixedAuxDataset(Dataset):
+    # Modality dropout for the extractor's P and u. aux_alt is the "page evidence" version of
+    # the inputs (P and u from the full extractor where a page was reached) and aux_base the
+    # link-spelling-only version (url_only). Every time a row is read, aux_alt is used with
+    # probability p_alt, else aux_base, so the head learns both kinds of P and u -- the mix it
+    # meets when live links are routed (route_p_u). Rows with no page have aux_alt == aux_base,
+    # so for them the draw changes nothing. Page status is never an input (training_rules: it
+    # would become a label shortcut in old data); only the VALUES of P and u differ.
+    def __init__(self, token_ids: torch.Tensor, aux_base: torch.Tensor, aux_alt: torch.Tensor,
+                 labels: torch.Tensor, p_alt: float):
+        assert len(token_ids) == len(aux_base) == len(aux_alt) == len(labels), "row count mismatch"
+        assert 0.0 <= p_alt <= 1.0
+        self.token_ids, self.aux_base, self.aux_alt = token_ids, aux_base, aux_alt
+        self.labels, self.p_alt = labels, p_alt
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        aux = self.aux_alt[idx] if torch.rand(1).item() < self.p_alt else self.aux_base[idx]
+        return self.token_ids[idx], aux, self.labels[idx]
+
+
+def train_phase_c(model, train_loader, val_loader, epochs, lr, checkpoint_path, patience=3,
+                  class_weights=None, monitor='balanced_accuracy'):
     # Deliberately NOT reusing train_phase_a() as-is -- its checkpoint path is hardcoded
     # to 'models/phase_a_checkpoint.pt' and would silently overwrite the frozen Phase-A
     # baseline the results table depends on. checkpoint_path is a required argument here
     # specifically so that mistake is structurally impossible (TASK_2_4 guide, Section 0.9).
+    # class_weights: pass fusion_data.class_weights(train_labels) -- the Training split is
+    # uneven after the <URL>-redacted rows are dropped (docs/training_rules.md rule 1).
+    # monitor picks the early-stopping/checkpoint metric: 'balanced_accuracy' (default, does
+    # not shift with class balance) or 'f1'. All four metrics are still printed and returned.
+    assert monitor in ('balanced_accuracy', 'f1'), f"unknown monitor {monitor!r}"
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)
-    best_val_f1 = -1.0
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=LABEL_SMOOTHING)
+    best_score = -1.0
     best_metrics = None
     epochs_without_improvement = 0
 
@@ -136,13 +171,16 @@ def train_phase_c(model, train_loader, val_loader, epochs, lr, checkpoint_path, 
         acc = accuracy_score(all_labels, all_preds)
         precision, recall, f1, _ = precision_recall_fscore_support(
             all_labels, all_preds, average='binary', zero_division=0,
-        )  # F1 stays primary here too -- same 97.6%-smishing imbalance as Phase A.
-        print(f"epoch {epoch}: val_acc={acc:.4f} val_precision={precision:.4f} "
-              f"val_recall={recall:.4f} val_f1={f1:.4f}")
+        )
+        balanced_acc = balanced_accuracy_score(all_labels, all_preds)
+        print(f"epoch {epoch}: val_acc={acc:.4f} val_bal_acc={balanced_acc:.4f} "
+              f"val_precision={precision:.4f} val_recall={recall:.4f} val_f1={f1:.4f}")
 
-        if f1 > best_val_f1:
-            best_val_f1 = f1
-            best_metrics = {'val_accuracy': acc, 'val_precision': precision, 'val_recall': recall, 'val_f1': f1}
+        score = balanced_acc if monitor == 'balanced_accuracy' else f1
+        if score > best_score:
+            best_score = score
+            best_metrics = {'val_accuracy': acc, 'val_balanced_accuracy': balanced_acc,
+                            'val_precision': precision, 'val_recall': recall, 'val_f1': f1}
             epochs_without_improvement = 0
             torch.save(model.state_dict(), checkpoint_path)
         else:

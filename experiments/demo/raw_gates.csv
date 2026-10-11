@@ -1,0 +1,97 @@
+input,gate,group
+cnn_0,1.0,text (CNN)
+cnn_1,1.0,text (CNN)
+cnn_2,1.0,text (CNN)
+cnn_3,1.0,text (CNN)
+cnn_4,1.0,text (CNN)
+cnn_5,1.0,text (CNN)
+cnn_6,1.0,text (CNN)
+cnn_7,1.0,text (CNN)
+cnn_8,1.0,text (CNN)
+cnn_9,1.0,text (CNN)
+cnn_10,1.0,text (CNN)
+cnn_11,1.0,text (CNN)
+cnn_12,1.0,text (CNN)
+cnn_13,1.0,text (CNN)
+cnn_14,1.0,text (CNN)
+cnn_15,1.0,text (CNN)
+cnn_16,1.0,text (CNN)
+cnn_17,1.0,text (CNN)
+cnn_18,1.0,text (CNN)
+cnn_19,1.0,text (CNN)
+cnn_20,1.0,text (CNN)
+cnn_21,1.0,text (CNN)
+cnn_22,1.0,text (CNN)
+cnn_23,1.0,text (CNN)
+cnn_24,1.0,text (CNN)
+cnn_25,1.0,text (CNN)
+cnn_26,1.0,text (CNN)
+cnn_27,1.0,text (CNN)
+cnn_28,1.0,text (CNN)
+cnn_29,1.0,text (CNN)
+cnn_30,1.0,text (CNN)
+cnn_31,1.0,text (CNN)
+cnn_32,1.0,text (CNN)
+cnn_33,1.0,text (CNN)
+cnn_34,1.0,text (CNN)
+cnn_35,1.0,text (CNN)
+cnn_36,1.0,text (CNN)
+cnn_37,1.0,text (CNN)
+cnn_38,1.0,text (CNN)
+cnn_39,1.0,text (CNN)
+cnn_40,1.0,text (CNN)
+cnn_41,1.0,text (CNN)
+cnn_42,1.0,text (CNN)
+cnn_43,1.0,text (CNN)
+cnn_44,1.0,text (CNN)
+cnn_45,1.0,text (CNN)
+cnn_46,1.0,text (CNN)
+cnn_47,1.0,text (CNN)
+cnn_48,1.0,text (CNN)
+cnn_49,1.0,text (CNN)
+cnn_50,1.0,text (CNN)
+cnn_51,1.0,text (CNN)
+cnn_52,1.0,text (CNN)
+cnn_53,1.0,text (CNN)
+cnn_54,1.0,text (CNN)
+cnn_55,1.0,text (CNN)
+cnn_56,1.0,text (CNN)
+cnn_57,1.0,text (CNN)
+cnn_58,1.0,text (CNN)
+cnn_59,1.0,text (CNN)
+cnn_60,1.0,text (CNN)
+cnn_61,1.0,text (CNN)
+cnn_62,1.0,text (CNN)
+cnn_63,1.0,text (CNN)
+url_length,0.9216667,link: URL path and length
+https_presence,0.535,link: other spelling features
+number_of_hyphens,0.6558333,link: other spelling features
+number_of_slashes,1.3325,link: URL path and length
+subdomain_count,1.3083333,link: other spelling features
+special_char_count,0.825,link: other spelling features
+suspicious_url_token_count,3.0,link: other spelling features
+shortened_url_indicator,0.29333332,link: other spelling features
+has_ip_address,1.2841667,link: other spelling features
+suspicious_keyword_count,0.5833333,link: other spelling features
+path_length,1.6225,link: URL path and length
+random_domain,0.12416667,link: other spelling features
+length_hostname,1.7916666,link: URL path and length
+tld_in_path,0.1,link: other spelling features
+has_url,1.0,link: other spelling features
+page_rank,3.0,page / domain / external
+nb_hyperlinks,2.8425834,page / domain / external
+ratio_intHyperlinks,0.41795054,page / domain / external
+nb_extCSS,0.1,page / domain / external
+login_form,0.6351129,page / domain / external
+external_favicon,0.26417056,page / domain / external
+links_in_tags,0.9961842,page / domain / external
+ratio_intMedia,1.0096918,page / domain / external
+ratio_extMedia,0.580043,page / domain / external
+iframe,0.6351129,page / domain / external
+empty_title,0.6351129,page / domain / external
+domain_in_title,0.8470799,page / domain / external
+domain_with_copyright,0.64082766,page / domain / external
+whois_registered_domain,0.42002866,page / domain / external
+domain_registration_length,0.8231816,page / domain / external
+domain_age,2.0580974,page / domain / external
+dns_record,1.5219456,page / domain / external

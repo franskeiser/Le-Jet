@@ -96,7 +96,7 @@ def _load_baseline(model_id: str, model_dir: str = "models", seed: int = SEEDS[0
         model.load_state_dict(torch.load(f"{model_dir}/phase_a_checkpoint.pt", map_location="cpu"))
     elif model_id == 'fusion_ungated':
         model = UngatedFusionClassifier(
-            encoder, cnn_dim=NUM_FILTERS * 3, url_dim=len(URL_FEATURE_COLUMNS), dense_units=DENSE_UNITS,
+            encoder, cnn_dim=NUM_FILTERS, url_dim=len(URL_FEATURE_COLUMNS), dense_units=DENSE_UNITS,
         )
         model.load_state_dict(torch.load(f"{model_dir}/ungated_checkpoint_seed{seed}.pt", map_location="cpu"))
     else:

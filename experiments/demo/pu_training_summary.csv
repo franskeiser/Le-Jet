@@ -1,0 +1,9 @@
+,mean,mean,mean,std,std,std
+mode,mixed,routed,url_only,mixed,routed,url_only
+group,,,,,,
+all,0.9494,0.9509,0.9311,0.0096,0.0154,0.0127
+ambiguous_page_missing,0.7662,0.7537,0.7413,0.0114,0.0075,0.0282
+ambiguous_page_reached,0.8902,0.9014,0.8262,0.0422,0.0599,0.0399
+link_ambiguous_text,0.8543,0.8586,0.8016,0.0276,0.0444,0.0365
+link_class_specific_text,1.0,1.0,1.0,0.0,0.0,0.0
+no_link,1.0,1.0,1.0,0.0,0.0,0.0
