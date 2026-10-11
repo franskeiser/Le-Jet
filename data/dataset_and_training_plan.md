@@ -81,24 +81,21 @@ Nothing else should start until you know these numbers.
 
 1. Convert the Parquet files to one CSV (`pandas`, `pyarrow`, `huggingface_hub`) and check the shape is about 11,430 rows and 89 columns.
 2. Map the label: `status` "phishing" to 1, "legitimate" to 0.
-3. Drop `url` (an identifier, not a feature).
-4. Keep 79 of the 87 features. This list comes from the column names and the paper's feature groups, so confirm each definition in the paper's feature table first.
+3. Keep `url` in the CSV for traceability, but do not feed it to the model (an identifier, not a feature).
+4. Keep 32 features: 26 from the source and 6 new ones computed from the `url` text. This is the column set in `data/processed/web_phishing_clean.csv`, produced by `src/data/clean_web_phishing.py`. See `docs/web_phishing_cleaning.md` for each definition and the source-column mapping.
 
-| Decision | Features | Reason |
+| Group | Features | Reason |
 |---|---|---|
-| Keep (55) | All URL-text features, `length_url` to `suspecious_tld` | Computed from the link string, free and safe |
-| Keep (20) | `nb_hyperlinks`, `ratio_intHyperlinks`, `ratio_extHyperlinks`, `ratio_nullHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `submit_email`, `ratio_intMedia`, `ratio_extMedia`, `sfh`, `iframe`, `popup_window`, `safe_anchor`, `onmouseover`, `right_clic`, `empty_title`, `domain_in_title`, `domain_with_copyright` | From one page's HTML |
-| Keep (4) | `whois_registered_domain`, `domain_registration_length`, `domain_age` (from RDAP), `dns_record` | Cheap lookups; use -1 when missing |
-| Drop | `web_traffic`, `google_index`, `page_rank` | Depend on outside services that may be gone; you dropped Google; Tranco covers popularity |
-| Drop | `statistical_report` | Believed to be a stale 2020 blacklist check |
-| Drop | `ratio_intRedirection`, `ratio_extRedirection`, `ratio_intErrors`, `ratio_extErrors` | By name, they need a request to every link on the page; this breaks "observe only" |
-| Check first | `nb_redirection`, `nb_external_redirection` | Unclear whether they come from the URL string or live requests |
+| URL structural (16) | `url_length`, `https_presence`, `number_of_hyphens`, `number_of_slashes`, `subdomain_count`, `special_char_count`, `suspicious_url_token_count`, `shortened_url_indicator`, `has_ip_address`, `suspicious_keyword_count`, `has_url`, `page_rank`, `path_length`, `random_domain`, `length_hostname`, `tld_in_path` | Computed from the link string, free and safe. `https_presence`, `special_char_count`, `suspicious_url_token_count`, `suspicious_keyword_count` and `path_length` are new and recomputed from `url`, so the same code works on SMS links. `has_url` is always 1 here; it matches the SMS feature set. `page_rank` comes from Open PageRank. `path_length` has no literature reference yet. `tld_in_path` is the dataset's spelling (the feature list's `tld_in_pth` is a typo) |
+| Webpage (12) | `nb_hyperlinks`, `ratio_intHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `ratio_intMedia`, `ratio_extMedia`, `iframe`, `empty_title`, `domain_in_title`, `domain_with_copyright` | From one page's HTML |
+| External (4) | `whois_registered_domain`, `domain_registration_length`, `domain_age`, `dns_record` | Cheap lookups. Negative `domain_age` and `domain_registration_length` (WHOIS failures) are set to -1 |
+| Drop (61) | All other source columns. These include `ratio_nullHyperlinks` and `sfh` (0 in every row), the separate character counts (`nb_dots`, `nb_at`, `nb_qm`, …), the word-length stats, `ratio_extHyperlinks`, `submit_email`, `popup_window`, `safe_anchor`, `onmouseover`, `right_clic`, `web_traffic`, `google_index`, `statistical_report`, `ratio_intRedirection`, `ratio_extRedirection`, `ratio_intErrors`, `ratio_extErrors`, `nb_redirection`, `nb_external_redirection`, and `phish_hints` and `https_token` (replaced by `suspicious_url_token_count` and `https_presence`) | Not in our feature list. Some feed the new features |
 
 5. **Check the definitions against the paper's code.** If the content features were built from static HTML, your inspector can fetch plain HTML with no JavaScript, which is safer than a full browser. If not, you need a browser.
 6. **Scheme normalization.** Features like `https_token` and `nb_www` assume `http(s)://`. Add a scheme to every SMS link before computing features.
 7. **Overlap check.** List domains that appear in both the public set and your SMS links. Report the overlap. Remove or flag shared domains in your evaluation.
 
-**Done when:** you have a clean CSV with 79 features, a label column, and a short note on each feature's definition.
+**Done when:** you have a clean CSV with 32 features, a label column, and a short note on each feature's definition. Done: `data/processed/web_phishing_clean.csv` (11,430 rows, 5,715 per class) and `docs/web_phishing_cleaning.md`.
 
 ---
 
@@ -106,12 +103,12 @@ Nothing else should start until you know these numbers.
 
 1. **Split** the public set 70/15/15 (train, validation, test). Group by domain if one domain appears more than once.
 2. **Model:** random forest. Start with 200 to 500 trees and tune on the validation part only. Suggested starting points, not thesis facts.
-3. **Missing-page robustness (recommended).** In the public set, every page loaded. In your SMS data, most will not. To avoid giving the forest rows it has never seen, randomly set the 24 page-content and outside-lookup features to -1 for about 30% of training rows, and add a "page status" feature. Confirm this choice with your adviser. The forest then learns to give a sensible answer from the link alone.
+3. **Missing-page robustness (recommended).** In the public set, every page loaded. In your SMS data, most will not. To avoid giving the forest rows it has never seen, randomly set the 16 page-content and outside-lookup features to -1 for about 30% of training rows, and add a "page status" feature. Confirm this choice with your adviser. The forest then learns to give a sensible answer from the link alone.
 4. **Outputs per link:**
    - P: the average of the trees' phishing probabilities.
    - u: the standard deviation of the individual trees' probabilities (tree disagreement).
    - Both are -1 for messages with no link.
-5. **Shortcut ablations.** Train three versions: all 79 features; without the path and length features (`length_url`, `nb_slash`, and similar); without domain age. If scores fall sharply, the model was leaning on a dataset artifact (for example, legitimate links being mostly site homepages; this is a suspicion, not confirmed).
+5. **Shortcut ablations.** Train three versions: all 32 features; without the path and length features (`url_length`, `path_length`, `number_of_slashes`, and similar); without domain age. If scores fall sharply, the model was leaning on a dataset artifact (for example, legitimate links being mostly site homepages; this is a suspicion, not confirmed).
 6. **Report:** accuracy, precision, recall, F1 and a calibration check on the held-out public test part.
 7. **Trim the feature list.** Compute permutation importance on the validation part and keep the top 25 or so. Retrain with only those. Your inspector then has fewer features to compute and less contact with live pages.
 8. **Freeze:** save with `joblib`. From here on the extractor is never retrained on SMS data.

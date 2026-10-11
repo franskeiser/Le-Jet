@@ -1,0 +1,96 @@
+{
+  "data": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\data\\processed\\web_phishing_clean.csv",
+  "seeds": [
+    42,
+    123,
+    2024
+  ],
+  "page_mask_frac": 0.3,
+  "top_k": null,
+  "param_grid": {
+    "n_estimators": [
+      200,
+      500
+    ],
+    "max_depth": [
+      null,
+      20
+    ],
+    "min_samples_leaf": [
+      1,
+      5
+    ],
+    "max_features": [
+      "sqrt",
+      0.5
+    ]
+  },
+  "variants": {
+    "url_only": [
+      "url_length",
+      "https_presence",
+      "number_of_hyphens",
+      "number_of_slashes",
+      "subdomain_count",
+      "special_char_count",
+      "suspicious_url_token_count",
+      "shortened_url_indicator",
+      "has_ip_address",
+      "suspicious_keyword_count",
+      "path_length",
+      "random_domain",
+      "length_hostname",
+      "tld_in_path"
+    ],
+    "full": [
+      "url_length",
+      "https_presence",
+      "number_of_hyphens",
+      "number_of_slashes",
+      "subdomain_count",
+      "special_char_count",
+      "suspicious_url_token_count",
+      "shortened_url_indicator",
+      "has_ip_address",
+      "suspicious_keyword_count",
+      "path_length",
+      "random_domain",
+      "length_hostname",
+      "tld_in_path",
+      "page_rank",
+      "nb_hyperlinks",
+      "ratio_intHyperlinks",
+      "nb_extCSS",
+      "login_form",
+      "external_favicon",
+      "links_in_tags",
+      "ratio_intMedia",
+      "ratio_extMedia",
+      "iframe",
+      "empty_title",
+      "domain_in_title",
+      "domain_with_copyright",
+      "whois_registered_domain",
+      "domain_registration_length",
+      "domain_age",
+      "dns_record",
+      "page_available"
+    ]
+  },
+  "ablations": {
+    "all_features": [],
+    "no_length_path": [
+      "url_length",
+      "path_length",
+      "number_of_slashes",
+      "length_hostname"
+    ],
+    "no_domain_age": [
+      "domain_age"
+    ],
+    "no_page_rank": [
+      "page_rank"
+    ]
+  },
+  "constant_features": []
+}

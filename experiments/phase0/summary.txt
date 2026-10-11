@@ -1,0 +1,37 @@
+Phase 0: SMS links and domain lookups
+Generated 2026-10-11 15:11
+
+1. Links per class
+            messages  with_link  with_<URL>_placeholder  unique_domains  shortener_links  share_with_link
+label                                                                                                    
+legitimate      7930        441                      42              62               19            0.056
+smishing       10955       4405                    3014            1407               46            0.402
+
+2. Lookup success on sampled domains (share of domains)
+            sampled  dns_resolves  rdap_ok  domain_features_ok  missing_rate_X
+label                                                                         
+legitimate     62.0         0.903    0.403               0.403           0.597
+smishing      200.0         0.170    0.130               0.120           0.880
+all           262.0         0.344    0.195               0.187           0.813
+
+3. DNS status counts
+label       legitimate  smishing
+dns_status                      
+error                0         1
+no_records           0         1
+nxdomain             6       164
+resolves            56        34
+
+4. RDAP status counts
+label            legitimate  smishing
+rdap_status                          
+http_400                  0         3
+http_426                  0         2
+no_rdap_for_tld          31        25
+not_found                 6       144
+ok                       25        26
+
+5. Excluding shorteners (their lookup describes the shortener, not the destination)
+label
+legitimate    0.390
+smishing      0.116
