@@ -3,8 +3,11 @@
 pretrained/*.bin
 *.bin
 
+# Trained models (~165 MB); regenerate with python -m src.features.model.rf_extractor
+models/
+
 # ── Data and VM artifacts (never belong in git) ────────────────────────
-data/
+/data/
 *.vdi
 *.vmdk
 *.vhd

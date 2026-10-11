@@ -4,7 +4,7 @@
 |---|---|
 | **Script** | `src/data/clean_web_phishing.py` |
 | **Input** | `data/interim/hussein-train-and-test-merged.csv` (11,430 rows × 89 columns) |
-| **Output** | `data/processed/web_phishing_clean.csv` (11,430 rows × 36 columns) |
+| **Output** | `data/processed/web_phishing_clean.csv` (11,430 rows × 34 columns) |
 | **Labels** | `status`: 5,715 legitimate, 5,715 phishing |
 
 Run from the project root:
@@ -17,7 +17,7 @@ Optional arguments: `python src/data/clean_web_phishing.py <input_csv> <output_c
 
 ## Output columns
 
-The output keeps `url` (for traceability), 34 features in three groups, and the `status` label.
+The output keeps `url` (for traceability), 32 features in three groups, and the `status` label.
 
 ### URL structural features (16)
 
@@ -40,22 +40,22 @@ The output keeps `url` (for traceability), 34 features in three groups, and the 
 | `length_hostname` | `length_hostname` | Unchanged |
 | `tld_in_path` | `tld_in_path` | Unchanged; the feature list's `tld_in_pth` was a typo |
 
-### Webpage features (14), all unchanged
+### Webpage features (12), all unchanged
 
-`nb_hyperlinks`, `ratio_intHyperlinks`, `ratio_nullHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `ratio_intMedia`, `ratio_extMedia`, `sfh`, `iframe`, `empty_title`, `domain_in_title`, `domain_with_copyright`
+`nb_hyperlinks`, `ratio_intHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `ratio_intMedia`, `ratio_extMedia`, `iframe`, `empty_title`, `domain_in_title`, `domain_with_copyright`
 
 ### External-based features (4)
 
 | Column | Change |
 |---|---|
-| `whois_registered_domain` | Unchanged |
+| `whois_registered_domain` | Unchanged. `1` = not found in WHOIS (the suspicious value), `0` = registered |
 | `domain_registration_length` | Negative values set to `-1` |
 | `domain_age` | Negative values set to `-1` |
-| `dns_record` | Unchanged |
+| `dns_record` | Unchanged. `1` = no DNS record (the suspicious value), `0` = the domain resolves |
 
 ### Dropped columns
 
-The other 59 source columns are dropped. They include the separate character counts (`nb_at`, `nb_qm`, etc.), the word-length stats, and `web_traffic`, `google_index`, `phish_hints` and `https_token`. Some dropped columns feed into the new features (see below).
+The other 61 source columns are dropped, including `ratio_nullHyperlinks` and `sfh`, which are 0 in every row (see [Decisions](#decisions)). They include the separate character counts (`nb_at`, `nb_qm`, etc.), the word-length stats, and `web_traffic`, `google_index`, `phish_hints` and `https_token`. Some dropped columns feed into the new features (see below).
 
 ## Decisions
 
@@ -84,7 +84,9 @@ The other 59 source columns are dropped. They include the separate character cou
    - The rows differ in `length_url` (54 vs 62), word stats, `ratio_extRedirection`, `domain_age` and `domain_registration_length`. This suggests two different original URLs that the source truncated to the same string.
    - Both rows are kept.
 
-10. **Column names follow our feature list.** Source names are kept only where our list already used them.
+10. **`ratio_nullHyperlinks` and `sfh` are dropped.** Both are 0 in all 11,430 rows, so no model can learn anything from them, and the inspector would have to compute them for nothing.
+
+11. **Column names follow our feature list.** Source names are kept only where our list already used them.
 
 ## Quick sanity check (class means)
 

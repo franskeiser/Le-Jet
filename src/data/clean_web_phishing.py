@@ -49,11 +49,11 @@ URL_FEATURES = [
     "shortened_url_indicator", "has_ip_address", "suspicious_keyword_count", "has_url",
     "page_rank", "path_length", "random_domain", "length_hostname", "tld_in_path",
 ]
+# ratio_nullHyperlinks and sfh are not kept: they are 0 in every row of the source data.
 WEBPAGE_FEATURES = [
-    "nb_hyperlinks", "ratio_intHyperlinks", "ratio_nullHyperlinks", "nb_extCSS",
-    "login_form", "external_favicon", "links_in_tags", "ratio_intMedia",
-    "ratio_extMedia", "sfh", "iframe", "empty_title", "domain_in_title",
-    "domain_with_copyright",
+    "nb_hyperlinks", "ratio_intHyperlinks", "nb_extCSS", "login_form",
+    "external_favicon", "links_in_tags", "ratio_intMedia", "ratio_extMedia",
+    "iframe", "empty_title", "domain_in_title", "domain_with_copyright",
 ]
 EXTERNAL_FEATURES = [
     "whois_registered_domain", "domain_registration_length", "domain_age", "dns_record",

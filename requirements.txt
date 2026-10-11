@@ -1,0 +1,9 @@
+# Pinned so saved models (models/*.joblib) load the same on every machine.
+# Install: python -m venv .venv, activate it, then pip install -r requirements.txt
+numpy==2.4.2
+pandas==3.0.1
+scikit-learn==1.8.0
+joblib==1.5.3
+pytest
+requests==2.34.2
+tldextract==5.4.0

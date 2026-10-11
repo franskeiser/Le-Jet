@@ -1180,10 +1180,10 @@ Procedure:
 3. `GET {base}domain/{registrable_domain}` with `httpx`: timeout 4 s, max response 256 KB, `follow_redirects` limited to 2 and only to `https`, accept `application/rdap+json`.
 4. Parse `events` (`registration`, `expiration`, `last changed`) and `status`.
 5. Compute (all in days; store `-1` when unknown):
-   - `whois_registered_domain` = `1` if a record is returned (HTTP 200), `0` if HTTP 404 (no such registration), `-1` if the lookup failed.
+   - `whois_registered_domain` = `0` if a record is returned (HTTP 200), `1` if HTTP 404 (no such registration), `-1` if the lookup failed. **1 is the suspicious value**, matching the dataset: in the public set it is `0` for 94.5% of legitimate and 91.0% of phishing rows. (Corrected 2026-10-11; an earlier version of this plan had it reversed.)
    - `domain_age` = now − registration date.
    - `domain_registration_length` = **verify against the paper**: either (expiration − registration) or (expiration − now). Implement the paper's definition, document it, and also store the helper column `days_to_expiry` so you can switch.
-6. `dns_record` (from Stage 1) = `1` if the registrable domain or host returns A/AAAA/NS records, `0` on NXDOMAIN/no records, `-1` on resolver error/timeout.
+6. `dns_record` (from Stage 1) = `0` if the registrable domain or host returns A/AAAA/NS records, `1` on NXDOMAIN/no records, `-1` on resolver error/timeout. **1 is the suspicious value ("no DNS record")**, matching the dataset: in the public set it is `0` for 99.7% of legitimate and 96.3% of phishing rows. (Corrected 2026-10-11; an earlier version of this plan had it reversed, which would have fed every SMS link to the extractor with this feature flipped.)
 7. Set `rdap_ok` = `1` only if the lookup completed (200 or 404).
 
 Rules: cache per registrable domain (many URLs share a domain); ≤ 1 request/second per RDAP server; retry once with backoff on 429/5xx; the RDAP JSON is **third-party, untrusted data** — parse with a size cap, never `eval`, store only the derived numbers.
@@ -1275,6 +1275,8 @@ Naming: `snake_case`. Types: `i` int, `f` float, `b` bool (0/1), `s` short strin
 
 ### 14.0 v1 feature set — 79 features (this is what v1 collects)
 
+> **Superseded (2026-10-11).** The model now uses **32 features**: 16 URL structural, 12 webpage and 4 external. See `data/dataset_and_training_plan.md` §4 and `docs/web_phishing_cleaning.md` for the list and definitions. The inspector only has to compute those. `sfh` and `ratio_nullHyperlinks` were dropped because they are 0 in every row of the public set. The definitions below still apply to the features that remain.
+
 **Confirmed by the project owner (Oct 2026): this 79-feature list is the final v1 scope** — Keep 55 (all URL-text features, `length_url` … `suspecious_tld`; they come from the link string alone), Keep 20 (HTML: `nb_hyperlinks`, `ratio_intHyperlinks`, `ratio_extHyperlinks`, `ratio_nullHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `submit_email`, `ratio_intMedia`, `ratio_extMedia`, `sfh`, `iframe`, `popup_window`, `safe_anchor`, `onmouseover`, `right_clic`, `empty_title`, `domain_in_title`, `domain_with_copyright`), Keep 4 (`whois_registered_domain`, `domain_registration_length`, `domain_age` from RDAP, and `dns_record`; missing data = `-1`). Anything beyond this list (§28) is an optional extra and must not replace these.
 > Note on RDAP: the project notes say RDAP coverage was "verified earlier", but no verification is recorded in this plan. Treat RDAP coverage (especially `.ph`) as **unverified** until Level 1 measures the per-TLD success rate.
 
@@ -1320,6 +1322,8 @@ Meanings below are the **intended** meanings; implement each according to the pa
 
 #### 14.0.3 RDAP / DNS features — 4 (see §13.4b)
 `whois_registered_domain`, `domain_registration_length`, `domain_age`, `dns_record`. Unknown / lookup failed = `-1`.
+
+**Direction:** `whois_registered_domain` and `dns_record` use `1` for the *abnormal* case (not in WHOIS/RDAP; no DNS record) and `0` for the normal case, as in the dataset. Never "1 = record exists". Add a unit test: a domain that resolves gives `dns_record = 0`; an NXDOMAIN gives `1`.
 
 #### 14.0.4 Dropped (do **not** collect)
 `statistical_report`, `web_traffic`, `google_index`, `page_rank` (third-party services); `ratio_intRedirection`, `ratio_extRedirection`, `ratio_intErrors`, `ratio_extErrors` (would require a request to every link on the page).
@@ -1431,7 +1435,7 @@ Tables: `runs(batch_id, started_at, finished_at, tool_versions_json, input_sha25
  "html_bytes":48211,"script_count":7,
  "stage_ms":{"dns":41,"rdap":612,"http":930,"html":38},"duration_ms":1650,
  "features":{"length_url":27,"length_hostname":12,"...":"... all 79 dataset-named features ...",
-             "domain_age":-1,"dns_record":1}}
+             "domain_age":-1,"dns_record":0}}
 ```
 The **URL itself** is exported defanged (`hxxps://...`) plus `reg_domain` (defanged).
 
