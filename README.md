@@ -5,15 +5,18 @@
 Le-Jet classifies SMS messages as smishing or legitimate. A CNN reads the message text. For messages with a link, a Random Forest **feature extractor** looks at the link's URL, web page and domain data and outputs two numbers, P and u. These are concatenated with the CNN and URL features, re-weighted by static gates, and passed to the final classifier.
 
 ```
-Public web set (11,430 pages) ──> train RF extractor ──> freeze
-                                                          │
-SMS link ──> inspector (safe) ──> page + URL features ────┤
-                                                          v
-                                                  P and u (or -1)
-                                                          │
-SMS text ──> fastText 300-d ──> single-kernel CNN ──┐     │
-URL features + has_url + domain popularity ─────────┼─> gates ──> dense ──> softmax
-                                                    └─────┘
+Public web set (11,430 pages) ──> train 2 RF extractors (url_only, full) ──> freeze
+
+SMS link ──┬─ old SMS data ──────────────────────────> url_only ──┐
+           └─ fresh link ──> inspector ─┬─ page loaded ──> full ──┤
+                                        └─ page failed ──> url_only ┤
+                                                                  v
+                                                          P and u (or -1)
+                                                                  │
+SMS text ──> fastText 300-d ──> CNN ──────────────┐               │
+14 URL text features + has_url ───────────────────┼─> gates <─────┘
+                                                  v
+                                          dense ──> softmax
 ```
 
 The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_training_plan.md). For background on how this repo differs from SmishGuard, read [`CONTEXT.md`](CONTEXT.md).
@@ -23,7 +26,7 @@ The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_train
 | Step | Status |
 |---|---|
 | Clean the public web phishing set (32 features) | Done |
-| Train the RF feature extractor | Done (results being reviewed) |
+| Train the RF feature extractor | Done (Option C: two extractors, no masking; see [`docs/decision_web_inspection.md`](docs/decision_web_inspection.md)) |
 | Web inspector for SMS links | Planned ([`WEB_INSPECTION_PLAN.md`](WEB_INSPECTION_PLAN.md)) |
 | CNN, gating and fusion classifier | Code carried over from SmishGuard, not yet adapted |
 
@@ -75,13 +78,15 @@ Each feature's definition and every cleaning decision are in [`docs/web_phishing
 python -m src.features.model.rf_extractor
 ```
 
-This takes about 6 minutes. For each seed (42, 123, 2024), it:
+This takes about 4 minutes. For each seed (42, 123, 2024), it:
 
-1. Splits the data 70/15/15 into train, validation and test. **The split is by domain**, so no domain appears in more than one part.
+1. Splits the data 70/15/15 into train, validation and test. **The split is by domain** (exact registrable domain via `tldextract`), so no domain appears in more than one part.
 2. Tunes a Random Forest on the validation part (16 settings).
 3. Trains two versions:
    - `url_only`: the 14 features computed from the link text (no `page_rank`). **Use this for the old SMS data.** Page, domain and `page_rank` lookups made today mostly show that an old scam domain has died, which is a time shortcut, not evidence (Phase 0: 82% of smishing domains no longer resolve).
-   - `full`: all 32 features minus `has_url`, plus `page_available`. Use it only for links inspected within hours of arrival (the fresh set, a live demo).
+   - `full`: all 32 features minus `has_url`, trained on complete pages only. Use it only for fresh links whose page was fetched within hours of arrival (the fresh set, a live demo).
+
+   There is no masking: each extractor only sees the kind of data it was trained on. A fresh link whose page fails goes to `url_only`.
 
    `has_url` is not an input because it is always 1 here.
 4. Measures accuracy, precision, recall, F1, ROC-AUC and calibration on the test part. It also runs the shortcut ablations and permutation importance.
@@ -91,7 +96,6 @@ Useful options:
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--page-mask-frac` | `0.3` | Share of training rows made to look like a dead page (webpage features set to -1, `page_available` = 0). `0` turns it off. |
 | `--top-k` | off | Retrain on only the top-k features by validation permutation importance. |
 | `--seeds` | `42 123 2024` | Seeds to run. |
 
@@ -99,7 +103,7 @@ Useful options:
 
 | Path | Contents |
 |---|---|
-| `models/rf_extractor/{url_only,full}_seed{N}.joblib` | Frozen extractors (about 165 MB in total). **Do not commit these**; anyone can regenerate them with the command above. |
+| `models/rf_extractor/{url_only,full}_seed{N}.joblib` | Frozen extractors (about 176 MB in total). **Do not commit these**; anyone can regenerate them with the command above. |
 | `experiments/rf_extractor/metrics_summary.csv` | Validation and test scores, mean and standard deviation across seeds |
 | `experiments/rf_extractor/ablations_summary.csv` | Shortcut ablation results |
 | `experiments/rf_extractor/importance_summary.csv` | Permutation and Gini importance per feature |
@@ -108,13 +112,19 @@ Useful options:
 **Using a trained extractor**
 
 ```python
-from src.features.model.rf_extractor import load_extractor, extract_p_u
+from src.features.model.rf_extractor import load_extractor, extract_p_u, route_p_u
 
-bundle = load_extractor("full", seed=42)
-pu = extract_p_u(bundle, features_df)  # DataFrame with columns P and u
+url_only = load_extractor("url_only", seed=42)
+full = load_extractor("full", seed=42)
+
+# Old SMS data: link text only.
+pu = extract_p_u(url_only, sms_features)          # columns P, u
+
+# Fresh, inspected links: full where the page was fetched, url_only otherwise.
+pu = route_p_u(url_only, full, fresh_features)    # columns P, u, extractor
 ```
 
-`features_df` needs the extractor's input columns plus `has_url`. Rows with `has_url == 0` get P = u = -1. For a link whose page could not be fetched, pass `page_available = 0` and set the webpage features to -1.
+Both need the extractor's input columns plus `has_url`; rows with `has_url == 0` get P = u = -1. `route_p_u` also needs `page_fetched` (1 or 0).
 
 ## Tests
 

@@ -16,15 +16,18 @@ Items marked **[verified]** were read in a source during this work. Items marked
 5. Do all page visits from an isolated machine, observe only, with hard limits.
 
 ```
-Public web set (11,430 pages) ──> train RF extractor ──> freeze
-                                                          │
-SMS link ──> inspector (safe) ──> page + URL features ────┤
-                                                          v
-                                                  P and u (or -1)
-                                                          │
-SMS text ──> fastText 300-d ──> single-kernel CNN ──┐     │
-15 URL features + has_url + domain popularity ──────┼─> gates ──> dense ──> softmax
-                                                    └─────┘
+Public web set (11,430 pages) ──> train 2 RF extractors (url_only, full) ──> freeze
+
+SMS link ──┬─ old SMS data ──────────────────────────> url_only ──┐
+           └─ fresh link ──> inspector ─┬─ page loaded ──> full ──┤
+                                        └─ page failed ──> url_only ┤
+                                                                  v
+                                                          P and u (or -1)
+                                                                  │
+SMS text ──> fastText 300-d ──> CNN ──────────────┐               │
+14 URL text features + has_url ───────────────────┼─> gates <─────┘
+                                                  v
+                                          dense ──> softmax
 Gates (0.1 to 3.0) come from two 200-tree forests fit on the RF-Fitting Set, then discarded.
 P, u and has_url get a fixed gate of 1.0.
 ```
@@ -38,7 +41,7 @@ P, u and has_url get a fixed gate of 1.0.
 | A | Combined SMS set (your Table 1) | 18,885 (10,955 smishing, 7,930 legitimate) | Train the CNN and head; the RF-Fitting Set sets the gates; the Test Set measures everything | [verified] from your thesis |
 | B | Public web phishing set (Hannousse & Yahiouche) | 11,430 pages, half phishing, half legitimate, 87 features | Train and test the RF extractor only | [verified] |
 | C | Fresh collected set | You decide (aim for a few hundred links) | Test inspection on live pages | To be collected |
-| D | Tranco Top 1M snapshot | fixed snapshot | domain_popularity feature | [verified] already in your thesis |
+| D | ~~Tranco Top 1M snapshot~~ | — | **Removed (2026-10-11).** Domain popularity is no longer a model input | — |
 | E | Optional: Smishtank | 1,062 smishing messages | More smishing with link fields (final URL, VirusTotal, WHOIS) | [verified], license not stated |
 | F | Optional: legitimate messages with links | to be collected | Fix the shortage of legitimate messages with links | Needs ethics sign-off |
 
@@ -103,12 +106,15 @@ Nothing else should start until you know these numbers.
 
 1. **Split** the public set 70/15/15 (train, validation, test). Group by domain if one domain appears more than once.
 2. **Model:** random forest. Start with 200 to 500 trees and tune on the validation part only. Suggested starting points, not thesis facts.
-3. **Missing-page robustness (recommended).** In the public set, every page loaded. In your SMS data, most will not. To avoid giving the forest rows it has never seen, randomly set the 16 page-content and outside-lookup features to -1 for about 30% of training rows, and add a "page status" feature. Confirm this choice with your adviser. The forest then learns to give a sensible answer from the link alone.
+3. **Two extractors instead of masking (decided 2026-10-11, Option C in `docs/decision_web_inspection.md`).** Phase 0 found that 82% of old smishing domains no longer resolve, so anything looked up today mostly says "the domain died", not "this is a scam". Train two extractors on the public set:
+   - `url_only`: the 14 link-text features (no `page_rank`). Used for every old SMS link, and for fresh links whose page failed.
+   - `full`: all features, trained on complete pages. Used only for fresh links whose page was fetched within hours.
+   No masking is needed, because each extractor only sees the kind of data it was trained on.
 4. **Outputs per link:**
    - P: the average of the trees' phishing probabilities.
    - u: the standard deviation of the individual trees' probabilities (tree disagreement).
    - Both are -1 for messages with no link.
-5. **Shortcut ablations.** Train three versions: all 32 features; without the path and length features (`url_length`, `path_length`, `number_of_slashes`, and similar); without domain age. If scores fall sharply, the model was leaning on a dataset artifact (for example, legitimate links being mostly site homepages; this is a suspicion, not confirmed).
+5. **Shortcut ablations.** Train four versions of `full`: all features; without the path and length features (`url_length`, `path_length`, `number_of_slashes`, and similar); without domain age; without `page_rank`. If scores fall sharply, the model was leaning on a dataset artifact (for example, legitimate links being mostly site homepages; this is a suspicion, not confirmed).
 6. **Report:** accuracy, precision, recall, F1 and a calibration check on the held-out public test part.
 7. **Trim the feature list.** Compute permutation importance on the validation part and keep the top 25 or so. Retrain with only those. Your inspector then has fewer features to compute and less contact with live pages.
 8. **Freeze:** save with `joblib`. From here on the extractor is never retrained on SMS data.
@@ -121,7 +127,7 @@ Nothing else should start until you know these numbers.
 
 Two tiers. Go to the second only for links that still need it.
 
-**Tier 1: no page contact.** URL structure, Tranco rank, DNS, RDAP (domain age, registrar), certificate-log lookup. Run for every link.
+**Tier 1: no page contact.** URL structure, DNS, RDAP (domain age, registrar), certificate-log lookup. Run for every link.
 
 **Tier 2: isolated visit.**
 1. Use a throwaway container or VM, not your own computer. Non-root, no personal logins, no shared folders, CPU, memory and time limits. Destroy it after each batch.
@@ -143,10 +149,8 @@ Two tiers. Go to the second only for links that still need it.
 
 ### 7.1 Features per SMS
 - Text: fastText 300-d fine-tuned embeddings into the single-kernel CNN. (Kernel size and filter count: to be decided by your group.)
-- URL features: your 15 structural features plus `has_url`, with -1 when there is no link.
-- Domain popularity from the fixed Tranco snapshot.
-- Page status as an input.
-- From the frozen extractor: P and u (-1 without a link). For a dead or blocked page, the page features are -1 and the extractor answers from the link alone.
+- URL features: the 14 link-text features plus `has_url`, with -1 when there is no link. No lookups (no `page_rank`, no domain popularity).
+- From the frozen extractors: P and u (-1 without a link). Old SMS data always uses `url_only`; fresh links use `full` when the page loaded and `url_only` when it failed (`route_p_u`). Page status is only used to pick the extractor, never as a model input.
 
 ### 7.2 Gates
 1. Fit the two 200-tree forests (CNN group, URL group) on the RF-Fitting Set only.

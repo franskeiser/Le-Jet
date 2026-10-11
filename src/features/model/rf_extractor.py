@@ -1,24 +1,27 @@
 """Phase 2: train the Random Forest feature extractor on the public web phishing set.
 
-Plan: data/dataset_and_training_plan.md section 5.
+Plan: data/dataset_and_training_plan.md section 5. Design decision: docs/decision_web_inspection.md.
 
-The extractor turns one link's URL + page + domain features into two numbers that are
-concatenated with the CNN and URL features before gating:
+The extractor turns one link's features into two numbers that are concatenated with the
+CNN and URL features before gating:
     P -- mean of the trees' phishing probabilities
     u -- standard deviation of the trees' probabilities (tree disagreement)
 Messages with no link get P = u = -1. P, u and has_url get a fixed gate of 1.0.
 
-Two variants are trained, matching experiment rows 6 and 7 of the plan:
-    url_only -- the 14 features computed from the link text alone. No page_rank: it is a
-                lookup made today, and for old SMS links today's answer mostly says "the
-                scam domain has died", not "this is a scam" (Phase 0: 82% of smishing
-                domains no longer resolve). Use this variant for the old SMS data.
-    full     -- link text + page_rank + webpage + external features, plus page_available.
-                Use it only for links inspected within hours of arrival (fresh set, demo).
+Two extractors are trained, matching experiment rows 6 and 7 of the plan. Each one only
+ever sees the kind of data it was trained on, so no masking is needed:
+    url_only -- the 14 features computed from the link text alone. Used for every old SMS
+                link, and for fresh links whose page could not be fetched. No page_rank: it
+                is a lookup made today, and for old SMS links today's answer mostly says
+                "the scam domain has died", not "this is a scam" (Phase 0: 82% of smishing
+                domains no longer resolve).
+    full     -- link text + page_rank + webpage + external features, trained on complete
+                pages only. Used only for fresh links whose page was fetched within hours.
+route_p_u() picks between them per link.
 
 Usage (from the project root):
     python -m src.features.model.rf_extractor
-    python -m src.features.model.rf_extractor --page-mask-frac 0 --top-k 25
+    python -m src.features.model.rf_extractor --top-k 25
 """
 import argparse
 import json
@@ -28,6 +31,7 @@ from urllib.parse import urlsplit
 import joblib
 import numpy as np
 import pandas as pd
+import tldextract
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
@@ -65,14 +69,13 @@ WEBPAGE_FEATURES = [
 EXTERNAL_FEATURES = [
     "whois_registered_domain", "domain_registration_length", "domain_age", "dns_record",
 ]
-# 1 when the inspector fetched the page, 0 when it was dead/blocked/timed out. Always 1 in
-# the public set except for rows masked by --page-mask-frac. It makes the -1 sentinel in
-# the webpage features unambiguous to the trees.
-PAGE_AVAILABLE = "page_available"
+# Routing column for route_p_u(): 1 when the inspector fetched the page, else 0. It is
+# never an input to either forest.
+PAGE_FETCHED = "page_fetched"
 
 VARIANTS = {
     "url_only": URL_TEXT_FEATURES,
-    "full": URL_TEXT_FEATURES + [PAGE_RANK] + WEBPAGE_FEATURES + EXTERNAL_FEATURES + [PAGE_AVAILABLE],
+    "full": URL_TEXT_FEATURES + [PAGE_RANK] + WEBPAGE_FEATURES + EXTERNAL_FEATURES,
 }
 
 # Shortcut ablations (plan section 5, step 5), run on the full variant.
@@ -92,22 +95,18 @@ PARAM_GRID = {
     "max_features": ["sqrt", 0.5],
 }
 
-# Second-level labels that make the registrable domain three labels long (bbc.co.uk,
-# gov.ph). Approximate stand-in for the public suffix list; tldextract is not installed.
-_SECOND_LEVEL = {"co", "com", "net", "org", "gov", "edu", "ac", "or", "ne", "go"}
+# Offline public suffix list (bundled snapshot), private suffixes on, so x.blogspot.com is
+# its own domain -- the same rule as lejet.urlnorm and the Phase 0 script.
+_EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
 
 
 def registrable_domain(url: str) -> str:
     host = (urlsplit(url if "://" in url else "http://" + url).hostname or "").rstrip(".")
-    labels = host.split(".")
-    if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL:
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
+    return _EXTRACT(host).top_domain_under_public_suffix or host
 
 
 def load_dataset(path: Path = DEFAULT_DATA) -> pd.DataFrame:
     df = pd.read_csv(path)
-    df[PAGE_AVAILABLE] = 1
     df["label"] = df["status"].map(LABEL_TO_IDX)
     df["domain"] = df["url"].map(registrable_domain)
     return df
@@ -127,21 +126,6 @@ def grouped_split(df: pd.DataFrame, seed: int, val_size=0.15, test_size=0.15):
         .split(rest_idx, groups=rest_groups)
     )
     return rest_idx[train_rel], rest_idx[val_rel], test_idx
-
-
-def mask_page_features(df: pd.DataFrame, frac: float, seed: int) -> pd.DataFrame:
-    # Missing-page robustness (plan section 5, step 3). Most SMS links will be dead, so a
-    # share of training rows imitate a page that could not be fetched: webpage features
-    # set to -1 and page_available set to 0. External (WHOIS/DNS) features are left alone
-    # -- they come from Tier 1 lookups that run without touching the page.
-    df = df.copy()
-    if frac <= 0:
-        return df
-    rng = np.random.default_rng(seed)
-    masked = rng.random(len(df)) < frac
-    df.loc[masked, WEBPAGE_FEATURES] = -1
-    df.loc[masked, PAGE_AVAILABLE] = 0
-    return df
 
 
 def fit_rf(X: pd.DataFrame, y: np.ndarray, seed: int, **params) -> RandomForestClassifier:
@@ -205,19 +189,15 @@ def tune(X_train, y_train, X_val, y_val, seed: int) -> tuple[dict, pd.DataFrame]
     return best_params, results
 
 
-def run_seed(df: pd.DataFrame, seed: int, page_mask_frac: float, top_k: int | None,
-             model_dir: Path) -> dict:
+def run_seed(df: pd.DataFrame, seed: int, top_k: int | None, model_dir: Path) -> dict:
     train_idx, val_idx, test_idx = grouped_split(df, seed)
-    train = mask_page_features(df.iloc[train_idx], page_mask_frac, seed)
-    val, test = df.iloc[val_idx], df.iloc[test_idx]
-    # Test rows as the extractor will mostly see SMS links: page not fetched.
-    test_no_page = mask_page_features(test, 1.0, seed)
+    train, val, test = df.iloc[train_idx], df.iloc[val_idx], df.iloc[test_idx]
     y_train, y_val, y_test = (part["label"].to_numpy() for part in (train, val, test))
 
     metrics, ablations, importances, tuning = [], [], [], []
     split_info = {
         "seed": seed, "train_n": len(train), "val_n": len(val), "test_n": len(test),
-        "train_domains": df.iloc[train_idx]["domain"].nunique(),
+        "train_domains": train["domain"].nunique(),
         "test_phishing_share": float(y_test.mean()),
     }
 
@@ -241,9 +221,7 @@ def run_seed(df: pd.DataFrame, seed: int, page_mask_frac: float, top_k: int | No
             features = [features[i] for i in sorted(order)]
             rf = fit_rf(train[features], y_train, seed, **params)
 
-        for split_name, part in (("val", val), ("test", test), ("test_no_page", test_no_page)):
-            if variant == "url_only" and split_name == "test_no_page":
-                continue  # identical to test: url_only never sees the page
+        for split_name, part in (("val", val), ("test", test)):
             metrics.append({
                 "seed": seed, "variant": variant, "split": split_name,
                 "n_features": len(features), **params,
@@ -253,8 +231,7 @@ def run_seed(df: pd.DataFrame, seed: int, page_mask_frac: float, top_k: int | No
         # Freeze (plan section 5, step 8). Never retrained on SMS data.
         bundle = {
             "model": rf, "features": features, "variant": variant, "seed": seed,
-            "params": params, "page_mask_frac": page_mask_frac,
-            "label_to_idx": LABEL_TO_IDX,
+            "params": params, "label_to_idx": LABEL_TO_IDX,
         }
         joblib.dump(bundle, model_dir / f"{variant}_seed{seed}.joblib")
 
@@ -276,11 +253,10 @@ def run_seed(df: pd.DataFrame, seed: int, page_mask_frac: float, top_k: int | No
 
 
 def extract_p_u(bundle: dict, features: pd.DataFrame) -> pd.DataFrame:
-    """P and u for SMS rows, ready to concatenate before gating.
+    """P and u from one extractor, ready to concatenate before gating.
 
     `features` holds the extractor's input columns plus has_url. Rows with has_url == 0
-    get P = u = -1. For the full variant, a dead page is passed as page_available = 0
-    with the webpage features set to -1.
+    get P = u = -1. For the old SMS data, call this with the url_only extractor.
     """
     out = pd.DataFrame({"P": -1.0, "u": -1.0}, index=features.index)
     has_link = features["has_url"] == 1
@@ -289,6 +265,18 @@ def extract_p_u(bundle: dict, features: pd.DataFrame) -> pd.DataFrame:
         out.loc[has_link, "P"] = p
         out.loc[has_link, "u"] = u
     return out
+
+
+def route_p_u(url_only: dict, full: dict, features: pd.DataFrame) -> pd.DataFrame:
+    """P and u for freshly inspected links: full extractor where the page was fetched,
+    url_only everywhere else. `features` needs has_url and page_fetched (0/1); the page and
+    external columns are only read for rows with page_fetched == 1."""
+    fetched = (features["has_url"] == 1) & (features[PAGE_FETCHED] == 1)
+    out = extract_p_u(url_only, features.loc[~fetched])
+    if fetched.any():
+        out = pd.concat([out, extract_p_u(full, features.loc[fetched])])
+    out["extractor"] = np.where(fetched.reindex(out.index), "full", "url_only")
+    return out.loc[features.index]
 
 
 def load_extractor(variant: str, seed: int, model_dir: Path = DEFAULT_MODEL_DIR) -> dict:
@@ -306,8 +294,6 @@ def main() -> None:
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
-    parser.add_argument("--page-mask-frac", type=float, default=0.3,
-                        help="share of training rows with the page masked (0 to disable)")
     parser.add_argument("--top-k", type=int, default=None,
                         help="retrain on the top-k features by validation permutation importance")
     parser.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
@@ -317,14 +303,14 @@ def main() -> None:
     args.report_dir.mkdir(parents=True, exist_ok=True)
 
     df = load_dataset(args.data)
-    constant = [f for f in VARIANTS["full"] if f != PAGE_AVAILABLE and df[f].nunique() == 1]
+    constant = [f for f in VARIANTS["full"] if df[f].nunique() == 1]
     if constant:
         print(f"Constant in the whole dataset (no signal for the forest): {constant}")
 
     results = []
     for seed in args.seeds:
         print(f"Seed {seed} ...")
-        results.append(run_seed(df, seed, args.page_mask_frac, args.top_k, args.model_dir))
+        results.append(run_seed(df, seed, args.top_k, args.model_dir))
 
     metrics = pd.DataFrame([m for r in results for m in r["metrics"]])
     ablations = pd.DataFrame([a for r in results for a in r["ablations"]])
@@ -349,9 +335,9 @@ def main() -> None:
     ablation_summary.to_csv(args.report_dir / "ablations_summary.csv", index=False)
     importance_summary.to_csv(args.report_dir / "importance_summary.csv", index=False)
     (args.report_dir / "run_config.json").write_text(json.dumps({
-        "data": str(args.data), "seeds": args.seeds, "page_mask_frac": args.page_mask_frac,
-        "top_k": args.top_k, "param_grid": PARAM_GRID, "variants": VARIANTS,
-        "ablations": ABLATIONS, "constant_features": constant,
+        "data": str(args.data), "seeds": args.seeds, "top_k": args.top_k,
+        "param_grid": PARAM_GRID, "variants": VARIANTS, "ablations": ABLATIONS,
+        "constant_features": constant,
     }, indent=2))
 
     pd.set_option("display.width", 200)
@@ -360,6 +346,8 @@ def main() -> None:
     print("\nAblations on test (full variant):\n", ablation_summary.round(4).to_string(index=False))
     print("\nTop features (full):\n",
           importance_summary[importance_summary.variant == "full"].head(15).round(4).to_string(index=False))
+    print("\nTop features (url_only):\n",
+          importance_summary[importance_summary.variant == "url_only"].round(4).to_string(index=False))
     print(f"\nModels: {args.model_dir}\nReports: {args.report_dir}")
 
 

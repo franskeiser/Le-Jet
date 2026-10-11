@@ -5,7 +5,6 @@
     123,
     2024
   ],
-  "page_mask_frac": 0.3,
   "top_k": null,
   "param_grid": {
     "n_estimators": [
@@ -73,8 +72,7 @@
       "whois_registered_domain",
       "domain_registration_length",
       "domain_age",
-      "dns_record",
-      "page_available"
+      "dns_record"
     ]
   },
   "ablations": {
