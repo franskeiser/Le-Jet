@@ -29,6 +29,7 @@ The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_train
 | Train the RF feature extractor | Done (Option C: two extractors, no masking; see [`docs/decision_web_inspection.md`](docs/decision_web_inspection.md)) |
 | Synthetic legitimate SMS with links | Done |
 | Link features for every SMS + grouped splits | Done |
+| Word embeddings (English + Tagalog fastText) | Done |
 | Web inspector for SMS links | Planned ([`WEB_INSPECTION_PLAN.md`](WEB_INSPECTION_PLAN.md)) |
 | CNN, gating and fusion classifier | Code carried over from SmishGuard, not yet adapted |
 
@@ -161,6 +162,32 @@ For each seed (42, 123, 2024), writes `data/splits/seed_<s>/{train,rf_fit,test}_
 
 Sizes and link shares per split: `experiments/splits/split_report.csv`.
 
+## 6. Build the word embeddings
+
+Download the English and Tagalog fastText vectors (`cc.en.300.bin.gz`, `cc.tl.300.bin.gz` from https://fasttext.cc/docs/en/crawl-vectors.html) into `pretrained/` and unpack them (keeps the `.gz`):
+
+```powershell
+gzip -dk pretrained/cc.en.300.bin.gz pretrained/cc.tl.300.bin.gz
+python -m src.features.build_embeddings
+```
+
+About 8 minutes. `pretrained/` is git-ignored (about 19 GB with the `.gz` files). The outputs in `models/embeddings/` **are committed**, so you only need this step if the vocabulary or text cleaning changes.
+
+- **Vocabulary:** every token in the messages the model can see (`<URL>`-placeholder messages excluded), built once for all seeds. `<PAD>` is index 0, `<URL>` index 1.
+- **Vectors:** English fastText if it knows the word, else Tagalog, else English's guess from the word's spelling. `<PAD>` is the zero vector. The CNN fine-tunes them.
+- **Memory:** the `.bin` files are read straight from disk (`MmapFastTextVectors` in `src/features/model/embedding.py`), so this needs well under 1 GB of RAM. Loading them normally with gensim needs 7-10 GB. `tests/test_embedding.py` checks that both ways give the same vectors.
+
+| Output | Contents |
+|---|---|
+| `models/embeddings/embedding_matrix.npy` | 21,940 × 300 float32 matrix (26 MB) |
+| `models/embeddings/vocab.json` | The words, in matrix-row order |
+| `experiments/embeddings/coverage.json` | How many words each language covers |
+| `experiments/embeddings/word_sources.csv` | Each word, its count and where its vector came from |
+
+Coverage: 89% of word occurrences get a real English vector, 1.3% a real Tagalog one, and 9.5% a spelling-based guess (mostly redaction tags like `<datetime>`, numbers and scam usernames).
+
+**Text cleaning (changed from SmishGuard):** links are masked as `<URL>` by the same finder that sets `has_url`, so the two always agree. Punctuation now splits words (`Username:Rom88` → `username rom88`), except inside words, numbers and tags (`pag-ibig` → `pagibig`, `3,862.65` → `386265`, `<REAL NAME>` → `<realname>`).
+
 ## Tests
 
 ```powershell
@@ -184,7 +211,7 @@ src/
   lejet/                web inspector code (URL normalization, safety checks)
   serving/              prediction code (from SmishGuard)
 tests/
-models/                 trained models (generated, not committed)
+models/                 trained models; embeddings/ is committed, rf_extractor/ is not (regenerate it)
 experiments/            training reports (generated)
 CONTEXT.md              project background and how it differs from SmishGuard
 WEB_INSPECTION_PLAN.md  detailed plan for safely visiting SMS links
@@ -196,5 +223,4 @@ WEB_INSPECTION_PLAN.md  detailed plan for safely visiting SMS links
 - `CONTEXT.md` and `WEB_INSPECTION_PLAN.md` still describe an earlier 79-feature scope. The 32 features above are the current ones.
 - `sfh` and `ratio_nullHyperlinks` were dropped because they are 0 in every row of the dataset.
 - `dns_record` and `whois_registered_domain` use `1` for the suspicious case (no DNS record; not in WHOIS), as in the dataset. The inspector must follow this direction.
-- Some SmishGuard files (`src/features/model/train.py`, `src/features/url_features.py`, and others) need `torch` and `tldextract`. These are not in `requirements.txt` yet; they will be added when that code is adapted.
 - Never open a suspicious link on your own computer. All link visits go through the isolated inspector described in `WEB_INSPECTION_PLAN.md`.

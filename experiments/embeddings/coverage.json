@@ -1,0 +1,20 @@
+{
+  "vocab_size": 21940,
+  "messages": 18854,
+  "dim": 300,
+  "word_types": {
+    "primary": 12572,
+    "primary_subword_guess": 8198,
+    "secondary": 1169
+  },
+  "word_types_share": {
+    "primary": 0.573,
+    "primary_subword_guess": 0.3737,
+    "secondary": 0.0533
+  },
+  "token_share": {
+    "primary": 0.8926,
+    "primary_subword_guess": 0.0946,
+    "secondary": 0.0128
+  }
+}
