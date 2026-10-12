@@ -199,7 +199,7 @@ async def _shots_async(a: argparse.Namespace, items: List[Tuple[Any, ...]], png_
             print(f"screenshot progress {done}/{total}", file=sys.stderr, flush=True)
 
     async with ShotRunner(png_dir, concurrency=a.concurrency, allow_loopback=a.allow_loopback,
-                          mobile=a.mobile, extra_wait_ms=a.extra_wait_ms) as runner:
+                          mobile=a.mobile, extra_wait_ms=a.extra_wait_ms, realistic=a.realistic) as runner:
         results = await runner.run(items, progress)
         return results, runner.restarts
 
@@ -313,6 +313,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--mobile", action="store_true",
                    help="look like an Android phone (what a smishing victim's device sends); many pages hide from desktops")
     s.add_argument("--extra-wait-ms", type=int, default=0, help="extra settle time per page for script-heavy pages")
+    s.add_argument("--realistic", action="store_true",
+                   help="full Chromium in new headless mode, without the automation switch: many pages cloak against the "
+                        "stripped-down headless shell and show a blank page")
     s.add_argument("--allow-loopback", action="store_true", help="TEST MODE: fixtures on 127.0.0.1")
     token_args(s)
     s.set_defaults(fn=cmd_screenshots)

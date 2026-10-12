@@ -165,6 +165,28 @@ def test_any_sandbox_off_switch_is_detected(bad):
     assert not shot_stage.chromium_args_ok(["--mute-audio", bad])
 
 
+def test_realistic_mode_only_adds_the_automation_switch_and_never_touches_the_sandbox():
+    plain = shot_stage.launch_args(False)
+    real = shot_stage.launch_args(True)
+    assert plain == list(shot_stage.CHROMIUM_ARGS)
+    assert real == plain + ["--disable-blink-features=AutomationControlled"]
+    assert shot_stage.chromium_args_ok(real)
+    assert not any("sandbox" in a or "single-process" in a for a in real)
+
+
+def test_the_phone_profile_is_a_phone():
+    assert "Android" in shot_stage.MOBILE_USER_AGENT and "Mobile" in shot_stage.MOBILE_USER_AGENT
+    assert shot_stage.MOBILE_VIEWPORT["width"] < shot_stage.MOBILE_VIEWPORT["height"]
+    assert "Headless" not in shot_stage.MOBILE_USER_AGENT and "Headless" not in shot_stage.USER_AGENT
+
+
+def test_the_extra_wait_is_capped(tmp_path):
+    assert ShotRunner(str(tmp_path), extra_wait_ms=999_999).extra_wait_ms == 30_000
+    assert ShotRunner(str(tmp_path), extra_wait_ms=-5).extra_wait_ms == 0
+    r = ShotRunner(str(tmp_path), mobile=True, realistic=True)
+    assert r.mobile and r.realistic
+
+
 def test_a_runner_cannot_be_built_with_the_sandbox_off(monkeypatch, tmp_path):
     monkeypatch.setattr(shot_stage, "CHROMIUM_ARGS", ["--no-sandbox"])
     with pytest.raises(AssertionError):

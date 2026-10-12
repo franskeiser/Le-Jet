@@ -148,6 +148,14 @@ def test_the_browsers_own_address_title_and_white_screen_flag_come_through():
     assert recs[1]["blank"].startswith("yes")
 
 
+def test_a_rescued_picture_is_explained_and_not_called_a_white_screen():
+    a = "https://a.example.com/x"
+    shots = {urlnorm.compute_url_id(a): {"ok": True, "bytes": 300000, "final_url": "about:blank", "title": "", "text_chars": 0,
+                                         "rescued": True}}
+    recs = bsw.join([meta(a)], [lab(a)], shots, {})
+    assert recs[0]["blank"].startswith("no: picture taken before the page wiped itself")
+
+
 def test_the_caveat_reaches_the_record():
     short = meta("https://bit.ly/4abc", ["dead"], shortener=True)
     recs = bsw.join([short], [lab("https://bit.ly/4abc", final_reg_domain="bit[.]ly")], {}, {})

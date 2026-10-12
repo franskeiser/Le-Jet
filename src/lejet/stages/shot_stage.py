@@ -58,6 +58,9 @@ CHROMIUM_ARGS = [
     "--disable-dev-shm-usage", "--disable-default-apps", "--mute-audio", "--hide-scrollbars",
     "--disable-breakpad", "--disable-component-update", "--disable-domain-reliability",
 ]
+EARLY_SHOTS_AT_S = (0.3, 0.5)       # early pictures: ~0.3 s and ~0.8 s after the load event (pages that wipe
+                                    # themselves do it within about a second; polling for text proved unreliable)
+BLANK_BYTES = 12_000                # a 1280x800 / phone picture under this is (nearly) blank
 REALISTIC_ARGS = ["--disable-blink-features=AutomationControlled"]    # stops announcing `navigator.webdriver`
 MAX_SHOTS_TAR_MEMBERS = 20000
 
@@ -187,12 +190,16 @@ class ShotResult:
     final_url: str = ""
     title: str = ""
     text_chars: int = -1
+    # True = the page showed content and then wiped itself (a script turned it blank or sent the browser to
+    # about:blank, typical cloaking against automated browsers); the picture is the EARLY one, taken before that
+    rescued: bool = False
 
     def as_dict(self) -> Dict[str, Any]:
         return {"url_id": self.url_id, "ok": self.ok, "error": self.error, "bytes": self.bytes,
                 "sha256": self.sha256, "width": self.width, "height": self.height,
                 "partial": self.partial, "blocked_requests": self.blocked_requests, "ms": self.ms,
-                "final_url": self.final_url, "title": self.title, "text_chars": self.text_chars}
+                "final_url": self.final_url, "title": self.title, "text_chars": self.text_chars,
+                "rescued": self.rescued}
 
 
 def url_id_for_log(res: "ShotResult") -> str:
@@ -228,8 +235,9 @@ class ShotRunner:
 
     def __init__(self, out_dir: str, *, concurrency: int = 1, allow_loopback: bool = False,
                  page_deadline: float = PAGE_DEADLINE_S, launch_env: Optional[Dict[str, str]] = None,
-                 mobile: bool = False, extra_wait_ms: int = 0, realistic: bool = False,
+                 mobile: bool = False, extra_wait_ms: int = 0, realistic: bool = False, rescue: bool = True,
                  clock: Callable[[], float] = time.monotonic):
+        self.rescue = rescue                  # also take an early picture for pages that wipe themselves
         assert chromium_args_ok(CHROMIUM_ARGS)
         # realistic = the FULL Chromium in its newer headless mode (not the stripped "headless shell" build,
         # whose client hints say HeadlessChrome) and without the automation switch: closest to a victim's browser
@@ -340,6 +348,19 @@ class ShotRunner:
         # a page that blew its deadline may have wedged the browser: the next page gets a new one
         self._browser = None
 
+    async def _early_capture(self, context: Any, page: Any) -> Optional[bytes]:
+        """For pages that wipe themselves: one or two quick pictures right after the load event, with Chromium's
+        own capture (no waiting for the page to be still). Returns the biggest one, or None."""
+        best: Optional[bytes] = None
+        for delay in EARLY_SHOTS_AT_S:                                # e.g. 0.3 s and 0.8 s after the load event
+            await asyncio.sleep(delay)
+            data = await self._raw_screenshot(context, page)
+            if data is not None and (best is None or len(data) > len(best)):
+                best = data
+            if best is not None and len(best) >= BLANK_BYTES:
+                break                                                 # something real: no need for the second try
+        return best
+
     async def _record_page_facts(self, res: ShotResult, page: Any) -> None:
         """Where the browser really is, its title and how much text it shows. Every value comes from the page,
         so it is cleaned and capped; a restless or frozen page just leaves the defaults. Never raises."""
@@ -419,12 +440,17 @@ class ShotRunner:
                 await page.wait_for_load_state("networkidle", timeout=SETTLE_MS)
             except Exception:                                         # noqa: BLE001
                 pass
+            # picture 1 (early): many casino / phishing pages show content and then wipe themselves a few
+            # seconds later when they decide the visitor is a robot. Take a quick picture at the first sign of text.
+            early = await self._early_capture(context, page) if self.rescue else None
             if self.extra_wait_ms:                                    # script-heavy pages render late
                 try:
                     await page.wait_for_timeout(self.extra_wait_ms)
                 except Exception:                                     # noqa: BLE001
                     pass
             await self._record_page_facts(res, page)
+            # picture 2 (settled): the normal one
+            data: Optional[bytes]
             try:
                 data = await page.screenshot(type="png", full_page=False, timeout=SHOT_TIMEOUT_MS,
                                              animations="disabled")
@@ -432,10 +458,13 @@ class ShotRunner:
                 # a restless page (endless requests, animations) can make the careful screenshot give up;
                 # ask Chromium directly for what is on screen, which needs no stillness
                 data = await self._raw_screenshot(context, page)
-                if data is None:
-                    res.error = "screenshot_error"
-                    return
                 res.partial = True
+            # keep the early picture when the settled one is blank (or missing) and the early one has content
+            if early is not None and (data is None or (len(data) < BLANK_BYTES and len(early) > max(3 * len(data), BLANK_BYTES))):
+                data, res.rescued = early, True
+            if data is None:
+                res.error = "screenshot_error"
+                return
             ok, err, w, h = write_png(os.path.join(self.out_dir, f"{res.url_id}.png"), data)
             res.ok, res.error, res.width, res.height = ok, err, w, h
             if ok:

@@ -5,7 +5,9 @@
 #   sudo lejet-sudo-shots <batch_id> [--limit N] [--desktop]
 #
 # By default the browser looks like an Android phone (smishing links are opened on phones and many pages
-# hide from desktop browsers); --desktop switches to a desktop profile.
+# hide from desktop browsers) and runs as the full Chromium in its newer headless mode without the automation
+# switch (many pages cloak against the stripped-down headless shell and show nothing); --desktop switches to a
+# desktop profile.
 #
 # This runs headless Chromium on pages the research is about (some are phishing pages), so the unit is
 # locked down harder than the plain fetcher run:
@@ -24,7 +26,7 @@ BATCH_ID="$1"
 [[ "$BATCH_ID" =~ ^[A-Za-z0-9_-]{1,40}$ ]] || { echo "bad batch id (letters, digits, - and _ only)" >&2; exit 2; }
 shift
 LIMIT_ARGS=()
-MODE_ARGS=(--mobile --extra-wait-ms 4000)          # the default: an Android phone, with time for late scripts
+MODE_ARGS=(--mobile --realistic --extra-wait-ms 8000)   # the default: an Android phone in the full browser, with time for late scripts
 while [ $# -gt 0 ]; do
   case "$1" in
     --limit)   [[ "${2:-}" =~ ^[0-9]{1,6}$ ]] || usage; LIMIT_ARGS=(--limit "$2"); shift 2 ;;

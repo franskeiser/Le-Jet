@@ -165,7 +165,12 @@ def join(meta: List[Dict[str, Any]], rows: List[Dict[str, Any]], shots: Dict[str
             if shot_ok and shot:                                    # where the BROWSER ended up, and how much it shows
                 rec["browser_url"] = shot.get("final_url", "")
                 rec["title"] = shot.get("title", "")
-                rec["blank"] = ("yes: white screen" if shot.get("text_chars") == 0 and shot.get("bytes", 0) < 12000 else "")
+                if shot.get("rescued"):
+                    rec["blank"] = "no: picture taken before the page wiped itself (hides from automated browsers)"
+                elif shot.get("text_chars") == 0 and shot.get("bytes", 0) < 12000:
+                    rec["blank"] = "yes: white screen (hides from automated browsers)"
+                else:
+                    rec["blank"] = ""
         out.append(rec)
     return out
 

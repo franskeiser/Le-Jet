@@ -48,7 +48,7 @@ _ID = re.compile(r"^[0-9a-f]{16}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 EXPECTED_KEYS = {"url_id": str, "ok": bool, "error": str, "bytes": int, "sha256": str, "width": int,
                  "height": int, "partial": bool, "blocked_requests": int, "ms": int,
-                 "final_url": str, "title": str, "text_chars": int}
+                 "final_url": str, "title": str, "text_chars": int, "rescued": bool}
 # page-controlled text: capped, and free of control / bidirectional-override characters
 _TEXT_LIMITS = {"final_url": 1100, "title": 200}
 _BAD_CHARS = re.compile("[\x00-\x1f\x7f\x80-\x9f‎‏‪-‮⁦-⁩]")

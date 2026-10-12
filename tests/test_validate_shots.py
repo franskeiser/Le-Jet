@@ -42,7 +42,7 @@ def manifest_line(uid, data=None, **kw):
            "bytes": len(data) if data else 0, "sha256": hashlib.sha256(data).hexdigest() if data else "",
            "width": 8 if data else 0, "height": 8 if data else 0, "partial": False,
            "blocked_requests": 0, "ms": 1234, "final_url": "hxxps://shop[.]example[.]com/", "title": "Example shop",
-           "text_chars": 120 if data else -1}
+           "text_chars": 120 if data else -1, "rescued": False}
     rec.update(kw)
     return json.dumps(rec, sort_keys=True)
 
@@ -174,6 +174,8 @@ def test_the_manifest_is_required(tmp_path):
     (lambda r: r.update(title=5), "title"),
     (lambda r: r.update(text_chars=-5), "text_chars"),
     (lambda r: r.update(text_chars="12"), "text_chars"),
+    (lambda r: r.update(rescued="yes"), "rescued"),
+    (lambda r: r.pop("rescued"), "keys differ"),
 ])
 def test_manifest_lines_with_wrong_shape_are_refused(tmp_path, mutate, why):
     p = png(8, 8)
