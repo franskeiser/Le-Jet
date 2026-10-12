@@ -2,7 +2,7 @@
 
 **Thesis:** A Random Forest-Guided Static Gating Framework for Financial-Related Smishing Classification Using SMS Text
 
-Le-Jet classifies SMS messages as smishing or legitimate. A CNN reads the message text. For messages with a link, a Random Forest **feature extractor** looks at the link's URL, web page and domain data and outputs two numbers, P and u. These are concatenated with the CNN and URL features, re-weighted by static gates, and passed to the final classifier.
+Le-Jet classifies SMS messages as smishing or legitimate. A CNN reads the message text. For messages with a link, a Random Forest **feature extractor** reads the link's spelling together with its web page and domain data (all in the same forest) and outputs P, u and a per-feature breakdown of its verdict. These are concatenated with the CNN features, re-weighted by static gates, and passed to the final classifier.
 
 ```
 Public web set (11,430 pages) ──> train 2 RF extractors (url_only, full) ──> freeze
@@ -11,12 +11,17 @@ SMS link ──┬─ old SMS data ───────────────
            └─ fresh link ──> inspector ─┬─ page loaded ──> full ──┤
                                         └─ page failed ──> url_only ┤
                                                                   v
-                                                          P and u (or -1)
+                              P, u + 31 per-feature contributions (c_<feature>)
+                              (0 where the forest did not read a feature; P = u = -1 with no link)
                                                                   │
-SMS text ──> fastText 300-d ──> CNN ──────────────┐               │
-14 URL text features + has_url ───────────────────┼─> gates <─────┘
-                                                  v
-                                          dense ──> softmax
+SMS text ──> fastText 300-d ──> CNN (64 filters, kernel 3) ──┐    │
+                                  has_url ───────────────────┼────┤
+                                                             v    v
+                             static gates: CNN gates from a forest on the RF-Fitting split,
+                             RF-output gates from the full forest's own importances;
+                             has_url, P and u fixed at 1.0
+                                                             v
+                                                    dense ──> softmax
 ```
 
 The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_training_plan.md). For background on how this repo differs from SmishGuard, read [`CONTEXT.md`](CONTEXT.md).
@@ -31,7 +36,19 @@ The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_train
 | Link features for every SMS + grouped splits | Done |
 | Word embeddings (English + Tagalog fastText) | Done |
 | Web inspector for SMS links | Planned ([`WEB_INSPECTION_PLAN.md`](WEB_INSPECTION_PLAN.md)) |
-| CNN, gating and fusion classifier | Code carried over from SmishGuard, not yet adapted |
+| CNN, gating and fusion classifier | Done. Final architecture and its evidence: [`docs/final_model.md`](docs/final_model.md) |
+
+## Defense demo (synthetic prototype)
+
+A local web page that takes a pasted SMS and shows the verdict, the link evidence (P and u) and what moved the score. **Prototype only:** it is trained on synthetic SMS text wrapped around real URLs from the public web set, and page inspection is simulated from a stored table. No link is ever opened. Scores from it are not study results.
+
+```powershell
+python -m src.demo.synthetic      # builds data/demo/ and the demo RF extractors
+python -m src.demo.train_demo     # trains the demo model into models/demo/ (a few minutes)
+python -m src.demo.app            # open http://127.0.0.1:8000
+```
+
+Both `data/` and `models/` are git-ignored, so each machine builds its own copy with the first two commands.
 
 ## Setup
 

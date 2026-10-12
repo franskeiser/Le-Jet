@@ -1,0 +1,11 @@
+,,pu (proposed),raw (experiment)
+linked test messages,"RF verdict (P, u)",0.049278226,
+linked test messages,link: URL path and length,0.5072811,0.14660181
+linked test messages,link: other spelling features,0.14453608,0.018896779
+linked test messages,page / domain / external,,0.5712908
+linked test messages,text (CNN),0.29890463,0.2632106
+"linked, neutral wording (text cannot decide)","RF verdict (P, u)",0.061888732,
+"linked, neutral wording (text cannot decide)",link: URL path and length,0.5672221,0.16806272
+"linked, neutral wording (text cannot decide)",link: other spelling features,0.1871611,0.024566341
+"linked, neutral wording (text cannot decide)",page / domain / external,,0.6129677
+"linked, neutral wording (text cannot decide)",text (CNN),0.18372811,0.19440322

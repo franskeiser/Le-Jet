@@ -1,0 +1,90 @@
+{
+  "args": {
+    "seeds": "[42, 123, 2024]",
+    "variant": "no_pu",
+    "epochs": "30",
+    "patience": "3",
+    "lr": "0.001",
+    "batch_size": "64",
+    "gate_repeats": "30",
+    "model_dir": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\models\\fusion",
+    "out": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\experiments\\fusion"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "variant": "no_pu",
+      "phase_a_val": {
+        "val_accuracy": 0.9586501901140685,
+        "val_balanced_accuracy": 0.9599941082392649,
+        "val_precision": 0.9350220264317181,
+        "val_recall": 0.9680729760547321,
+        "val_f1": 0.9512605042016806
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.9586501901140685,
+        "val_balanced_accuracy": 0.9590183434487616,
+        "val_precision": 0.9408482142857143,
+        "val_recall": 0.9612314709236032,
+        "val_f1": 0.9509306260575296
+      },
+      "class_weights": [
+        0.8573586344718933,
+        1.1995773315429688
+      ],
+      "n_train": 11919,
+      "n_val": 2104,
+      "n_test": 3098
+    },
+    {
+      "seed": 123,
+      "variant": "no_pu",
+      "phase_a_val": {
+        "val_accuracy": 0.9652711703139867,
+        "val_balanced_accuracy": 0.9654943015377276,
+        "val_precision": 0.9505061867266592,
+        "val_recall": 0.9668192219679634,
+        "val_f1": 0.9585933068633012
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.9586108468125595,
+        "val_balanced_accuracy": 0.9606185570852496,
+        "val_precision": 0.9309967141292442,
+        "val_recall": 0.9725400457665904,
+        "val_f1": 0.9513150531617236
+      },
+      "class_weights": [
+        0.8559516668319702,
+        1.2023425102233887
+      ],
+      "n_train": 11908,
+      "n_val": 2102,
+      "n_test": 3074
+    },
+    {
+      "seed": 2024,
+      "variant": "no_pu",
+      "phase_a_val": {
+        "val_accuracy": 0.9672209026128266,
+        "val_balanced_accuracy": 0.9673472532409548,
+        "val_precision": 0.9539842873176206,
+        "val_recall": 0.9681093394077449,
+        "val_f1": 0.9609949123798757
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.9681710213776722,
+        "val_balanced_accuracy": 0.9681622491659752,
+        "val_precision": 0.9561304836895388,
+        "val_recall": 0.9681093394077449,
+        "val_f1": 0.9620826259196378
+      },
+      "class_weights": [
+        0.857594907283783,
+        1.1991150379180908
+      ],
+      "n_train": 11924,
+      "n_val": 2105,
+      "n_test": 3088
+    }
+  ]
+}

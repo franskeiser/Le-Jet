@@ -17,9 +17,7 @@
 | Smishing | 7,941 |
 | Legitimate (incl. 3,025 synthetic) | 10,913 |
 
-Fix it in one of two ways, decided by the group, and say which in the thesis:
-- **Class weights** in the loss (keeps all data), or
-- **Fewer synthetic rows** (regenerate with `src/data/add_synthetic_legit_links.py` so the classes match again).
+**Decided 2026-10-12: class weights** in the loss (keeps all data). `fusion_data.class_weights()` gives inverse-frequency weights, `train_phase_c(class_weights=...)` applies them, and checkpoints are chosen by balanced accuracy. The alternative, regenerating fewer synthetic rows with `src/data/add_synthetic_legit_links.py`, was rejected because it would invalidate the splits, embeddings and link features. State this in the thesis.
 
 Also re-check the per-class link shares after excluding them (`experiments/splits/split_report.csv` reports them with the redacted rows still in).
 
@@ -28,6 +26,8 @@ Also re-check the per-class link shares after excluding them (`experiments/split
 **Rule:** for the SMS dataset, P and u come from the `url_only` extractor (`extract_p_u`). No page, WHOIS, DNS or `page_rank` values for these messages.
 
 **Why:** 82% of old smishing domains no longer exist, so anything looked up today mostly means "the domain died", not "this is a scam". See `docs/decision_web_inspection.md`. The `full` extractor is only for fresh links inspected within hours (`route_p_u`).
+
+**Training the head for live links (decided 2026-10-12).** On old SMS data the head only ever sees `url_only` P and u, but live links with a reachable page get `full` P and u, which the head has never seen. Fix: when training rows with page evidence exist, train the head on a random mix of the two (`MixedAuxDataset`, about half the reads hide the page evidence), so it meets the same mixture it will meet when serving. Page status is still never an input; only the values of P and u differ. Checked on the synthetic demo data (3 training seeds, ambiguous-text messages): head trained on `url_only` P/u only scored 0.83 when the page was reached; routed 0.90, mixed 0.89. The gain is real in direction but noisy (seed std 0.04 to 0.06), and `mixed` is the safer choice because it also holds up when the page is missing (0.77 vs 0.74). **This needs training rows that have page features; the old SMS data has none, so for the real model it requires a separate live training set (plan row 9), not the fresh test set.**
 
 ## 3. Use the grouped splits as they are
 

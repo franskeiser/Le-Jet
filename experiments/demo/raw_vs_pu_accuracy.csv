@@ -1,0 +1,7 @@
+,pu (proposed),raw (experiment)
+all,0.9482,0.9016
+no_link,1.0,1.0
+ambiguous_page_reached,0.8933,0.7226
+ambiguous_page_missing,0.7463,0.7313
+link_class_specific_text,1.0,0.9913
+link_ambiguous_text,0.8506,0.7251

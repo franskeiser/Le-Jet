@@ -19,6 +19,7 @@ SEQ_LEN_L = 50
 # source of truth -- notebooks/07_run_phase_c.py, notebooks/08_run_ungated_baseline.py,
 # and load_model() all import these rather than redefining them locally.
 NUM_FILTERS = 64
+KERNEL_SIZE = 3  # one conv branch (Le-Jet decision), so the pooled CNN output is NUM_FILTERS-dim
 DENSE_UNITS = 64
 
 # Label smoothing for every training loss (Phase A, Phase C, ungated baseline). With 2

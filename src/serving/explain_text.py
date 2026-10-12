@@ -7,7 +7,7 @@ for text: the CNN doesn't expose a "why" without asking the model itself.
 
 Method: gradient x input attribution (Simonyan et al. 2013 -- a standard,
 widely-used saliency technique for differentiable models) over TextEncoder's
-max-pooled CNN features. Each of the 3*NUM_FILTERS pooled features is one
+max-pooled CNN features. Each of the NUM_FILTERS pooled features is one
 filter's adaptive-max-pool output; FusionClassifier.encoder.encode_with_positions()
 also hands back WHICH window (start index + kernel size) each filter's max came
 from, so a feature's attribution score maps straight back to the literal words
@@ -22,13 +22,12 @@ import re
 
 import torch
 
-from src.config import NUM_FILTERS
+from src.config import KERNEL_SIZE, NUM_FILTERS
 from src.features.text_preprocessing import (
     URL_PATTERN, PLACEHOLDER_TAG_RE, mask_urls, space_out_placeholder_tags, lowercase,
     normalize_punctuation, tokenize,
 )
 
-KERNEL_SIZES = (3, 4, 5)
 PAD_TOKEN = '<PAD>'
 # Overlapping windows are merged into one phrase, but never past this many tokens -- otherwise
 # a message where every window points the same way collapses into one reason that is the
@@ -127,8 +126,8 @@ def text_reasons_for_message(
     return explain_message(model, token_ids, url_tensor, tokens, predicted_idx, max_reasons, raw_text)['reasons']
 
 
-def _evidence_item(rank, branch_i, filt_i, start, tokens, char_spans, activation, gate, impact, total):
-    kernel_size = KERNEL_SIZES[branch_i]
+def _evidence_item(rank, filt_i, start, tokens, char_spans, activation, gate, impact, total):
+    kernel_size = KERNEL_SIZE
     window = tokens[start:start + kernel_size]
     real_end = start + sum(t != PAD_TOKEN for t in window)  # a window may run into padding
     span = None
@@ -136,9 +135,9 @@ def _evidence_item(rank, branch_i, filt_i, start, tokens, char_spans, activation
         span = {'start': char_spans[start][0], 'end': char_spans[real_end - 1][1]}
     return {
         'rank': rank,
-        'feature_index': branch_i * NUM_FILTERS + filt_i,   # position in the 192-dim CNN vector
+        'feature_index': filt_i,                              # position in the NUM_FILTERS-dim CNN vector
         'kernel_size': kernel_size,
-        'filter': filt_i,                                     # filter number within its branch
+        'filter': filt_i,                                     # filter number
         'tokens': window,                                     # exactly what the filter read
         'token_start': start,
         'span': span,
@@ -177,7 +176,7 @@ def _url_evidence(model, url_in: torch.Tensor, url_names: list[str], text_total:
     return {
         'features': features,                   # strongest effect first (either direction)
         'url_total': round(url_total, 4),       # net push of the whole URL path
-        'text_total': round(text_total, 4),     # net push of all 192 CNN filters
+        'text_total': round(text_total, 4),     # net push of all CNN filters
         'url_path_share': round(abs(url_total) / paths, 4) if paths else 0.0,
     }
 
@@ -222,23 +221,21 @@ def explain_message(
 
     model.zero_grad(set_to_none=True)
     logits[0, predicted_idx].backward()
-    grad = cnn_features.grad[0]                        # (3*NUM_FILTERS,)
+    grad = cnn_features.grad[0]                        # (NUM_FILTERS,)
     contribution = grad * cnn_features.detach()[0]      # gradient x input, same shape
     model.zero_grad(set_to_none=True)                   # don't leave .grad sitting on a
                                                           # model instance reused across requests
     activations = cnn_features.detach()[0]
     gates = model.cnn_gates if hasattr(model, 'cnn_gates') else None
 
-    filters = []  # (impact, branch_i, filt_i, start) for every one of the 3*NUM_FILTERS filters
-    for branch_i in range(len(KERNEL_SIZES)):
-        branch_positions = positions[branch_i][0]        # (NUM_FILTERS,)
-        for filt_i in range(NUM_FILTERS):
-            impact = contribution[branch_i * NUM_FILTERS + filt_i].item()
-            filters.append((impact, branch_i, filt_i, int(branch_positions[filt_i].item())))
+    filters = []  # (impact, filt_i, start) for every one of the NUM_FILTERS filters
+    filter_positions = positions[0]                      # (NUM_FILTERS,)
+    for filt_i in range(NUM_FILTERS):
+        filters.append((contribution[filt_i].item(), filt_i, int(filter_positions[filt_i].item())))
 
     windows = []  # (impact, start, end) -- only n-grams that pushed TOWARD the predicted label
-    for impact, branch_i, _, start in filters:
-        end = start + KERNEL_SIZES[branch_i]
+    for impact, _, start in filters:
+        end = start + KERNEL_SIZE
         if impact <= 0 or PAD_TOKEN in tokens[start:end]:
             continue  # padding window -- no real words to show a user
         windows.append((impact, start, end))
@@ -258,12 +255,12 @@ def explain_message(
         total = sum(f[0] for f in picked)
         return [
             _evidence_item(
-                rank, b, f, start, tokens, char_spans,
-                round(activations[b * NUM_FILTERS + f].item(), 4),
-                round(gates[b * NUM_FILTERS + f].item(), 4) if gates is not None else None,
+                rank, f, start, tokens, char_spans,
+                round(activations[f].item(), 4),
+                round(gates[f].item(), 4) if gates is not None else None,
                 round(impact, 4), total,
             )
-            for rank, (impact, b, f, start) in enumerate(picked[:limit], start=1)
+            for rank, (impact, f, start) in enumerate(picked[:limit], start=1)
         ]
 
     cnn_evidence = {

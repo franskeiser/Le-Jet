@@ -45,20 +45,20 @@ class FusionClassifier(nn.Module):
     def __init__(self, encoder: TextEncoder, cnn_gates: torch.Tensor, url_gates: torch.Tensor,
                  url_dim: int, dense_units: int):
         super().__init__()
-        self.encoder = encoder  # embedding + 3 conv branches; temp_head is never attached here
+        self.encoder = encoder  # embedding + 1 conv branch; temp_head is never attached here
         # register_buffer, not a plain attribute or a bare requires_grad=False tensor --
         # never in .parameters() (optimizer structurally cannot touch it), saved/reloaded
         # with the model, moves with .to(device) automatically. See guide Section 2.1.
         self.register_buffer('cnn_gates', cnn_gates)
         self.register_buffer('url_gates', url_gates)
 
-        fusion_dim = cnn_gates.shape[0] + url_dim  # never hardcode 3*F+12 -- guide Section 0.4/0.6
+        fusion_dim = cnn_gates.shape[0] + url_dim  # never hardcode F+12 -- guide Section 0.4/0.6
         self.dense1 = nn.Linear(fusion_dim, dense_units)
         self.dropout = nn.Dropout(0.5)
         self.dense2 = nn.Linear(dense_units, 2)
 
     def forward(self, token_ids: torch.Tensor, url_features: torch.Tensor) -> torch.Tensor:
-        cnn_features = self.encoder.encode(token_ids)              # (batch, 3*F) -- NOT .forward()
+        cnn_features = self.encoder.encode(token_ids)              # (batch, F) -- NOT .forward()
         gated_cnn = cnn_features * self.cnn_gates                   # elementwise, guide Section 1 step 2
         gated_url = url_features * self.url_gates
         fused = torch.cat([gated_cnn, gated_url], dim=1)            # CNN-group first, guide Section 1 step 3
@@ -91,7 +91,7 @@ def load_model(model_dir: str = "models", seed: int = SEEDS[0]) -> FusionClassif
     embedding_layer = build_torch_embedding_layer(embedding_matrix, word_to_idx)
     encoder = TextEncoder(embedding_layer, num_filters=NUM_FILTERS)
 
-    cnn_dim = NUM_FILTERS * 3
+    cnn_dim = NUM_FILTERS
     gates_path = f"{model_dir}/gates_seed{seed}.npy"
     url_dim = np.load(gates_path).shape[0] - cnn_dim  # guide Section 2, point 3
     cnn_gates, url_gates = load_gates(gates_path, cnn_dim, url_dim)
@@ -120,13 +120,13 @@ class UngatedFusionClassifier(nn.Module):
         self.encoder = encoder  # a SEPARATE TextEncoder instance from FusionClassifier's --
                                  # each model fine-tunes its own copy of the Phase-A weights
                                  # independently (guide Section 3), never shared.
-        fusion_dim = cnn_dim + url_dim  # never hardcode 192+11 -- same discipline as FusionClassifier
+        fusion_dim = cnn_dim + url_dim  # never hardcode 64+11 -- same discipline as FusionClassifier
         self.dense1 = nn.Linear(fusion_dim, dense_units)
         self.dropout = nn.Dropout(0.5)
         self.dense2 = nn.Linear(dense_units, 2)
 
     def forward(self, token_ids: torch.Tensor, url_features: torch.Tensor) -> torch.Tensor:
-        cnn_features = self.encoder.encode(token_ids)            # (batch, 3*F) -- NOT .forward()
+        cnn_features = self.encoder.encode(token_ids)            # (batch, F) -- NOT .forward()
         fused = torch.cat([cnn_features, url_features], dim=1)   # raw concat, no gate multiply --
                                                                     # CNN-group first, same order as
                                                                     # FusionClassifier for consistency

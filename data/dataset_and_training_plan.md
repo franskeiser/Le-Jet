@@ -22,14 +22,16 @@ SMS link ──┬─ old SMS data ───────────────
            └─ fresh link ──> inspector ─┬─ page loaded ──> full ──┤
                                         └─ page failed ──> url_only ┤
                                                                   v
-                                                          P and u (or -1)
+                          P, u + 31 per-feature contributions (0 where a feature was not read;
+                          P = u = -1 when there is no link)
                                                                   │
 SMS text ──> fastText 300-d ──> CNN ──────────────┐               │
-14 URL text features + has_url ───────────────────┼─> gates <─────┘
+has_url ──────────────────────────────────────────┼─> gates <─────┘
                                                   v
                                           dense ──> softmax
-Gates (0.1 to 3.0) come from two 200-tree forests fit on the RF-Fitting Set, then discarded.
-P, u and has_url get a fixed gate of 1.0.
+CNN gates (0.1 to 3.0) come from a 200-tree forest fit on the RF-Fitting Set, then discarded.
+The 31 RF-output slots are gated by the full forest's own permutation importances (public web set).
+has_url, P and u get a fixed gate of 1.0.
 ```
 
 ---
@@ -148,19 +150,19 @@ Two tiers. Go to the second only for links that still need it.
 ## 7. Phase 4 and 5: Build features and train the main model
 
 ### 7.1 Features per SMS
-- Text: fastText 300-d fine-tuned embeddings into the single-kernel CNN. (Kernel size and filter count: to be decided by your group.)
-- URL features: the 14 link-text features plus `has_url`, with -1 when there is no link. No lookups (no `page_rank`, no domain popularity).
-- From the frozen extractors: P and u (-1 without a link). Old SMS data always uses `url_only`; fresh links use `full` when the page loaded and `url_only` when it failed (`route_p_u`). Page status is only used to pick the extractor, never as a model input.
+- Text: fastText 300-d fine-tuned embeddings into the single-kernel CNN: one conv branch, kernel size 3, 64 filters (decided 2026-10-12; `KERNEL_SIZE` and `NUM_FILTERS` in `src/config.py`), giving a 64-dim text vector.
+- Link information reaches the head only through the RF extractor: the link-text features are read by the forest (together with the page, domain and external features when a page was reached), so the head gets `has_url`, P, u and the 31 per-feature contributions c_<feature> (0 where a feature was not read; P = u = -1 without a link). The head never sees the raw link features (decided 2026-10-12, `docs/final_model.md`).
+- From the frozen extractors: P and u (-1 without a link) and the per-feature breakdown. Old SMS data always uses `url_only`; fresh links use `full` when the page loaded and `url_only` when it failed (`route_vector`). Page status is only used to pick the extractor, never as a model input.
 
 ### 7.2 Gates
-1. Fit the two 200-tree forests (CNN group, URL group) on the RF-Fitting Set only.
-2. Compute permutation importance, scale to 0.1 to 3.0.
+1. CNN features: fit a 200-tree forest on the RF-Fitting Set only, compute permutation importance, scale to 0.1 to 3.0.
+2. RF-output slots: gate each of the 31 contributions by that feature's permutation importance in the `full` extractor (validation part of the public web set), scaled to 0.1 to 3.0. The old SMS data has no page features to fit these on.
 3. P, u and `has_url` get a fixed gate of 1.0.
-4. Discard the forests. The extractor stays.
+4. Discard the gating forest. The extractor stays.
 
 ### 7.3 Training
 1. Train the CNN, gates and head on the Training Set only. Hold out part of the Training Set for early stopping. Never look at the Test Set while tuning.
-2. Run 5 different random seeds. Report mean and spread.
+2. Run 3 random seeds (42, 123, 2024, `SEEDS` in `src/config.py`; the splits and extractors exist for these). Report mean and spread.
 3. Report training time, trainable parameters and inference latency.
 
 ### 7.4 Experiment rows
@@ -229,7 +231,7 @@ Compare each row with row 4 using McNemar's test at 0.05.
 | Too few legitimate messages with links | Add from sources F; label synthetic data |
 | Smishtank license is not stated | Check the download page before using |
 | Why Google Safe Browsing was removed | Your group still needs to write the reason in the doc |
-| Kernel size and filter count for the single-kernel CNN | Your group to decide |
+| Kernel size and filter count for the single-kernel CNN | Decided 2026-10-12: kernel 3, 64 filters |
 | Time between message and visit | Record it; shorter is better |
 
 ---

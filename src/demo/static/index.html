@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le-Jet — smishing check (prototype)</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #fffdf9; --ink: #1d1b16; --muted: #6b665b; --line: #e3dfd3;
+    --smish: #b3261e; --smish-bg: #fbe9e7; --legit: #1e6b3a; --legit-bg: #e6f3ea; --accent: #2b4a8a;
+    --warn-bg: #fff3cd; --warn-ink: #5c4400;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  header { padding: 14px 24px; background: var(--warn-bg); color: var(--warn-ink); font-size: 14px; border-bottom: 1px solid #ecd98f; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  textarea { width: 100%; min-height: 110px; padding: 12px; font: inherit; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  button { font: inherit; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: wait; }
+  select { font: inherit; padding: 9px; border-radius: 8px; border: 1px solid var(--line); max-width: 100%; }
+  label.check { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; }
+  .verdict { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .badge { font-size: 22px; font-weight: 700; padding: 8px 18px; border-radius: 999px; }
+  .badge.smishing { background: var(--smish-bg); color: var(--smish); }
+  .badge.legitimate { background: var(--legit-bg); color: var(--legit); }
+  .bar { height: 12px; background: #ece8dc; border-radius: 6px; overflow: hidden; position: relative; }
+  .bar > span { display: block; height: 100%; background: var(--smish); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  h2 { font-size: 15px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .small { font-size: 14px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--smish); } .neg { color: var(--legit); }
+  mark { background: #ffe08a; padding: 0 2px; border-radius: 3px; }
+  .msg { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 10px; word-break: break-word; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #e8edf8; color: var(--accent); font-size: 13px; }
+  .note { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+  #result { display: none; }
+</style>
+</head>
+<body>
+<header id="warning">Prototype: trained on synthetic data. Page inspection is simulated from a stored table; no link is ever opened. Scores here are not study results.</header>
+<main>
+  <div>
+    <h1>Le-Jet</h1>
+    <p class="sub">Paste an SMS. The model reads the text, scores the link with a Random Forest, and shows what drove the verdict.</p>
+  </div>
+
+  <div class="card">
+    <textarea id="text" placeholder="Paste a text message here…"></textarea>
+    <div class="row">
+      <button id="go">Check message</button>
+      <select id="examples"><option value="">Load an example…</option></select>
+      <label class="check"><input type="checkbox" id="inspect" checked> Simulate page inspection (stored page features, never fetched)</label>
+    </div>
+  </div>
+
+  <div id="result" class="card">
+    <div class="verdict">
+      <span id="badge" class="badge"></span>
+      <div style="flex:1; min-width:220px">
+        <div class="small">Probability of smishing: <b id="prob"></b></div>
+        <div class="bar"><span id="probbar"></span></div>
+        <div class="small" id="textonly" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <p class="note" id="notes"></p>
+    <div class="msg" id="highlight"></div>
+  </div>
+
+  <div id="detail" class="grid2" style="display:none">
+    <div class="card">
+      <h2>Link evidence</h2>
+      <div id="link"></div>
+      <table id="extractors"></table>
+      <p class="small">P is the forest's phishing probability for the link; u is how much its trees disagree.</p>
+      <h2 style="margin-top:14px">How the forest scored this link</h2>
+      <table id="breakdown"></table>
+      <p class="small" style="margin-bottom:0">Each row is a feature of the link or its page and how many probability points it pushed the forest's score up (+, toward phishing) or down (−). The model receives this breakdown as its link input.</p>
+    </div>
+    <div class="card">
+      <h2>What moved the verdict</h2>
+      <div class="small" id="share"></div>
+      <table id="features"></table>
+      <p class="small" style="margin-bottom:0">Contribution: how far each input pushed the score toward the final verdict (red toward smishing, green away). Gate: the fixed Random-Forest-derived weight on that input.</p>
+    </div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function highlight(text, spans) {
+  const real = spans.filter(Boolean).sort((a, b) => a.start - b.start);
+  let out = "", pos = 0;
+  for (const s of real) {
+    if (s.start < pos) continue;
+    out += esc(text.slice(pos, s.start)) + "<mark>" + esc(text.slice(s.start, s.end)) + "</mark>";
+    pos = s.end;
+  }
+  return out + esc(text.slice(pos));
+}
+
+async function load() {
+  const r = await (await fetch("/api/examples")).json();
+  $("warning").textContent = r.warning + " Page inspection is simulated; no link is ever opened.";
+  r.examples.forEach((e, i) => {
+    const o = document.createElement("option");
+    o.value = i;
+    o.textContent = `[${e.label}${e.kind === "ambiguous" ? ", neutral wording" : ""}${e.page_fetched ? "" : e.kind === "no_link" ? ", no link" : ", page unreachable"}] ${e.text.slice(0, 60)}`;
+    $("examples").appendChild(o);
+  });
+  window._examples = r.examples;
+}
+
+$("examples").onchange = e => { if (e.target.value !== "") $("text").value = window._examples[e.target.value].text; };
+
+$("go").onclick = async () => {
+  const text = $("text").value.trim();
+  if (!text) return;
+  $("go").disabled = true;
+  try {
+    const r = await fetch("/api/analyze", { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ text, inspect: $("inspect").checked }) });
+    const d = await r.json();
+    if (!r.ok) { alert(d.error); return; }
+    render(text, d);
+  } finally { $("go").disabled = false; }
+};
+
+function render(text, d) {
+  $("result").style.display = "block";
+  $("detail").style.display = "grid";
+  $("badge").className = "badge " + d.verdict;
+  $("badge").textContent = d.verdict === "smishing" ? "Smishing" : "Looks legitimate";
+  $("prob").textContent = (d.prob_smishing * 100).toFixed(1) + "%";
+  $("probbar").style.width = (d.prob_smishing * 100) + "%";
+  $("textonly").textContent = `Text-only model alone: ${(d.text_only_prob_smishing * 100).toFixed(1)}% smishing` +
+    (d.link ? " — the link evidence changed this to the figure above." : " — no link, so the same input.");
+  $("notes").textContent = d.notes.join(" ");
+  $("highlight").innerHTML = highlight(text, d.spans);
+
+  $("link").innerHTML = d.link
+    ? `<div class="msg" style="margin-top:0">${esc(d.link)}</div><p class="note">Scored by: <span class="pill">${d.extractor_used === "full" ? "full extractor (page + domain)" : "url_only extractor (link spelling)"}</span></p>`
+    : `<p class="note">No link in this message.</p>`;
+  const rows = Object.entries(d.extractors).map(([name, v]) =>
+    `<tr><td>${name}</td><td class="num">P = ${v.P.toFixed(3)}</td><td class="num">u = ${v.u.toFixed(3)}</td></tr>`).join("");
+  $("extractors").innerHTML = rows ? "<tr><th>Extractor</th><th></th><th></th></tr>" + rows : "";
+
+  $("breakdown").innerHTML = d.rf_breakdown.length
+    ? "<tr><th>Feature</th><th class='num'>Value</th><th class='num'>Push (points)</th></tr>" +
+      d.rf_breakdown.map(b => `<tr><td>${b.feature}</td><td class="num">${b.value}</td><td class="num ${b.points >= 0 ? "pos" : "neg"}">${b.points >= 0 ? "+" : ""}${b.points.toFixed(1)}</td></tr>`).join("")
+    : "";
+  const ev = d.link_evidence;
+  $("share").textContent = `Link inputs accounted for ${(ev.url_path_share * 100).toFixed(0)}% of the total push; the message text for the rest.`;
+  $("features").innerHTML = "<tr><th>Input</th><th class='num'>Value</th><th class='num'>Gate</th><th class='num'>Contribution</th></tr>" +
+    ev.features.map(f => `<tr><td>${f.feature}</td><td class="num">${f.value}</td><td class="num">${f.gate === null ? "–" : f.gate.toFixed(2)}</td>` +
+      `<td class="num ${f.contribution >= 0 ? "pos" : "neg"}">${f.contribution >= 0 ? "+" : ""}${f.contribution.toFixed(3)}</td></tr>`).join("");
+}
+load();
+</script>
+</body>
+</html>

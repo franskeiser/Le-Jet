@@ -30,6 +30,11 @@ PERM_IMPORTANCE_HOLDOUT_FRACTION = 0.3
 # n_repeats stays at 30 -- the same test showed 10-20 repeats measurably shift the CNN gates.
 RF_N_JOBS = -1
 
+# Columns that always keep a fixed gate of 1.0 and are never scored (docs/dataset_and_training_plan.md
+# 7.2): has_url, and the extractor's P and u. P and u already ARE a forest's output, so ranking
+# them against raw link features would be circular. Only the names present in a run are used.
+FIXED_GATE_COLUMNS = ("has_url", "P", "u")
+
 
 @torch.no_grad()
 def extract_cnn_features(model, token_ids: torch.Tensor) -> np.ndarray:
@@ -37,7 +42,7 @@ def extract_cnn_features(model, token_ids: torch.Tensor) -> np.ndarray:
     # gradient bookkeeping entirely -- this task only ever READS the CNN's
     # output, it never trains it further.
     model.eval()
-    features = model.encode(token_ids)  # (batch, 3*num_filters) -- NOT .forward()
+    features = model.encode(token_ids)  # (batch, num_filters) -- NOT .forward()
     return features.numpy()
 
 
@@ -111,7 +116,7 @@ def fit_and_score_group(
     X: np.ndarray, y: np.ndarray, idx_fit: np.ndarray, idx_score: np.ndarray, seed: int,
     scoring: str = "f1", n_repeats: int = 30, class_weight: str | None = None,
 ) -> dict:
-    # Investigated 2026-09-21: fitting ONE joint RF over CNN's 192 dims + URL's 11 dims
+    # Investigated 2026-09-21: fitting ONE joint RF over CNN's 64 dims + URL's 11 dims
     # structurally starves the URL block. sklearn's default max_features='sqrt' samples
     # ~14 of 203 features per split, so a URL feature is a split CANDIDATE on well under
     # 1 split in most nodes -- and even when it is, CNN's much more discriminative
@@ -205,7 +210,8 @@ def fit_and_score_url_group(
         return {**result, "detail_group": result, "detail_feature_names": url_feature_names}
 
     has_url_idx = url_feature_names.index("has_url")
-    detail_idx = [i for i in range(len(url_feature_names)) if i != has_url_idx]
+    fixed_idx = [i for i, name in enumerate(url_feature_names) if name in FIXED_GATE_COLUMNS]
+    detail_idx = [i for i in range(len(url_feature_names)) if i not in fixed_idx]
     detail_names = [url_feature_names[i] for i in detail_idx]
 
     has_url_mask = url_features[:, has_url_idx] == 1
@@ -216,17 +222,16 @@ def fit_and_score_url_group(
         scoring="balanced_accuracy", n_repeats=n_repeats, class_weight="balanced",
     )
 
-    # Reassemble into the ORIGINAL column order -- has_url_idx's position is
+    # Reassemble into the ORIGINAL column order -- the fixed columns' positions are
     # whatever build_url_feature_matrix's pandas column ordering produced, not
-    # necessarily last, so this can't assume a fixed layout. has_url's importance
+    # necessarily last, so this can't assume a fixed layout. Their importance
     # slots are NaN, not 0.0 -- 0.0 would read as "measured, found unimportant";
     # NaN means "deliberately excluded, never measured."
     n = len(url_feature_names)
     gates, perm_mean, perm_std, gini = (np.empty(n) for _ in range(4))
-    gates[has_url_idx] = 1.0
-    perm_mean[has_url_idx] = np.nan
-    perm_std[has_url_idx] = np.nan
-    gini[has_url_idx] = np.nan
+    for orig_i in fixed_idx:
+        gates[orig_i] = 1.0
+        perm_mean[orig_i] = perm_std[orig_i] = gini[orig_i] = np.nan
     for local_i, orig_i in enumerate(detail_idx):
         gates[orig_i] = detail_result["gates"][local_i]
         perm_mean[orig_i] = detail_result["perm_mean"][local_i]
@@ -257,9 +262,9 @@ def export_gates(gates: np.ndarray, seed: int, out_dir: str = "models") -> str:
 def run_one_seed(
     model, texts: list[str], url_feature_dicts: list[dict], labels: list[str],
     word_to_idx: dict[str, int], seq_len: int, seed: int,
-    scoring: str = "f1", n_repeats: int = 30,
+    scoring: str = "balanced_accuracy", n_repeats: int = 30,
     perm_holdout_fraction: float = PERM_IMPORTANCE_HOLDOUT_FRACTION,
-    out_dir: str = "models", encode_fn=None,
+    out_dir: str = "models", encode_fn=None, url_gates_override: np.ndarray | None = None,
 ) -> dict:
     # encode_fn defaults to train.py's encode_batch -- strict, crashes on any word not in
     # word_to_idx, correct for the real rf_fit slice, which Task 1.8 built the vocab from.
@@ -292,8 +297,21 @@ def run_one_seed(
     # comment for why a single joint RF structurally starves the smaller URL block.
     # The URL group gets its own two-tier treatment on top of that -- see
     # fit_and_score_url_group's comment.
-    cnn_result = fit_and_score_group(X[:, :cnn_dim], y, idx_fit, idx_score, seed, scoring, n_repeats)
-    url_result = fit_and_score_url_group(X[:, cnn_dim:], url_feature_names, y, idx_fit, idx_score, seed, n_repeats)
+    # docs/training_rules.md rule 6: the rf_fit split is uneven, so class-balanced forests scored
+    # with balanced accuracy (plain F1 shifts with class balance).
+    cnn_result = fit_and_score_group(
+        X[:, :cnn_dim], y, idx_fit, idx_score, seed, scoring, n_repeats, class_weight="balanced",
+    )
+    if url_gates_override is None:
+        url_result = fit_and_score_url_group(X[:, cnn_dim:], url_feature_names, y, idx_fit, idx_score, seed, n_repeats)
+    else:
+        # The head's non-text inputs come from an RF extractor (rf_feature_extractor.py): their gates are
+        # that forest's own importances, supplied by the caller, not fitted on the SMS rows.
+        assert len(url_gates_override) == len(url_feature_names), "override length does not match the inputs"
+        n_url = len(url_feature_names)
+        url_result = {"gates": np.asarray(url_gates_override, dtype=float),
+                      "perm_mean": np.full(n_url, np.nan), "perm_std": np.full(n_url, np.nan),
+                      "gini": np.full(n_url, np.nan), "in_sample_f1": np.nan, "held_out_f1": np.nan}
 
     gates = np.concatenate([cnn_result["gates"], url_result["gates"]])
     perm_mean = np.concatenate([cnn_result["perm_mean"], url_result["perm_mean"]])
