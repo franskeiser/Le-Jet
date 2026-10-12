@@ -31,6 +31,15 @@ wg0.conf
 .env.*
 known_hosts_lejet
 
+# ── Lab results copied here by scripts/sync_results.ps1 ─────────────────
+# Screenshots are pictures of live phishing pages and the .jsonl/.csv files are research data:
+# neither is ever committed. Only the text reports (results/<batch>/<batch>.md, defanged) may be.
+results/**/*.png
+results/**/*.jsonl
+results/**/*.csv
+results/**/*.html
+results/**/shots/
+
 # ── Python ─────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

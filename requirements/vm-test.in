@@ -1,0 +1,3 @@
+# Extra packages needed ONLY to run the test suite inside the VM (Level 0a / Level 0).
+# They are installed from the same offline wheel folder, with hashes (requirements/vm-test.txt).
+pytest==9.1.1

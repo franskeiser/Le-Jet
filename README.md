@@ -220,7 +220,7 @@ WEB_INSPECTION_PLAN.md  detailed plan for safely visiting SMS links
 ## Notes
 
 - **Before writing any training or evaluation code, read [`docs/training_rules.md`](docs/training_rules.md).** In particular, messages whose link was replaced by `<URL>` are excluded (the split loaders do this by default), and the class imbalance this leaves must be fixed.
-- `CONTEXT.md` and `WEB_INSPECTION_PLAN.md` still describe an earlier 79-feature scope. The 32 features above are the current ones.
+- `CONTEXT.md` and `WEB_INSPECTION_PLAN.md` were updated on 2026-10-11 to the current scope: the 31 inputs of the `full` extractor (the 32 features above minus the constant `has_url`).
 - `sfh` and `ratio_nullHyperlinks` were dropped because they are 0 in every row of the dataset.
 - `dns_record` and `whois_registered_domain` use `1` for the suspicious case (no DNS record; not in WHOIS), as in the dataset. The inspector must follow this direction.
 - Never open a suspicious link on your own computer. All link visits go through the isolated inspector described in `WEB_INSPECTION_PLAN.md`.

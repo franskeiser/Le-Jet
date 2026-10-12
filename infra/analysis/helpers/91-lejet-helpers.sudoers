@@ -1,0 +1,13 @@
+# Le-Jet: passwordless sudo for EXACTLY four fixed, root-owned helpers plus a clean shutdown
+# (installed by install_bundle.sh
+# as /etc/sudoers.d/91-lejet-helpers, mode 440, only after `visudo -c` accepts it).
+#
+#   lejet-sudo-preflight       no arguments allowed ("")
+#   lejet-sudo-install-urls    no arguments allowed ("")
+#   lejet-sudo-batch  *        checks its own arguments: <batch_id> [--seed N]
+#   lejet-sudo-export *        checks its own argument:  <batch_id>
+#   lejet-sudo-shots *         checks its own arguments: <batch_id> [--limit N]  (headless Chromium)
+#   systemctl poweroff         exactly this command, so the host can shut the VM down cleanly
+#
+# Deliberately NOT allowed without a password: preflight --record, systemd-run, nft, anything else.
+ops ALL=(root) NOPASSWD: /usr/local/sbin/lejet-sudo-preflight "", /usr/local/sbin/lejet-sudo-install-urls "", /usr/local/sbin/lejet-sudo-batch *, /usr/local/sbin/lejet-sudo-export *, /usr/local/sbin/lejet-sudo-shots *, /usr/bin/systemctl poweroff

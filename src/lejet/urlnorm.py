@@ -101,8 +101,16 @@ def registrable_domain(host: str) -> Optional[str]:
         return None
 
 
-def normalize(raw_url: str) -> NormResult:
-    """Parse, normalize and safety-check one raw URL. Never raises."""
+LOOPBACK_TEST_HOSTS = ("localhost", "127.0.0.1")
+
+
+def normalize(raw_url: str, allow_loopback: bool = False) -> NormResult:
+    """Parse, normalize and safety-check one raw URL. Never raises.
+
+    `allow_loopback` is TEST MODE ONLY (plan section 13.2, `--allow-loopback`): it lets
+    `localhost` / `127.0.0.1` pass the host gate and any port through, so the Level 0
+    fixtures can be served from a local web server. Real runs never set it.
+    """
     if raw_url is None:
         return _reject("", "rejected_url")
 
@@ -155,15 +163,18 @@ def normalize(raw_url: str) -> NormResult:
         return _reject(raw_url, "rejected_url")
 
     # --- SAFETY GATE (the SSRF bouncer) --------------------------------------
-    # Pass the host as parsed so safety does its own NFKC/IP canonicalization.
-    verdict = safety.check_host(host)
-    if not verdict.allowed:
-        return _reject(raw_url, verdict.reason or "rejected_url")
+    # Test mode only: exactly "localhost" / "127.0.0.1" (nothing else) skip the gate.
+    loopback_ok = allow_loopback and host.lower() in LOOPBACK_TEST_HOSTS
+    if not loopback_ok:
+        # Pass the host as parsed so safety does its own NFKC/IP canonicalization.
+        verdict = safety.check_host(host)
+        if not verdict.allowed:
+            return _reject(raw_url, verdict.reason or "rejected_url")
 
-    # Port must be one the gateway firewall permits; otherwise it can never
-    # succeed, so record a distinct reason (not "dead").
-    if not safety.check_port(port):
-        return _reject(raw_url, "port_blocked")
+        # Port must be one the gateway firewall permits; otherwise it can never
+        # succeed, so record a distinct reason (not "dead").
+        if not safety.check_port(port):
+            return _reject(raw_url, "port_blocked")
 
     # IDNA / punycode conversion for the host used in the normalized URL.
     try:

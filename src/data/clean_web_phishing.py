@@ -5,12 +5,15 @@ Decisions and column mapping: docs/web_phishing_cleaning.md
 Usage:
     python src/data/clean_web_phishing.py [input_csv] [output_csv]
 """
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import pandas as pd
+# pandas is imported inside main() only: src/features/link_features.py imports the string
+# functions below, and the analysis VM must not need pandas/numpy just for those.
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_IN = ROOT / "data" / "interim" / "hussein-train-and-test-merged.csv"
@@ -105,6 +108,8 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
+    import pandas as pd
+
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_IN
     dst = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_OUT
 

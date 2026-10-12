@@ -1,0 +1,28 @@
+# Runtime dependencies of the inspector INSIDE the analysis VM (Python 3.12, linux x86_64).
+# scripts/build_vm_bundle.py resolves the rest, downloads the wheels and writes
+# requirements/vm.txt with SHA-256 hashes. Install (offline, hashes required, whole closure
+# listed explicitly, so --no-deps):
+#   pip install --no-index --no-deps --find-links wheels --require-hashes -r requirements/vm.txt
+# scripts/verify_vm_bundle.py checks that the closure really is complete.
+#
+# No pandas / numpy here on purpose: the inspector never imports them (the VM stays small).
+httpx==0.28.1
+dnspython==2.8.0
+lxml==6.1.0
+tldextract==5.4.0
+
+# nostril is NOT on PyPI under this name (the PyPI "nostril" is a different package); the build
+# script builds a wheel from this exact commit of the original project and installs it with
+# --no-deps:
+#   nostril @ git+https://github.com/casics/nostril.git@fbc0c91249283a9fbc9036206391ce1138826fd3
+# Its own dependencies are listed here so they are resolved and hash-pinned too. `humanize` and
+# `tabulate` are imported by the library; `plac` only by its command line. (nostril also lists
+# `pytest` as a dependency, which is a packaging mistake: it only uses it for its own tests.)
+humanize
+tabulate
+plac
+
+# Screenshot stage (headless Chromium driver). The Python package is pinned and hash-checked like
+# the rest; the Chromium build itself is fetched once by infra/analysis/install_browser.sh from
+# Playwright's CDN over HTTPS and its files are hashed into /opt/lejet/browsers/SHA256SUMS.
+playwright==1.63.0

@@ -4,18 +4,31 @@
 >
 > **First milestone:** *prove that web inspection works* on a handful of URLs. Scaling to 10,000+ URLs comes only after the isolation tests and a small pilot pass.
 
-**Status of this plan:** written, not yet executed. Commands and flag names were written from knowledge of VirtualBox 7.x, Ubuntu 24.04, nftables, Unbound, WireGuard and Playwright. **Verify each command against the versions you actually install** (see §22 Troubleshooting). Items marked **[VERIFY]** are the ones most likely to differ.
+**Status of this plan (updated 2026-10-11):** the **lab and fetcher are still unbuilt** (no VMs, no `fetcher`/stages code, nothing run against live sites). What *does* exist in the repo and is reused by this plan: the Stage 0 code (`src/lejet/urlnorm.py`, `src/lejet/safety.py`), the 14 link-text features (`src/features/link_features.py`), the trained RF extractors (`src/features/model/rf_extractor.py`) and their tests. Commands and flag names for the lab were written from knowledge of VirtualBox 7.x, Ubuntu 24.04, nftables, Unbound, WireGuard and Playwright. **Verify each command against the versions you actually install** (see §22 Troubleshooting). Items marked **[VERIFY]** are the ones most likely to differ.
 
 **Thesis reminder:** any reference you cite in the thesis for these methods must be published **2020 or later**.
 
-> **SCOPE UPDATE — v1 feature set (supersedes anything below that says otherwise).**
-> v1 collects the **79 features** kept from the 87-feature web-page phishing dataset (Hannousse & Yahiouch, 2021 — confirm the citation): **55 URL-string**, **20 HTML**, **4 RDAP/DNS** (full list in §14.0). The 8 dropped features need third-party services or one request per link on the page.
+> **SCOPE UPDATE (2026-10-11) — v1 feature set. This supersedes the earlier 79-feature scope and anything below that still says otherwise.**
+>
+> **What web inspection still is:** the inspector **visits the website** (DNS, HTTP fetch with redirects, one static HTML parse, a domain-registration lookup) and **extracts features from the link and from what it finds there**. That has not changed. What changed is *which* features, because the model now consumes the inputs of the **`full` Random Forest extractor** (`src/features/model/rf_extractor.py`, `VARIANTS["full"]`), not the old 79.
+>
+> **v1 collects 31 features** per link (names exactly as in `data/processed/web_phishing_clean.csv`; definitions in `docs/web_phishing_cleaning.md`):
+> - **14 URL-text** features, computed from the link string alone (no network): `url_length`, `https_presence`, `number_of_hyphens`, `number_of_slashes`, `subdomain_count`, `special_char_count`, `suspicious_url_token_count`, `shortened_url_indicator`, `has_ip_address`, `suspicious_keyword_count`, `path_length`, `random_domain`, `length_hostname`, `tld_in_path`. **Already implemented** in `src/features/link_features.py`; the inspector must call that code, not re-implement it.
+> - **1 domain-popularity** feature, `page_rank` (Open PageRank). A lookup *about the domain*, done on the **host** (the API key never enters the VM).
+> - **12 webpage** features (static HTML parse): `nb_hyperlinks`, `ratio_intHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `ratio_intMedia`, `ratio_extMedia`, `iframe`, `empty_title`, `domain_in_title`, `domain_with_copyright`.
+> - **4 external** features (RDAP + DNS): `whois_registered_domain`, `domain_registration_length`, `domain_age`, `dns_record`.
+> - plus the routing flag **`page_fetched`** (1 when the page was fetched and parsed), which `route_p_u()` needs to choose between the `full` and `url_only` extractors. It is *not* a model input.
+>
+> **Dropped from the old scope:** the rest of the old 55 URL-string features (separate character counts, word-length statistics, brand lists, `nb_redirection`…), replaced by the 14 above; `ratio_extHyperlinks`, `ratio_nullHyperlinks`, `submit_email`, `sfh`, `popup_window`, `safe_anchor`, `onmouseover`, `right_clic` (the last three needed script-pattern matching; `sfh` and `ratio_nullHyperlinks` are 0 in every row of the public set); `web_traffic`, `google_index`, `statistical_report`; the four `ratio_*Redirection/Errors` features (one request per link on the page).
+>
+> **Where the inspector sits in the pipeline (decision `docs/decision_web_inspection.md`, Option C):** old SMS links are never inspected (82% of old smishing domains are dead; today's lookups would only measure "the domain died"). They use the `url_only` extractor (14 URL-text features). The inspector is used for **fresh links, visited within hours of arrival**: page loaded → `full` extractor; page failed → `url_only`. Time between receipt and visit must be recorded for every link.
+>
 > Consequences:
-> 1. The fetcher is **HTTP-only** in v1: fetch the HTML once, parse it statically, **execute no JavaScript**. The browser stage (§13.6) is **optional** (v1.1/v2). This removes the biggest risk (browser exploits) and cuts time to about 0.5–3 s per URL.
+> 1. The fetcher is **HTTP-only** in v1: fetch the HTML once, parse it statically, **execute no JavaScript**. The browser stage (§13.6) is **optional** (v1.1/v2). With only 12 static HTML features and no script-pattern features, the parser is smaller and safer, and a URL takes about 0.5–3 s.
 > 2. **RDAP is in v1** (3 features) plus the DNS-record check (§13.4b).
 > 3. TLS, HTTP-header, redirect-chain, behavior and rendered-DOM features are **v2 extras** (§14.2–14.7).
 > 4. The data policy is "features only" with options A–D (§6 item 2); screenshots are out of v1 (§14.9).
-> 5. New sections: §7.6 (freeing disk space), §24 (app integration), §25 (latency budget), §26 (role of Safe Browsing).
+> 5. New sections: §7.6 (freeing disk space), §24 (integration with the Le-Jet pipeline), §25 (latency budget), §26 (role of Safe Browsing).
 
 ---
 
@@ -44,7 +57,7 @@
 21. [Master checklists](#21-master-checklists)
 22. [Troubleshooting](#22-troubleshooting)
 23. [Appendices (config files and code)](#23-appendices)
-24. [Integration with the SmishGuard app](#24-integration-with-the-smishguard-app)
+24. [Integration with the Le-Jet pipeline](#24-integration-with-the-le-jet-pipeline)
 25. [Latency budget and measurements](#25-latency-budget-and-measurements)
 26. [Role of Google Safe Browsing](#26-role-of-google-safe-browsing)
 27. [Review: loopholes and gaps found](#27-review-loopholes-and-gaps-found)
@@ -57,17 +70,18 @@
 
 ### 1.1 Goals
 - G1. Safely **visit the real URL** (DNS, RDAP, HTTP redirects, page source) from an isolated environment. (Rendered page / TLS / behavior: v2.)
-- G2. Extract the **79 v1 features** (55 URL-string, 20 static-HTML, 4 RDAP/DNS) per URL.
+- G2. Extract the **31 v1 features** per URL (14 URL-text, 1 `page_rank`, 12 static-HTML, 4 RDAP/DNS; see the scope update above and §14.0) plus the `page_fetched` routing flag.
 - G3. Store features in a reproducible, auditable format with provenance (when, from where, with what tool versions).
 - G4. Return **only sanitized, schema-validated feature data** to the host.
 - G5. Make every safety control **testable** (negative tests that must fail) and **repeatable** (preflight before every batch).
 
 ### 1.2 Non-goals (v1)
 - No form submission, no credential entry, no clicking inside pages, no file downloads/execution.
-- No reputation-API integration in the VM (keeps API keys out of the VM). Labels/reputation are joined later on the host.
+- No reputation-API calls from inside the VM (keeps API keys out of the VM). Labels/reputation, and the one allowed lookup `page_rank` (Open PageRank), are done on the host (§5.7).
 - No ASN/geo enrichment, no TLS/HTTP-header/redirect-chain/behavior features, and no rendered-DOM (JavaScript) features in v1 (these are v2 extras, §14.2–14.7). **RDAP *is* in v1** (3 features, §13.4b).
 - No crawling of the links found on a page (this is why the four `ratio_*Redirection/Errors` features were dropped).
-- No integration with the SmishGuard model yet. This repo first proves web inspection.
+- No inspection of **old SMS links** (they use the `url_only` extractor, which needs no visit; decision `docs/decision_web_inspection.md`). The inspector exists for the fresh set and a live demo.
+- The inspector's output plugs into the model only through `route_p_u()` (§24). This plan does not change the CNN, gates or fusion classifier.
 
 ### 1.3 Definition of "web inspection works" (milestone M1 exit criteria)
 1. The isolation test suite (§16, Level 2) passes 100%.
@@ -75,13 +89,14 @@
 3. At least 20 safe external URLs produce complete feature rows with no crashes (§16, Level 1).
 4. One row per input URL is produced, including failures (with a reason code).
 5. The results file passes host-side validation.
+6. The validated rows (14 URL-text + `page_rank` + 12 webpage + 4 external + `has_url` + `page_fetched`) run through `route_p_u()` with the frozen extractors without errors, and `page_fetched` picks the right extractor (§16 Level 0).
 
 ---
 
 ## 2. Threat model
 
 ### 2.1 Assets to protect (in priority order)
-1. Your laptop and its files (thesis, SmishGuard repo, OneDrive contents, saved browser sessions, credentials).
+1. Your laptop and its files (thesis, Le-Jet and SmishGuard repos, OneDrive contents, saved browser sessions, credentials).
 2. Your home network (router, other devices).
 3. Your identity and home IP address.
 4. Integrity of your dataset (poisoned/forged feature data).
@@ -174,11 +189,15 @@ Host (defanged url list) ──push──▶ VM2 ──run──▶ VM2 (SQLite 
 | Output to host | JSONL.gz only | Avoids parsing untrusted SQLite/HTML/images on host | SQLite export (riskier) |
 | Reputation APIs | Not in VM | No secrets in VM; keeps label join on host | In-VM with scoped keys |
 | Screenshots | Not exported in v1 | Image parsers on host are attack surface | Downscaled PNG later |
-| JS execution | **No in v1** (HTTP-only static parse); optional sandboxed Chromium later | The 20 HTML features come from page source; no JS execution removes the largest risk and is 3–5× faster | Playwright render (v1.1/v2, needed for JS-built pages) |
-| Feature set | 79 of 87 dataset features (55 URL, 20 HTML, 4 RDAP/DNS) | Matches the dataset you already have; avoids third-party and per-link requests | Add TLS/behavior extras in v2 |
+| JS execution | **No in v1** (HTTP-only static parse); optional sandboxed Chromium later | The 12 HTML features come from page source; no JS execution removes the largest risk and is 3–5× faster | Playwright render (v1.1/v2, needed for JS-built pages) |
+| Feature set | 31 features of the `full` RF extractor: 14 URL-text, `page_rank`, 12 HTML, 4 RDAP/DNS (2026-10-11; replaces the 79-feature scope) | Matches what the trained extractor consumes (`rf_extractor.VARIANTS["full"]`) and the cleaned public set; drops features that were constant, script-pattern based, or needed per-link requests | Add TLS/behavior extras in v2 |
+| Who is inspected | Fresh links only, visited within hours; old SMS links are not visited | 82% of old smishing domains are dead, so today's lookups would measure "the domain died" (`docs/decision_web_inspection.md`, Option C) | Inspect old links too (rejected: fake signal) |
+| Two extractors | `full` when `page_fetched = 1`, otherwise `url_only` (`route_p_u`) | Each extractor only sees the kind of data it was trained on; no masking | One extractor trained with masking (rejected) |
+| URL-text features | Call `src/features/link_features.py`; never re-implement them in the inspector | One definition for training, SMS data and live inspection (train/serve consistency) | Separate inspector copy (drifts) |
+| `page_rank` | Looked up on the **host** (Open PageRank, free key) for the final registrable domain | It is a third-party service; keeping the key out of the VM keeps the "no secrets in the VM" rule | Query from the VM (key exposed) |
 | Safe Browsing | Not a training feature; separate baseline/fallback (§26) | It would leak the label; it only knows already-reported URLs | Use as a feature (not recommended) |
 | Missing values | Sentinel `-1` **plus** indicator columns `fetch_ok`, `rdap_ok`, `html_available` | Tree models accept −1; neural nets need the indicators; lets you measure liveness bias | Imputation |
-| Storage location | `C:\VMs\LeJet` (outside OneDrive) | Prevent OneDrive syncing VM disks; you have no D: drive | External SSD if available |
+| Storage location | `D:\VMs\LeJet` (outside OneDrive) | Prevent OneDrive syncing VM disks; the project and lab now live on the D: SSD (about 870 GB free), so the 41 GB limit on `C:` no longer applies | Back to `C:` (not enough space) |
 
 ---
 
@@ -186,7 +205,7 @@ Host (defanged url list) ──push──▶ VM2 ──run──▶ VM2 (SQLite 
 
 ### 5.1 Hardware (your laptop)
 - AMD Ryzen 7 7435HS (8C/16T), 19.7 GB RAM, ~40 GB free on `C:`, virtualization enabled in firmware (confirmed).
-- **Disk budget:** measured on this laptop: `C:` ≈ 475 GB total, 433 GB used, **~41 GB free**. Lab needs: gateway 6 GB + analysis 16–20 GB (dynamic) + ISO 3 GB (delete after install) + snapshot growth 2–5 GB + logs/data 1–3 GB ≈ **18–22 GB realistic, 29–37 GB worst case**. Windows also needs 10–15 GB headroom. **Recommendation: reach ≥ 50 GB free on `C:` (see §7.6) or put the lab on a 256 GB external SSD** (set `$Base` and `C:\LeJetData` accordingly). Use a 16 GB analysis disk (`-DiskMB 16384`). Never place VMs under OneDrive.
+- **Disk budget:** measured on this laptop: `C:` ≈ 475 GB total, 433 GB used, **~41 GB free**. Lab needs: gateway 6 GB + analysis 16–20 GB (dynamic) + ISO 3 GB (delete after install) + snapshot growth 2–5 GB + logs/data 1–3 GB ≈ **18–22 GB realistic, 29–37 GB worst case**. Windows also needs 10–15 GB headroom. **Decision (2026-10-11): the lab lives on the `D:` SSD (about 870 GB free), with `$Base = D:\VMs\LeJet` and data in `D:\LeJetData`**, so the `C:` shortage no longer limits it. Use a 16 GB analysis disk (`-DiskMB 16384`). Never place VMs under OneDrive.
 
 ### 5.2 Host software
 | Item | Notes |
@@ -208,7 +227,7 @@ Host (defanged url list) ──push──▶ VM2 ──run──▶ VM2 (SQLite 
 
 ### 5.5 Guest software — analysis VM
 - apt: `python3`, `python3-venv`, `python3-pip`, `sqlite3`, `nftables`, `chrony`, `openssh-server`, `dnsutils` (dig), `curl`, `ca-certificates`, `jq`, `stress-ng` (for limit tests).
-- Python (pinned with hashes), **v1 core:** `httpx[http2]`, `beautifulsoup4`, `lxml`, `tldextract`, `dnspython`, `pydantic`, `tenacity`, `tqdm`, `pytest`, `pytest-asyncio`.
+- Python (pinned with hashes), **v1 core:** `httpx[http2]`, `beautifulsoup4`, `lxml`, `tldextract`, `dnspython`, `pydantic`, `tenacity`, `tqdm`, `pytest`, `pytest-asyncio`, plus whatever `src/features/link_features.py` imports (`nostril` for `random_domain`). Keep versions in step with the repo's `requirements.txt`; the extractor `.joblib` files are tied to its scikit-learn version, so load them only where that version is installed.
 - Python, **optional (only if the browser stage or TLS extras are enabled):** `playwright`, `cryptography`.
 - Browser (**optional, not needed for v1**): Playwright-managed Chromium (installed once by root into `/opt/lejet/browsers`). If you skip it, also skip §11.8–11.9 and the sandbox tests.
 - RDAP needs no library: `httpx` plus the IANA bootstrap file (§13.4b).
@@ -216,13 +235,14 @@ Host (defanged url list) ──push──▶ VM2 ──run──▶ VM2 (SQLite 
 ### 5.6 External data sources (outside the VM, used on the host)
 - Phishing/malware URL feeds: OpenPhish community feed, PhishTank, URLhaus, PhishStats.
 - Benign URLs: Tranco top list (research-oriented ranking).
-- Your existing SmishGuard dataset URLs (expect many to be dead).
+- The Le-Jet SMS links (`data/processed/sms_link_features.csv`; expect most to be dead, which is why they are *not* inspected, see the scope update) and the **fresh set** (dataset C in `data/dataset_and_training_plan.md`), the only set the inspector is for.
 - *Reputation APIs (Safe Browsing, VirusTotal)*: host only, v2.
 
 ### 5.7 APIs
 | API | In v1? | Where it runs | Why |
 |---|---|---|---|
-| Google Safe Browsing | No | Host (v2 labeling) | Already in SmishGuard |
+| Open PageRank | **v1** (feature `page_rank`) | **Host**, after the VM returns the final registrable domain | Free API key; one lookup per final registrable domain, cached. Failure → `-1` and `page_rank_ok = 0`. Not queried from the VM (key stays out). Same source as the training column, so the scale matches |
+| Google Safe Browsing | No | Host (v2 labeling) | Still in the carried-over SmishGuard serving code; see §26 |
 | VirusTotal | No | Host (v2) | Rate-limited free tier |
 | URLhaus / OpenPhish / PhishTank feeds | Source lists only | Host | Feed download, not per-URL API calls from VM |
 | RDAP | **v1** | Analysis VM (HTTPS via gateway) | `whois_registered_domain`, `domain_registration_length`, `domain_age`; IANA bootstrap picks the registry server; cache per registrable domain; failures → `-1` (§13.4b). I have not verified RDAP coverage for `.ph` and other ccTLDs — test early |
@@ -245,7 +265,7 @@ Host (defanged url list) ──push──▶ VM2 ──run──▶ VM2 (SQLite 
 
    | Option | What leaves the VM | Risk | Use for |
    |---|---|---|---|
-   | **A. Features only** (default, v1) | Counts, ratios, booleans, hashes | Lowest | The 79-feature scope |
+   | **A. Features only** (default, v1) | Counts, ratios, booleans, hashes | Lowest | The 31-feature scope |
    | **B. Compute more features inside the VM** | Add numeric text features (keyword counts, FastText embeddings using `cc.en.300.bin`/`cc.tl.300.bin`, language ID) computed in the VM; only vectors leave | Low | Using page text in a model without exporting text |
    | **C. Export sanitized text sample** | Visible text only, truncated (5–10 KB), control chars/bidi stripped, PII patterns masked (phones, emails, card-like numbers), inert JSON strings; small sample (a few hundred pages) with adviser approval; never in OneDrive | Medium | Error analysis, thesis examples |
    | **D. Encrypted offline evidence archive** | Raw HTML/screenshots on an encrypted external disk | Medium–high | Only if the adviser requires it |
@@ -278,21 +298,21 @@ Host (defanged url list) ──push──▶ VM2 ──run──▶ VM2 (SQLite 
 - [ ] Update to the latest 7.x release (security fixes matter for escapes).
 - [ ] Do **not** install the Extension Pack.
 - [ ] Do not install Guest Additions in either VM (ever).
-- [ ] Set the machine folder to `C:\VMs\LeJet` (or external SSD): *File → Preferences → General*.
+- [ ] Set the machine folder to `D:\VMs\LeJet` (already the SSD): *File → Preferences → General*.
 - [ ] Confirm you have enough free disk (≥ 35 GB).
 
 ### 7.3 Folders on the host
 ```powershell
-New-Item -ItemType Directory -Force C:\VMs\LeJet, C:\LeJetData\iso, C:\LeJetData\input, C:\LeJetData\quarantine, C:\LeJetData\clean, C:\LeJetData\manifests | Out-Null
+New-Item -ItemType Directory -Force D:\VMs\LeJet, D:\LeJetData\iso, D:\LeJetData\input, D:\LeJetData\quarantine, D:\LeJetData\clean, D:\LeJetData\manifests | Out-Null
 ```
-`C:\LeJetData` is **outside OneDrive** on purpose: attacker-influenced strings land here.
+`D:\LeJetData` is **outside OneDrive** on purpose: attacker-influenced strings land here.
 
-Optional: add `C:\LeJetData` and `C:\VMs` to Defender exclusions **only if** performance requires it (not recommended; scanning is useful).
+Optional: add `D:\LeJetData` and `D:\VMs` to Defender exclusions **only if** performance requires it (not recommended; scanning is useful).
 
 ### 7.4 Verify downloads
 ```powershell
 # Ubuntu: compare to the SHA256SUMS file from the same official page
-Get-FileHash C:\LeJetData\iso\ubuntu-24.04*-live-server-amd64.iso -Algorithm SHA256
+Get-FileHash D:\LeJetData\iso\ubuntu-24.04*-live-server-amd64.iso -Algorithm SHA256
 ```
 For stronger verification also validate the GPG signature of `SHA256SUMS` (Gpg4win), following the instructions on the Ubuntu download page.
 
@@ -302,7 +322,7 @@ ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\lejet_ed25519 -C "lejet-lab-only"
 ```
 Use a passphrase. This key is used **only** for the lab VMs. Never load it into an agent that will be forwarded anywhere.
 
-### 7.6 Freeing disk space on `C:` (target: ≥ 50 GB free, or up to 150 GB if you want room to spare)
+### 7.6 Freeing disk space on `C:` (optional now: the lab lives on `D:`; keep `C:` healthy, about 15 GB free minimum)
 
 A read-only scan of this laptop (nothing was deleted) found these candidates. **Review each item yourself before deleting.** Sizes are as measured; the scan of the rest of the user profile (OneDrive Desktop/Documents, videos, games, old projects) had not finished, so the larger remainder is still unlocated — re-run a folder-size scan to find it (e.g., WinDirStat/TreeSize Free).
 
@@ -337,85 +357,76 @@ Total identified above ≈ 70–85 GB at most, so reaching 150 GB free means fin
 
 ## 8. Phase 2 — Repo skeleton (Le-Jet)
 
-Existing folder: `C:\Users\Franz\OneDrive\Desktop\Le-Jet` (contains `.git` and `pretrained`).
+Project folder: `D:\Le-Jet` (moved from OneDrive on 2026-10-11; a git repo with history; see `README.md` for the full layout and `CONTEXT.md` for background).
 
-### 8.1 Proposed layout
+### 8.1 Layout: what exists today and what this plan adds
+The inspector is **added to the existing structure**, not built as a separate project. `[exists]` = already in the repo; `[new]` = to be written for web inspection.
 ```
 Le-Jet/
-├─ README.md
-├─ WEB_INSPECTION_PLAN.md          ← this file
-├─ .gitignore
-├─ pyproject.toml                  (host-side tooling + shared schema)
-├─ requirements/
-│  ├─ host.in / host.txt           (validation tooling; hashed lock)
-│  └─ vm.in   / vm.txt             (fetcher deps; hashed lock)
-├─ src/lejet/
-│  ├─ __init__.py
-│  ├─ config.py                    (limits, timeouts, UA/device, paths)
-│  ├─ urlnorm.py                   (parse, normalize, refuse unsafe targets)
-│  ├─ safety.py                    (private-IP checks, size caps, sanitizers)
-│  ├─ schema.py                    (pydantic models = single source of truth)
-│  ├─ storage.py                   (SQLite in VM, JSONL export)
-│  ├─ stages/
-│  │  ├─ dns_stage.py              (v1)
-│  │  ├─ rdap_stage.py             (v1: IANA bootstrap, cache, -1 on failure)
-│  │  ├─ http_stage.py             (v1: manual redirects, byte caps, returns HTML ≤ 2 MB)
-│  │  ├─ tls_stage.py              (v2 optional)
-│  │  └─ browser_stage.py          (v2 optional: Playwright)
+├─ README.md, CONTEXT.md, WEB_INSPECTION_PLAN.md (this file)      [exists]
+├─ requirements.txt                                                [exists; add hashed vm.txt for the VM, §8.3]
+├─ data/
+│  ├─ processed/web_phishing_clean.csv                             [exists: 11,430 rows, 32 features; the training set of the extractors]
+│  ├─ processed/sms_link_features.csv                              [exists: link features of the SMS data]
+│  ├─ splits/seed_{42,123,2024}/                                   [exists]
+│  └─ fresh/                                                       [exists, empty (.gitkeep): dataset C, the inspector's output lands here after validation]
+├─ docs/
+│  ├─ decision_web_inspection.md (Option C), web_phishing_cleaning.md,
+│  │  training_rules.md, sms_synthetic_legit_links.md               [exists]
+│  └─ run_log_template.md, threat_model.md                         [new]
+├─ models/rf_extractor/{url_only,full}_seed{N}.joblib              [exists locally, git-ignored; regenerate with python -m src.features.model.rf_extractor]
+├─ src/
+│  ├─ config.py                                                    [exists: seeds, paths]
+│  ├─ lejet/                                                       (the inspector package; tests import it as `lejet`)
+│  │  ├─ safety.py          (private-IP gate, size caps, sanitizers)   [exists]
+│  │  ├─ urlnorm.py         (parse, normalize, refuse unsafe targets)  [exists]
+│  │  ├─ schema.py          (pydantic models = single source of truth) [new]
+│  │  ├─ storage.py         (SQLite in VM, JSONL export)               [new]
+│  │  ├─ pipeline.py        (orchestration, concurrency, resume)       [new]
+│  │  ├─ cli.py             (run / export / preflight)                 [new]
+│  │  ├─ stages/
+│  │  │  ├─ dns_stage.py    (v1: dns_record)                           [new]
+│  │  │  ├─ rdap_stage.py   (v1: IANA bootstrap, cache, -1 on failure) [new]
+│  │  │  ├─ http_stage.py   (v1: manual redirects, byte caps, HTML <= 2 MB) [new]
+│  │  │  ├─ tls_stage.py    (v2 optional)                              [new, later]
+│  │  │  └─ browser_stage.py (v2 optional: Playwright)                 [new, later]
+│  │  └─ features/
+│  │     ├─ html_features.py        (v1: the 12 static-HTML features)  [new]
+│  │     ├─ external_features.py    (v1: the 4 RDAP/DNS features)      [new]
+│  │     ├─ free_hosting_suffixes.txt (§13.2c)                         [new]
+│  │     └─ extras/                 (v2: tls.py, network.py, dom.py)   [new, later]
 │  ├─ features/
-│  │  ├─ url_features.py           (v1: the 55 URL-string features, names exactly as in the dataset)
-│  │  ├─ html_features.py          (v1: the 20 static-HTML features)
-│  │  ├─ rdap_dns_features.py      (v1: the 4 RDAP/DNS features)
-│  │  ├─ brand_lists.py            (brand + phish-hint word lists used by 4 URL features; also `free_hosting_suffixes.txt`, §13.2c)
-│  │  └─ extras/                   (v2: tls.py, network.py, dom.py)
-│  ├─ pipeline.py                  (orchestration, concurrency, resume)
-│  └─ cli.py                       (run / export / preflight)
+│  │  ├─ link_features.py   (the 14 URL-text features + link finder + normalize_link) [exists; the inspector imports it]
+│  │  ├─ url_features.py, text_preprocessing.py                        [exists; SmishGuard-era text/URL code, not the inspector's source of truth]
+│  │  └─ model/rf_extractor.py (extract_p_u, route_p_u)                [exists; consumes the inspector's output]
+│  ├─ data/                 (cleaning, splitting, SMS link features)   [exists; clean_web_phishing.py defines the 12 webpage + 4 external columns]
+│  └─ serving/              (predict.py, scope.py, safe_browsing_client)  [exists, carried over from SmishGuard; §24 adds an inspector client]
 ├─ tests/
-│  ├─ fixtures/                    (mock HTML pages, see §16 Level 0)
-│  ├─ test_url_features_parity.py   (recompute the 55 URL features on the dataset's `url` column; diff vs published values)
-│  ├─ test_html_features.py         (fixture pages with known expected values)
-│  ├─ test_rdap_parse.py            (recorded RDAP JSON samples, incl. missing/404/no-server)
-│  ├─ test_urlnorm.py
-│  ├─ test_safety.py
-│  └─ test_pipeline_local.py
-├─ infra/
+│  ├─ test_urlnorm.py, test_safety.py                              [exists]
+│  ├─ test_link_features.py (parity of the 14 URL-text features against the public set) [exists; this is the old "Level 0a" test]
+│  ├─ test_rf_extractor.py, test_split_dataset.py, test_text_preprocessing.py, test_embedding.py [exists]
+│  ├─ fixtures/             (mock HTML pages, see §16 Level 0)         [new]
+│  ├─ test_html_features.py (fixture pages with known expected values) [new]
+│  ├─ test_external_features.py (recorded RDAP JSON samples incl. missing/404/no-server; dns_record direction) [new]
+│  ├─ test_free_hosting.py  (§13.2c cases)                           [new]
+│  └─ test_pipeline_local.py                                         [new]
+├─ infra/                                                          [new]
 │  ├─ vm/create_vms.ps1
 │  ├─ gateway/{nftables.conf,unbound.conf,wg0.conf.example,sysctl.conf,sshd_lejet.conf}
 │  └─ analysis/{nftables.conf,preflight.sh,lejet-run.sh,apparmor-lejet-chromium}
-├─ scripts/
-│  ├─ push_urls.ps1
-│  ├─ pull_results.ps1
-│  └─ validate_output.py           (host-side validator; run with python -I)
-└─ docs/
-   ├─ run_log_template.md
-   └─ threat_model.md              (copy of §2)
+└─ scripts/                                                        [new]
+   ├─ push_urls.ps1
+   ├─ pull_results.ps1
+   ├─ lookup_page_rank.py     (host side: Open PageRank for the final registrable domains)
+   └─ validate_output.py      (host-side validator; run with python -I)
 ```
-Note: `pretrained/` already exists. Large binaries (FastText `.bin`) should be in `.gitignore` or Git LFS; web inspection v1 does not need them.
+Notes:
+- **Import style:** the existing `lejet` modules are imported as `from lejet import safety` (the tests put `src` on `sys.path`), while the rest of the repo uses `from src...`. Keep the inspector's own modules under `lejet`, and import the shared URL-text code as `from src.features.link_features import ...`. Make both work with one small `conftest.py` or an installed package rather than more path tweaks.
+- **Naming:** the model and the cleaned data use *our* column names (`url_length`, `number_of_hyphens`, …), **not** the original dataset's (`length_url`, `nb_hyphens`, …). The inspector output must use ours so it can go straight into `route_p_u()`. The 12 webpage and 4 external columns keep the dataset's own names.
+- `pretrained/` (about 11 GB of fastText vectors) is not needed by the inspector and must stay out of git and, ideally, out of OneDrive.
 
-### 8.2 `.gitignore` (essentials)
-```
-# data and VM artifacts never go in git
-data/
-*.vdi
-*.vmdk
-*.ova
-*.iso
-*.jsonl
-*.jsonl.gz
-*.sqlite
-*.db
-*.pcap
-# secrets
-*.key
-wg0.conf
-.env
-# python
-__pycache__/
-.venv/
-*.pyc
-# large models
-pretrained/*.bin
-```
+### 8.2 `.gitignore` (already in the repo)
+The repo's `.gitignore` already excludes what this plan needs: `pretrained/` and `*.bin`, trained models (`models/*`, except the committed `models/embeddings/`), `/data/`, VM disks and ISOs (`*.vdi`, `*.vmdk`, `*.ova`, `*.iso`), `*.jsonl`, `*.jsonl.gz`, `*.sqlite`, `*.db`, `*.pcap`, secrets (`*.key`, `*.pem`, `wg0.conf`, `.env`) and `known_hosts_lejet`. Before the first inspector commit, check that `git status` shows none of these. Note that some files under `data/` are tracked even though `/data/` is ignored (for example `data/interim/…csv` and the split ID lists): do not force-add inspector output there with `-f`; keep batch results in `D:\LeJetData` (§7.3) and only the validated fresh-set CSV under `data/fresh/` locally.
 `wg0.conf` contains your VPN private key: **never commit it**; only `wg0.conf.example`.
 
 ### 8.3 Dependency hygiene
@@ -431,8 +442,8 @@ Run in **PowerShell** on the host. Adjust paths. **[VERIFY]** flag spellings wit
 ### 9.1 Script `infra/vm/create_vms.ps1`
 ```powershell
 $VBox = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
-$Base = "C:\VMs\LeJet"
-$ISO  = "C:\LeJetData\iso\ubuntu-24.04-live-server-amd64.iso"   # adjust exact filename
+$Base = "D:\VMs\LeJet"
+$ISO  = "D:\LeJetData\iso\ubuntu-24.04-live-server-amd64.iso"   # adjust exact filename
 $Net  = "lejet-net"
 
 function New-LeJetVm($Name, $Mem, $Cpus, $DiskMB) {
@@ -1043,7 +1054,7 @@ First connection: `ssh -o StrictHostKeyChecking=accept-new lejet-gw`, then check
 
 ### 12.3 Push the URL list (`scripts/push_urls.ps1`)
 ```powershell
-param([string]$File = "C:\LeJetData\input\urls.txt")
+param([string]$File = "D:\LeJetData\input\urls.txt")
 # urls.txt holds ONE URL PER LINE, refanged (https://...), no other text
 scp $File lejet-an:/tmp/urls.txt
 ssh lejet-an "sudo install -o fetcher -g fetcher -m 640 /tmp/urls.txt /var/lib/lejet/in/urls.txt && rm /tmp/urls.txt"
@@ -1060,7 +1071,7 @@ sha256sum /var/lib/lejet/out/${BATCH_ID}.jsonl.gz | tee /var/lib/lejet/out/${BAT
 On the host (`scripts/pull_results.ps1`):
 ```powershell
 param([Parameter(Mandatory)][string]$BatchId)
-$Q = "C:\LeJetData\quarantine\$BatchId"
+$Q = "D:\LeJetData\quarantine\$BatchId"
 if (Test-Path $Q) { throw "quarantine dir exists, refusing" }
 New-Item -ItemType Directory $Q | Out-Null
 foreach ($ext in "jsonl.gz","manifest.json","sha256") {
@@ -1081,7 +1092,7 @@ Rules it must enforce:
 4. Strings: max length per field (e.g., title ≤ 120), strip control chars (`\x00-\x1f`, `\x7f`, bidi controls U+202A–U+202E, U+2066–U+2069), no ANSI escapes.
 5. Row count equals number of input URLs (or reconcile with explicit missing list).
 6. URL fields stored **defanged** in clean output (`hxxp`, `[.]`) so nobody clicks them from a spreadsheet.
-7. Write cleaned data to `C:\LeJetData\clean\<batch>.parquet` (or CSV with formula-escaping below).
+7. Write cleaned data to `D:\LeJetData\clean\<batch>.parquet` (or CSV with formula-escaping below).
 8. CSV formula-injection guard: any cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'`.
 9. Never `eval`, `pickle`, `yaml.load`, or `shell=True` on any field. Use parametrized SQL if you load into a DB.
 10. Never open the quarantine files in Excel, a browser, or a text editor with preview.
@@ -1092,22 +1103,23 @@ Rules it must enforce:
 
 ### 13.1 Stages (each stage writes its own row group; a failure in a stage never aborts later independent stages)
 ```
-Stage 0  Normalize + safety gate   (pure string ops, no network)   [v1] + the 55 URL features
+Stage 0  Normalize + safety gate   (pure string ops, no network)   [v1] + the 14 URL-text features (link_features.py)
 Stage 1  DNS                       (via gateway resolver)           [v1] -> dns_record
-Stage 1b RDAP                      (registry lookup over HTTPS)     [v1] -> 3 domain features
+Stage 1b RDAP                      (registry lookup over HTTPS)     [v1] -> 3 domain features (whois_registered_domain, domain_registration_length, domain_age)
 Stage 2  TLS handshake             (https only; read cert)          [v2 optional]
 Stage 3  HTTP fetch                (manual redirects, byte caps)    [v1] -> HTML bytes <= 2 MB
 Stage 4  Browser render            (Playwright)                     [v2 optional, OFF by default]
-Stage 5  Feature extraction        (pure functions)                 [v1] -> 20 static-HTML features
+Stage 5  Feature extraction        (pure functions)                 [v1] -> 12 static-HTML features + page_fetched
 Stage 6  Persist                   (SQLite in VM)                   [v1]
+Host     page_rank lookup          (Open PageRank, after export)    [v1] -> page_rank (host side, key never in the VM)
 
 v1 path = 0 -> 1 (original domain, liveness) -> 3 (HTTP fetch, follow chain) -> 1/1b again on the FINAL domain (cached if unchanged) -> 5 -> 6.
-No JavaScript is executed in v1. The 55 URL-string features come from the original raw URL; DNS/RDAP/HTML features describe the final URL (§13.2b).
+No JavaScript is executed in v1. The 14 URL-text features come from the original SMS link (as `normalize_link` shapes it); DNS/RDAP/HTML features and `page_rank` describe the final URL (§13.2b).
 ```
 
 ### 13.2 Stage 0 — Normalization and safety gate
 **Two representations of every URL (important):**
-- **Raw string, exactly as given** → used to compute the **55 URL-string features**. The dataset computed them on its `url` column as-is, so lower-casing, adding a scheme, punycode conversion or trailing-slash fixes *before* feature computation would silently change `length_url`, `nb_dots`, `nb_www`, `punycode`, etc. and break the Level 0a parity test.
+- **The link as the SMS contained it, shaped only by `normalize_link()`** (`src/features/link_features.py`: strip trailing punctuation, un-defang `hxxp`/`[.]`, add `http://` if there is no scheme) → used to compute the **14 URL-text features**. The extractor was trained on the public set's `url` column, whose URLs all start with `http://` or `https://`, so this is the only shaping allowed. Lower-casing, punycode conversion, trailing-slash fixes or adding `https://` *before* feature computation would silently change `url_length`, `https_presence`, `number_of_slashes`, etc. and break the parity test (`tests/test_link_features.py`). A schemeless SMS link therefore gets `https_presence = 0` (HTTPS was not stated), even if the fetcher later succeeds over HTTPS.
 - **Normalized form** → used **only** to fetch (and for `url_id`).
 
 **Schemeless URLs** (very common in SMS, e.g., `gcash-verify.xyz/login`): add a scheme for fetching only. Try `https://` first, fall back to `http://` once if the HTTPS connect fails (many phishing sites are HTTP-only). Record which scheme worked (`scheme_used`). Strip trailing punctuation that SMS extractors attach (`.`, `,`, `)`) before normalizing.
@@ -1117,11 +1129,11 @@ Reject (record `fail_reason = "rejected_url"`) if:
 - Contains credentials (`user:pass@host`), or IDNA/punycode conversion fails.
 - Length > 2048 chars; contains whitespace/control chars.
 - Host is an IP in a private/loopback/link-local/CGNAT/multicast/reserved range. **Parse numeric hosts with the same rules the OS resolver uses**, not just dotted-quad text: decimal (`2130706433`), hex (`0x7f.0.0.1`), octal (`0177.0.0.1`), short forms (`127.1`), IPv4-mapped IPv6 (`[::ffff:127.0.0.1]`), IPv6 literals, trailing dot (`localhost.`), and names like `localhost`, `*.localhost`, `*.local`, `*.internal`. Reject after canonicalizing with `ipaddress`/`socket.inet_aton`-style parsing. *(Test mode only: `--allow-loopback` for fixtures.)*
-- Explicit port other than 80/443: the gateway only allows 80/443, so such URLs can never succeed. Do **not** try them; record `fail_reason = "port_blocked"` (not "dead") so they are not mistaken for takedowns, and keep the `port` URL feature as computed from the string.
+- Explicit port other than 80/443: the gateway only allows 80/443, so such URLs can never succeed. Do **not** try them; record `fail_reason = "port_blocked"` (not "dead") so they are not mistaken for takedowns, and still compute the 14 URL-text features from the string (the row stays usable by the `url_only` extractor).
 - Host equals the VM's own names/internal IPs.
 
 Also compute and store: normalized URL, registered domain (`tldextract`), punycode flag, `scheme_used`, a stable `url_id`.
-- **`tldextract` gotcha:** by default it downloads the Public Suffix List at runtime (an unexpected outbound request, and it fails offline) and writes a cache under the user's home. Construct it with the bundled snapshot and no network: `tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)`. **Private suffixes are ON** so that shared-hosting hosts such as `evil.pages.dev` are their own registrable domain (decision in §13.2c). This registrable-domain function is for fetch-side logic only; the 55 URL-string features are still computed exactly as the dataset defines them.
+- **`tldextract` gotcha:** by default it downloads the Public Suffix List at runtime (an unexpected outbound request, and it fails offline) and writes a cache under the user's home. Construct it with the bundled snapshot and no network: `tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)`. **Private suffixes are ON** so that shared-hosting hosts such as `evil.pages.dev` are their own registrable domain (decision in §13.2c). This registrable-domain function is for fetch-side logic only; the 14 URL-text features are still computed by `link_features.py`, exactly as in training (note that file uses its own private-suffix-**off** extractor for the features and a private-suffix-**on** one only for grouping; do not "fix" that).
 - **`url_id` should be generated on the host**, not in the VM: the host computes `url_id = sha256(raw_url)[:16]`, pushes `url_id<TAB>raw_url` lines, and the VM only echoes the id back. This keeps the label join lossless and stops the VM from relabeling rows.
 - Deduplicate by `url_id` (keep a host-side record of duplicates and of any URL that appears with two different labels). Shuffle order with a fixed seed (spreads same-host load; keeps reproducibility).
 
@@ -1130,13 +1142,14 @@ Also compute and store: normalized URL, registered domain (`tldextract`), punyco
 
 | Feature group | Computed on | Why |
 |---|---|---|
-| The 55 URL-string features | The **original raw URL** | Parity with the dataset (Level 0a); this is what the SMS contained |
-| The 20 HTML features | The **final page**; "internal/external" is relative to the **final URL's registrable domain** | That is the page the victim sees |
+| The 14 URL-text features | The **original SMS link** (after `normalize_link`) | Parity with training (`tests/test_link_features.py`); this is what the SMS contained and what `url_only` was trained on |
+| The 12 HTML features | The **final page**; "internal/external" is relative to the **final URL's registrable domain** | That is the page the victim sees |
 | `whois_registered_domain`, `domain_registration_length`, `domain_age`, `dns_record` | The **final URL's registrable domain** | A shortener's own age says nothing about the destination |
+| `page_rank` | The **final URL's registrable domain** (host-side lookup) | Same reason; it describes the destination, not the shortener |
 
 Extra columns stored for every row (so the choice can be audited or reversed in analysis):
 `final_url` (defanged), `final_reg_domain` (defanged), `final_differs` (0/1), `hop_count`, `chain_complete` (0/1, false if the chain broke before a final page), `scheme_used`, and the **original-domain** versions `orig_whois_registered_domain`, `orig_domain_registration_length`, `orig_domain_age`, `orig_dns_record`.
-Optional (v1.1): the 55 URL-string features recomputed on the final URL, prefixed `f_`, to see whether they add signal.
+Optional (v1.1): the 14 URL-text features recomputed on the final URL, prefixed `f_`, to see whether they add signal (never fed to the frozen extractors).
 
 Edge cases:
 - **No redirect:** final = original; `final_differs = 0`; the `orig_*` columns equal the main ones (no second lookup).
@@ -1149,7 +1162,7 @@ Edge cases:
 **Problem:** on a free-hosting subdomain (`evil.pages.dev`, `x.github.io`, `x.blogspot.com`) the "registrable domain" by the ordinary public-suffix rules is the *platform* (`pages.dev`), which is old and legitimate. RDAP would then report an old domain and make exactly the sites attackers like look benign.
 
 **Rules:**
-1. **Registrable domain = with private suffixes** (§13.2). `evil.pages.dev` → `evil.pages.dev`. Use it for: internal/external link classification, per-domain concurrency and politeness, `final_differs`, deduplication of hosts, and the RDAP decision. (Never for the 55 URL-string features.)
+1. **Registrable domain = with private suffixes** (§13.2). `evil.pages.dev` → `evil.pages.dev`. Use it for: internal/external link classification, per-domain concurrency and politeness, `final_differs`, deduplication of hosts, and the RDAP decision. (Never for the 14 URL-text features.)
 2. **Flag `free_hosting_subdomain = 1`** when the host's suffix is in the Public Suffix List's private section **or** in the curated list `free_hosting_suffixes.txt`. Store the matched suffix in `hosting_platform` (e.g., `pages.dev`, otherwise empty).
 3. **RDAP is skipped for flagged hosts:** `rdap_skipped = 1`, the three RDAP features = `-1`, `rdap_ok = 0`. The platform's age says nothing about the site. `dns_record` is still computed on the full hostname. The substitute age signal (Certificate-Transparency first-seen date) is a v1.1 extra (§28 item 6).
 4. **Path-hosted platforms** (one hostname shared by all users, the content is in the path, e.g., Google Forms/Sites, Facebook pages, link-in-bio pages): set `platform_path_hosting = 1`, skip RDAP the same way, and **do not** set `final_is_popular` for them (otherwise a phishing form on a Google domain would be mistaken for a "cloaking redirect to a big benign site"). Detect by host + path prefix from a curated list.
@@ -1161,7 +1174,7 @@ Edge cases:
    - IPFS gateways: `ipfs.io`, `dweb.link`, `cloudflare-ipfs.com`
    - free web hosts: `000webhostapp.com`, `infinityfreeapp.com`, `epizy.com`, `rf.gd`, `byethost*`
    - path-hosted (rule 4): Google Forms/Sites (`docs.google.com/forms`, `forms.gle`, `sites.google.com`), `linktr.ee`, Facebook/`fb.com` pages
-6. **New columns:** `free_hosting_subdomain`, `hosting_platform`, `platform_path_hosting`, `rdap_skipped` (listed in §14.0.5).
+6. **New columns:** `free_hosting_subdomain`, `hosting_platform`, `platform_path_hosting`, `rdap_skipped` (listed in §14.0.6).
 7. **Analysis rule:** report results with and without these rows, and state in the thesis that the RDAP features are *structurally missing* for them (not randomly missing).
 8. **Unit tests** (no network): `evil.pages.dev` → registrable `evil.pages.dev`, flagged; `a.b.github.io` → `b.github.io`, flagged; `x.blogspot.com` → `x.blogspot.com`, flagged; `www.example.co.uk` → `example.co.uk`, not flagged; `login.gcash-verify.xyz` → `gcash-verify.xyz`, not flagged; for every flagged host assert that **no RDAP request is made**.
 
@@ -1201,8 +1214,8 @@ Rules: cache per registrable domain (many URLs share a domain); ≤ 1 request/se
 - Detect HTML via content-type or sniff first bytes.
 - Detect meta-refresh and `window.location` redirects (parsed from first 2 MB; not executed here).
 
-### 13.5b Static HTML feature extraction (v1: 20 features)
-Input: the HTML bytes captured by Stage 3 (≤ 2 MB, decoded with the declared charset, falling back to UTF-8 with replacement). Parse with `lxml`/BeautifulSoup. **Nothing is executed and no linked resource is fetched.** Script-related features (`popup_window`, `onmouseover`, `right_clic`) are detected by pattern-matching the page source, not by running it.
+### 13.5b Static HTML feature extraction (v1: 12 features)
+Input: the HTML bytes captured by Stage 3 (≤ 2 MB, decoded with the declared charset, falling back to UTF-8 with replacement). Parse with `lxml`/BeautifulSoup. **Nothing is executed and no linked resource is fetched.** None of the 12 features needs script text: they come from tags and attributes (anchors, stylesheets, favicon, media, iframes, forms, title, copyright text), never from running or regex-scanning scripts.
 
 Rules:
 - "Internal" means same registrable domain as the final URL (or a relative URL); "external" means a different registrable domain; "null" means empty, `#`, `javascript:void(0)`, `about:blank`.
@@ -1259,12 +1272,14 @@ SQLite with WAL mode; parametrized statements only; one transaction per URL; res
 | Order | seeded shuffle |
 
 ### 13.10 Failure taxonomy (`fail_reason` enum)
-`rejected_url`, `port_blocked`, `dns_nxdomain`, `dns_timeout`, `dns_servfail`, `dns_no_answer`, `connect_refused`, `connect_timeout`, `tls_error`, `http_4xx`, `http_5xx`, `too_many_redirects`, `redirect_to_blocked`, `non_html`, `too_large`, `challenge_page` (bot wall/CAPTCHA/"Just a moment"), `parked_or_default_page`, `render_timeout`, `render_crash`, `blocked_or_empty`, `internal_error`, `none`.
+`rejected_url`, `port_blocked`, `dns_nxdomain`, `dns_timeout`, `dns_servfail`, `dns_no_answer`, `connect_refused`, `connect_timeout`, `read_timeout` (added: connected, but the server stalled or trickled the body past the wall-clock deadline), `tls_error`, `http_4xx`, `http_5xx`, `too_many_redirects`, `redirect_to_blocked`, `non_html`, `too_large`, `challenge_page` (bot wall/CAPTCHA/"Just a moment"), `parked_or_default_page`, `render_timeout`, `render_crash`, `blocked_or_empty`, `internal_error`, `none`.
 
 **Semantics (defined here to avoid ambiguity):**
 - `fetch_ok = 1` only when the HTTP stage returned a usable HTML document (`fail_reason = none`). It says nothing about RDAP.
 - `rdap_ok` and `dns_ok` are independent flags. A page can be `fetch_ok = 1` with `rdap_ok = 0`, and vice-versa.
-- `html_available = 1` iff the 20 HTML features were computed from real HTML (so `fetch_ok = 1` and not a challenge/parked page).
+- `html_available = 1` iff the 12 HTML features were computed from real HTML (so `fetch_ok = 1` and not a challenge/parked page).
+- `page_fetched = html_available`. It is the routing flag for `route_p_u()` (full extractor vs `url_only`) and is never a model input. A challenge/parked page is **not** a fetched page: it must route to `url_only`, otherwise the `full` extractor would score the bot wall.
+- `page_rank_ok` is independent of the others (host-side lookup).
 - Every URL still gets exactly one row, with every feature present (use `-1`, never omit a key).
 
 ---
@@ -1273,76 +1288,82 @@ SQLite with WAL mode; parametrized statements only; one transaction per URL; res
 
 Naming: `snake_case`. Types: `i` int, `f` float, `b` bool (0/1), `s` short string (capped), `e` enum.
 
-### 14.0 v1 feature set — 79 features (this is what v1 collects)
+### 14.0 v1 feature set — 31 features (this is what v1 collects)
 
-> **Superseded (2026-10-11).** The model now uses **32 features**: 16 URL structural, 12 webpage and 4 external. See `data/dataset_and_training_plan.md` §4 and `docs/web_phishing_cleaning.md` for the list and definitions. The inspector only has to compute those. `sfh` and `ratio_nullHyperlinks` were dropped because they are 0 in every row of the public set. The definitions below still apply to the features that remain.
+> **Updated 2026-10-11.** This replaces the earlier 79-feature list (55 URL-string, 20 HTML, 4 RDAP/DNS). The current list is the input of the `full` extractor: `rf_extractor.VARIANTS["full"]` = `URL_TEXT_FEATURES + [page_rank] + WEBPAGE_FEATURES + EXTERNAL_FEATURES`. Sources of truth, in order: `src/features/model/rf_extractor.py` (the exact column names and order), `docs/web_phishing_cleaning.md` (definitions and cleaning decisions), `data/dataset_and_training_plan.md` §4. If this section and those disagree, they win.
+>
+> **Note on RDAP:** the project notes say RDAP coverage was "verified earlier", but no verification is recorded. Treat RDAP coverage (especially `.ph`) as **unverified** until Level 1 measures the per-TLD success rate.
 
-**Confirmed by the project owner (Oct 2026): this 79-feature list is the final v1 scope** — Keep 55 (all URL-text features, `length_url` … `suspecious_tld`; they come from the link string alone), Keep 20 (HTML: `nb_hyperlinks`, `ratio_intHyperlinks`, `ratio_extHyperlinks`, `ratio_nullHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `submit_email`, `ratio_intMedia`, `ratio_extMedia`, `sfh`, `iframe`, `popup_window`, `safe_anchor`, `onmouseover`, `right_clic`, `empty_title`, `domain_in_title`, `domain_with_copyright`), Keep 4 (`whois_registered_domain`, `domain_registration_length`, `domain_age` from RDAP, and `dns_record`; missing data = `-1`). Anything beyond this list (§28) is an optional extra and must not replace these.
-> Note on RDAP: the project notes say RDAP coverage was "verified earlier", but no verification is recorded in this plan. Treat RDAP coverage (especially `.ph`) as **unverified** until Level 1 measures the per-TLD success rate.
+Column names are the **cleaned set's** names (our renames for the URL group, the dataset's own names for the webpage and external groups). The frozen extractor selects columns by name, so a misspelled or renamed column fails loudly or, worse, silently becomes missing. Anything beyond this list (§28) is an optional extra and must not replace it.
 
-Source dataset header: `url`, 87 features, `status` (label). v1 keeps 79 and drops 8. **Keep the dataset's column names exactly, including its misspellings** (`suspecious_tld`, `right_clic`, `nb_semicolumn`), so your data stays compatible with the original.
+#### 14.0.1 URL-text features — 14 (no network; computed from the link string)
+**Already implemented** in `src/features/link_features.py` (`link_text_features(normalize_link(raw))`) and checked against all 11,430 public-set rows by `tests/test_link_features.py` (13 features at 99.95–100%; `random_domain` at about 92%, because the original's exact input is unknown). The inspector calls this code; it does not re-implement it.
 
-#### 14.0.1 URL-string features — 55 (no network; computed from the URL text)
 | Group | Features |
 |---|---|
-| Lengths / host | `length_url`, `length_hostname`, `ip` |
-| Character counts | `nb_dots`, `nb_hyphens`, `nb_at`, `nb_qm`, `nb_and`, `nb_or`, `nb_eq`, `nb_underscore`, `nb_tilde`, `nb_percent`, `nb_slash`, `nb_star`, `nb_colon`, `nb_comma`, `nb_semicolumn`, `nb_dollar`, `nb_space` |
-| Tokens | `nb_www`, `nb_com`, `nb_dslash`, `http_in_path`, `https_token` |
-| Ratios | `ratio_digits_url`, `ratio_digits_host` |
-| Host structure | `punycode`, `port`, `tld_in_path`, `tld_in_subdomain`, `abnormal_subdomain`, `nb_subdomains`, `prefix_suffix`, `random_domain`, `shortening_service`, `path_extension` |
-| Redirection | `nb_redirection`, `nb_external_redirection` — **check first:** I am not sure whether the paper computes these from the URL text or by following real redirects. Recompute from the string and compare with the dataset; if they do not match, move them to the HTTP stage |
-| Word statistics | `length_words_raw`, `char_repeat`, `shortest_words_raw`, `shortest_word_host`, `shortest_word_path`, `longest_words_raw`, `longest_word_host`, `longest_word_path`, `avg_words_raw`, `avg_word_host`, `avg_word_path` |
-| Brand / hints | `phish_hints`, `domain_in_brand`, `brand_in_subdomain`, `brand_in_path`, `suspecious_tld` — these use the **authors' brand list, keyword list and suspicious-TLD list**; reproduce their lists to match published values (Philippine brands such as GCash/BDO would be a *separate* extra feature) |
+| Length | `url_length`, `length_hostname`, `path_length` |
+| Character counts | `number_of_hyphens`, `number_of_slashes`, `special_char_count` |
+| Host structure | `subdomain_count` (the dataset's quirk: dots in the whole URL, capped at 3), `has_ip_address`, `shortened_url_indicator`, `tld_in_path`, `random_domain` |
+| Scheme | `https_presence` |
+| Keyword counts | `suspicious_url_token_count` (phishing-kit path tokens), `suspicious_keyword_count` (lure words) |
 
-#### 14.0.2 HTML features — 20 (from the fetched page source; static parse)
-Meanings below are the **intended** meanings; implement each according to the paper's feature table and write down any ambiguity you resolved. They cannot be validated against the dataset (its pages are mostly dead), so test them with fixtures (§16 Level 0).
+Rules: these are the **same 14 columns the `url_only` extractor uses**, so they are always available, even when the page fails. Sentinel for "no link" is `-1` for all 14 (`no_link_features()`), but the inspector is only ever called with a link.
+
+#### 14.0.2 `page_rank` — 1 (Open PageRank, host-side lookup)
+The domain's Open PageRank value for the **final** registrable domain, as in the public set, where it is an integer from 0 to 10 (checked in `web_phishing_clean.csv`: 0 for 2,666 rows, mean 4.48 for legitimate vs 1.89 for phishing pages). It describes the domain *at lookup time*, which is why it belongs to the `full` extractor and not to `url_only`. Looked up on the host (the key stays out of the VM), cached per domain.
+- A domain the service answers for but has no rank for → `0` (that is what the training column does for unrated domains; it is a real value, not missing).
+- The lookup itself failed (network, quota, bad key) → `-1` and `page_rank_ok = 0`. Never fill failures with `0`, or outages would read as "unrated, suspicious".
+- Free-hosting platforms (§13.2c) get the **platform's** rank, which is high and misleading; flag these rows and report results with and without them.
+- Check that the API's current scale is still 0–10 integers (round the way the dataset did); a different scale would shift the feature the extractor was trained on.
+
+#### 14.0.3 Webpage features — 12 (from the fetched page source; static parse)
+Meanings below are the **intended** meanings; implement each according to the paper's feature table (Hannousse & Yahiouche, 2021) and write down any ambiguity you resolved. They cannot be validated against the dataset (its pages are mostly dead), so test them with fixtures (§16 Level 0). All are unchanged from the source dataset.
 
 | Feature | Meaning (intended) |
 |---|---|
 | `nb_hyperlinks` | Total hyperlinks in the page (anchors and linked resources per the paper's tag list) |
 | `ratio_intHyperlinks` | Share of internal links (same registrable domain / relative) |
-| `ratio_extHyperlinks` | Share of external links |
-| `ratio_nullHyperlinks` | Share of null links (`#`, `javascript:void(0)`, empty, `about:blank`) |
 | `nb_extCSS` | Number of stylesheets loaded from an external domain |
 | `login_form` | A login-style form whose action is suspicious (empty, `#`, `about:blank`, or another domain) |
 | `external_favicon` | Favicon loaded from a different domain |
 | `links_in_tags` | Share of internal links among links in `<meta>`, `<script>`, `<link>` tags |
-| `submit_email` | A form submits to e-mail (`mailto:` or mail-sending action) |
 | `ratio_intMedia` | Share of media (img/audio/video/embed) loaded from the same domain |
 | `ratio_extMedia` | Share of media loaded from external domains |
-| `sfh` | Server form handler is empty, `about:blank`, or external |
 | `iframe` | An invisible/hidden iframe or frame is present |
-| `popup_window` | A popup (e.g., `window.open`/`prompt`) that contains text fields |
-| `safe_anchor` | Share of anchors with unsafe `href` values (per the paper: `#`, `javascript:`, etc.) |
-| `onmouseover` | `onmouseover` handler changes the status bar |
-| `right_clic` | Right-click is disabled in page script |
 | `empty_title` | `<title>` missing or empty |
 | `domain_in_title` | The domain name appears in the page title |
 | `domain_with_copyright` | The domain name appears next to a copyright mark/text |
 
-#### 14.0.3 RDAP / DNS features — 4 (see §13.4b)
-`whois_registered_domain`, `domain_registration_length`, `domain_age`, `dns_record`. Unknown / lookup failed = `-1`.
+**No script-pattern matching is needed any more.** `popup_window`, `onmouseover` and `right_clic` were dropped, so v1 never regex-scans attacker-controlled script text (this also removes the ReDoS concern for those patterns, §27 S4). `sfh`, `ratio_nullHyperlinks` (constant 0 in the public set), `ratio_extHyperlinks`, `submit_email` and `safe_anchor` are also gone. "Null" links are no longer a feature but still matter for the internal/external counting rule in §13.5b.
 
-**Direction:** `whois_registered_domain` and `dns_record` use `1` for the *abnormal* case (not in WHOIS/RDAP; no DNS record) and `0` for the normal case, as in the dataset. Never "1 = record exists". Add a unit test: a domain that resolves gives `dns_record = 0`; an NXDOMAIN gives `1`.
+#### 14.0.4 External features — 4 (RDAP + DNS; see §13.4b)
+`whois_registered_domain`, `domain_registration_length`, `domain_age` (RDAP), `dns_record` (DNS). Unknown / lookup failed = `-1`. Negative durations are never stored; they are `-1` (the cleaning step did the same to the public set: 1,837 negative `domain_age` and 46 negative `domain_registration_length` values became `-1`).
 
-#### 14.0.4 Dropped (do **not** collect)
-`statistical_report`, `web_traffic`, `google_index`, `page_rank` (third-party services); `ratio_intRedirection`, `ratio_extRedirection`, `ratio_intErrors`, `ratio_extErrors` (would require a request to every link on the page).
+**Direction:** `whois_registered_domain` and `dns_record` use `1` for the *abnormal* case (not in WHOIS/RDAP; no DNS record) and `0` for the normal case, as in the dataset. Never "1 = record exists". Add a unit test: a domain that resolves gives `dns_record = 0`; an NXDOMAIN gives `1`. The inspector must follow this direction (`README.md` repeats the warning).
 
-#### 14.0.5 Label and bookkeeping columns (not model inputs)
+#### 14.0.5 Dropped (do **not** collect)
+- Old URL-string features not in the 14 (character counts such as `nb_dots`/`nb_at`/`nb_qm`, word-length statistics, `nb_www`, `nb_com`, `punycode`, `port`, brand and suspicious-TLD features, `nb_redirection`, `nb_external_redirection`, …).
+- Page features: `ratio_extHyperlinks`, `ratio_nullHyperlinks`, `submit_email`, `sfh`, `popup_window`, `safe_anchor`, `onmouseover`, `right_clic`.
+- Third-party services: `web_traffic`, `google_index`, `statistical_report`. (`page_rank` is the one third-party lookup that stays.)
+- Per-link requests: `ratio_intRedirection`, `ratio_extRedirection`, `ratio_intErrors`, `ratio_extErrors`.
+
+#### 14.0.6 Label, routing and bookkeeping columns (not model inputs)
 | Column | Meaning |
 |---|---|
 | `url` | Defanged in exported files |
-| `status` | Label (`legitimate`/`phishing`) from the **host-side** label source, never decided in the VM |
+| `status` | Label (`legitimate`/`phishing`) from the **host-side** label source, never decided in the VM. The cleaned public set uses the same column name |
+| `has_url` | Always `1` for an inspected link; the extractors need it as a routing input |
+| **`page_fetched`** | **1 iff `html_available = 1`** (a real page was fetched and parsed). `route_p_u()` reads it to choose `full` (1) or `url_only` (0). It is never an input to either forest |
 | `label_source`, `label_ts` | Provenance of the label (kept on the host) |
-| `url_id`, `batch_id`, `fetch_ts` | Identity and time |
-| `fetch_ok`, `fail_reason`, `rdap_ok`, `html_available` | **Indicator columns** — let you separate "unreachable" from "benign" (liveness bias, §20) |
+| `message_id` / `url_id`, `batch_id`, `fetch_ts` | Identity and time. For the fresh set also store `received_ts` and `hours_since_received` (the plan requires the delay between message arrival and visit to be recorded) |
+| `fetch_ok`, `fail_reason`, `rdap_ok`, `page_rank_ok`, `html_available` | **Indicator columns** — separate "unreachable" from "benign" (liveness bias, §20) |
 | `html_bytes`, `script_count` | Helpers to estimate how many pages are near-empty (JS-built) |
 | `stage_ms_dns`, `stage_ms_rdap`, `stage_ms_http`, `stage_ms_html`, `duration_ms` | Per-stage timing for the latency analysis (§25) |
 | `days_to_expiry` | Helper for the `domain_registration_length` ambiguity |
-| `free_hosting_subdomain`, `hosting_platform`, `platform_path_hosting`, `rdap_skipped` | Free/shared-hosting handling (§13.2c); explain why RDAP features are `-1` for those rows |
-| `final_url`, `final_reg_domain`, `final_differs`, `hop_count`, `chain_complete`, `scheme_used`, `final_is_popular`, `orig_whois_registered_domain`, `orig_domain_registration_length`, `orig_domain_age`, `orig_dns_record` | Final-URL decision (§13.2b) |
+| `free_hosting_subdomain`, `hosting_platform`, `platform_path_hosting`, `rdap_skipped` | Free/shared-hosting handling (§13.2c); explain why external features are `-1` for those rows |
+| `final_url`, `final_reg_domain`, `final_differs`, `hop_count`, `chain_complete`, `scheme_used`, `final_is_popular`, `orig_whois_registered_domain`, `orig_domain_registration_length`, `orig_domain_age`, `orig_dns_record` | Final-URL decision (§13.2b). `final_is_popular` is a bookkeeping flag for spotting cloaking redirects only; the Tranco snapshot was removed as a model input (`data/dataset_and_training_plan.md`, dataset D), so use a frozen, recorded list and never feed the flag to a model |
 
-**Missing-value rule:** `-1` for numeric features whose source was unavailable (all HTML features when `html_available = 0`, RDAP features when `rdap_ok = 0`). Tree models can use `-1` directly; neural networks need the indicator columns and a scaling step that ignores `-1`.
+**Missing-value rule:** `-1` for numeric features whose source was unavailable (all 12 webpage features when `html_available = 0`, RDAP features when `rdap_ok = 0`, `page_rank` when `page_rank_ok = 0`). This is the same `-1` the extractors expect (`extract_p_u` also treats a row of pure `-1` as "nothing known"). Tree models can use `-1` directly. When the page was not fetched, the row is routed to `url_only`, which never reads the webpage, external or `page_rank` columns, so a failed page costs only those columns (the decision doc notes a small loss: a fresh link whose page fails also loses RDAP/DNS even if they worked).
 
 > Sections 14.1–14.8 below are the earlier, broader catalogue. **Only 14.1 (meta fields) and 14.8 (what is not collected) apply to v1.** 14.2–14.7 are v2 extras.
 
@@ -1359,7 +1380,7 @@ Meanings below are the **intended** meanings; implement each according to the pa
 | `vpn_exit_ip_hash` | s | hash of exit IP at batch start (for audit) |
 | `ua_profile` | s | e.g., `pixel7` |
 
-### 14.2 Extra lexical ideas (v2 — superseded in v1 by the 55 URL features in 14.0.1)
+### 14.2 Extra lexical ideas (v2 — superseded in v1 by the 14 URL-text features in 14.0.1)
 `lex_url_length`, `lex_hyphens`, `lex_slashes`, `lex_subdomain_count`, `lex_special_chars`, `lex_keyword_count`, `lex_shortener`, `lex_suspicious_token_count`, `lex_has_ip_host`, `lex_has_punycode`, `lex_tld`, `lex_digits_ratio`, `lex_path_depth`, `lex_query_params`, `lex_at_symbol`, `lex_double_slash_in_path`, `lex_https_in_hostname` (e.g., `https-bank.example`).
 
 ### 14.3 Extra DNS (v2)
@@ -1417,7 +1438,7 @@ Meanings below are the **intended** meanings; implement each according to the pa
 Raw HTML, full text, cookies' values, form field values (you never type), screenshots (v1), IP of the VPN exit in clear (hash only), any personal data that appears on pages. See §6 item 2 for the reasoning and the A–D options.
 
 ### 14.9 Why there are no screenshots in v1
-Screenshots are **not needed** for the 79 features. People take them for: visual similarity to a brand (logo/layout), evidence for a panel, manual error analysis, pages whose content lives in images/canvas, and image-based models. We skip them in v1 because they add risk and cost (image parsing on the host, personal data visible on pages, several GB for 10,000 images), need the browser stage, and a visual model is a separate project.
+Screenshots are **not needed** for the 31 features. People take them for: visual similarity to a brand (logo/layout), evidence for a panel, manual error analysis, pages whose content lives in images/canvas, and image-based models. We skip them in v1 because they add risk and cost (image parsing on the host, personal data visible on pages, several GB for 10,000 images), need the browser stage, and a visual model is a separate project.
 If added later, the safe version is: take a small screenshot (about 360×640) **inside the VM**, compute a perceptual hash or an embedding from a pretrained image model **inside the VM**, and export only that number/vector — never the image. For a handful of thesis examples (about 10 pages), get adviser approval and view them only in a safe image viewer.
 
 ---
@@ -1428,14 +1449,16 @@ If added later, the safe version is: take a small screenshot (about 360×640) **
 Tables: `runs(batch_id, started_at, finished_at, tool_versions_json, input_sha256, snapshot_name)`, `urls(url_id PK, normalized_url, reg_domain, status, fail_reason, stage_reached, duration_ms)`, `dns(...)`, `tls(...)`, `http(...)`, `hops(url_id, idx, status, host, location_host, ms)`, `dom(...)`, `beh(...)`, `errors(url_id, stage, exc_type, msg_trunc)`.
 
 ### 15.2 Export schema (JSONL, one line per URL)
+The `features` object holds exactly the 31 model-input columns of §14.0 (cleaned-set names, `-1` for unknown), so it can be loaded straight into the frame that `route_p_u()` takes. `page_rank` is absent in the VM's export and added on the host (§13.1). The remaining fields are bookkeeping.
 ```json
 {"url_id":"a1b2c3d4e5f60718","batch_id":"b001","fetch_ts":"2026-10-12T03:14:15Z",
- "url":"hxxps://example[.]test/login",
+ "url":"hxxps://example[.]test/login","has_url":1,"page_fetched":1,
  "fetch_ok":true,"fail_reason":"none","rdap_ok":true,"html_available":true,
  "html_bytes":48211,"script_count":7,
  "stage_ms":{"dns":41,"rdap":612,"http":930,"html":38},"duration_ms":1650,
- "features":{"length_url":27,"length_hostname":12,"...":"... all 79 dataset-named features ...",
-             "domain_age":-1,"dns_record":0}}
+ "features":{"url_length":27,"https_presence":1,"number_of_hyphens":0,"number_of_slashes":4,
+             "...":"... the other 10 URL-text, the 12 webpage and the 4 external features ...",
+             "nb_hyperlinks":31,"domain_age":-1,"dns_record":0}}
 ```
 The **URL itself** is exported defanged (`hxxps://...`) plus `reg_domain` (defanged).
 
@@ -1448,16 +1471,13 @@ The **URL itself** is exported defanged (`hxxps://...`) plus `reg_domain` (defan
 
 > This is the answer to "I want to try web inspection": start at Level 0 and go up. **Do not skip levels.** A level must be green before the next.
 
-### Level 0a — URL-feature parity test (host or VM, zero network)
-Before any fetching, prove the 55 URL-string features are right:
-1. Load the dataset CSV; take its `url` column.
-2. Recompute all 55 URL features with `url_features.py`.
-3. Compare to the published columns, per feature: exact-match rate, and the first 10 mismatching URLs.
-4. Target: ≥ 99% exact match for each feature. A feature below that means your definition differs from the paper's — fix it or document the difference.
-5. Specifically settle the open questions: whether `nb_redirection`/`nb_external_redirection` are string-based, and the brand/keyword/suspicious-TLD lists.
-6. Keep the dataset's own `url` list as a test fixture only; do **not** open any URL from it.
-7. Add the registrable-domain / free-hosting unit tests from §13.2c (no network).
-This test needs no VM, no network and no fetching, so run it first.
+### Level 0a — URL-text feature parity test (host or VM, zero network) — mostly done
+The 14 URL-text features already have their parity test: `tests/test_link_features.py` recomputes them with `src/features/link_features.py` on the public set's `url` column and compares with `data/processed/web_phishing_clean.csv` (13 features at 99.95–100%, `random_domain` at about 92%, a known and documented gap). Remaining work for the inspector:
+1. Run `python -m pytest tests/test_link_features.py tests/test_urlnorm.py tests/test_safety.py` **inside the analysis VM** (same Python and package versions as the host) and confirm the same numbers. `random_domain` depends on `nostril`, so a different version there would silently change a feature.
+2. Add a test that the inspector's Stage 0 passes `normalize_link(raw)` (not the fetch-normalized URL) to `link_text_features`, using a schemeless SMS link: `https_presence` must be `0`.
+3. Add the registrable-domain / free-hosting unit tests from §13.2c (no network).
+4. Keep the dataset's own `url` list as a test fixture only; do **not** open any URL from it.
+This test needs no network and no fetching, so run it first.
 
 ### Level 0 — Harness tests with local fixtures (zero external contact)
 Run **inside the analysis VM** against a local web server on `127.0.0.1` (test mode `--allow-loopback`). Create these mock pages in `tests/fixtures/`:
@@ -1483,30 +1503,28 @@ Run **inside the analysis VM** against a local web server on `127.0.0.1` (test m
 | `evil_strings.html` | title with `=cmd|...`, ANSI escapes, bidi chars, 10k-char title | output sanitized and capped; validator passes |
 | `cpu_loop.html` | `while(true){}` | killed by wall clock; others unaffected |
 
-**Fixtures for the 20 HTML features (v1, static parse — these are the ones that matter first):**
+**Fixtures for the 12 HTML features (v1, static parse — these are the ones that matter first):**
 
 | Fixture | Expected feature values |
 |---|---|
-| `html_all_internal.html` (10 links, same domain) | `nb_hyperlinks=10`, `ratio_intHyperlinks=1.0`, `ratio_extHyperlinks=0`, `ratio_nullHyperlinks=0` |
-| `html_mixed_links.html` (5 internal, 3 external, 2 `#`/`javascript:void(0)`) | `ratio_*` match 0.5 / 0.3 / 0.2 (per the paper's counting rule) |
+| `html_all_internal.html` (10 links, same domain) | `nb_hyperlinks=10`, `ratio_intHyperlinks=1.0` |
+| `html_mixed_links.html` (5 internal, 3 external, 2 `#`/`javascript:void(0)`) | `ratio_intHyperlinks` matches the paper's counting rule (settle whether null links stay in the denominator and write it down) |
 | `html_ext_css.html` (2 external stylesheets) | `nb_extCSS=2` |
-| `html_login_ext_action.html` (form action to another domain) | `login_form=1`, `sfh=1` |
-| `html_login_empty_action.html` (`action=""` / `#` / `about:blank`) | `sfh=1` |
-| `html_mailto_form.html` | `submit_email=1` |
+| `html_login_ext_action.html` (form action to another domain) | `login_form=1` |
+| `html_login_empty_action.html` (`action=""` / `#` / `about:blank`) | `login_form=1` |
 | `html_ext_favicon.html` | `external_favicon=1` |
 | `html_media_mix.html` (img/video, internal + external) | `ratio_intMedia`, `ratio_extMedia` correct |
 | `html_hidden_iframe.html` (0×0 / `display:none`) | `iframe=1` |
-| `html_popup_prompt.html` (`window.open`/`prompt`) | `popup_window=1` |
-| `html_unsafe_anchors.html` | `safe_anchor` matches expected share |
-| `html_onmouseover_status.html` | `onmouseover=1` |
-| `html_rightclick_block.html` | `right_clic=1` |
 | `html_no_title.html` / `html_empty_title.html` | `empty_title=1` |
 | `html_domain_in_title.html` | `domain_in_title=1` |
 | `html_copyright_domain.html` | `domain_with_copyright=1` |
 | `html_meta_script_link_links.html` | `links_in_tags` correct |
 | `html_malformed.html` (broken tags, 5 MB, deep nesting) | no crash; capped; extractor errors logged, `-1` where failed |
 | `html_evil_strings.html` | no raw strings in output; validator passes |
-| `html_empty.html` (JS-only shell, tiny body) | `html_bytes` small, `script_count>0`, flagged near-empty |
+| `html_empty.html` (JS-only shell, tiny body) | `html_bytes` small, `script_count>0`, flagged near-empty; `page_fetched` decision documented (§13.10) |
+| `parked_or_challenge.html` (bot wall / parked page) | `html_available=0`, `page_fetched=0` (routes to `url_only`) |
+
+Also test the **hand-off to the model**: feed a fixture row (14 URL-text + `page_rank` + 12 + 4 + `has_url` + `page_fetched`) to `route_p_u(url_only, full, frame)` using the frozen extractors, and check that a `page_fetched=1` row reports `extractor == "full"`, a `page_fetched=0` row reports `url_only`, and neither raises on `-1` values. A missing or misspelled column must fail the test, not be skipped.
 
 Pass criteria: all assertions green; zero files created outside `/var/lib/lejet`; no browser/zombie processes remain (`pgrep -f chrome` returns nothing in v1).
 
@@ -1550,7 +1568,7 @@ Run from the analysis VM as `ops` (`infra/analysis/preflight.sh` automates these
 | 20 | Fork-bomb contained | run capped `TasksMax=64` with `stress-ng --fork 200` | contained, VM stays responsive |
 | 21 | Gateway cannot be reached from analysis except DNS/NTP | `timeout 3 bash -c '</dev/tcp/10.77.0.1/22'` | fail |
 | 22 | Clock sane | `chronyc tracking` ; `date -u` | offset < 1 s |
-| 23 | Firewall ruleset unchanged | `sudo nft list ruleset \| sha256sum` equals recorded hash | match |
+| 23 | Firewall ruleset unchanged | `sudo nft -s list ruleset \| sha256sum` equals recorded hash (use `-s`, stateless: without it the packet counters change the hash every time) | match |
 | 24 | Log capture works | gateway `journalctl -k \| grep lejet-egress \| tail` after test #8; also confirm a blocked attempt (#3) appears as `lejet-blocked-private` | entries present |
 | 25 | DNS is not threat-filtered | resolve a domain currently listed in a phishing feed, via the gateway and via a known-unfiltered resolver | same answer (no NXDOMAIN) |
 | 26 | Stale-clock recovery | after a snapshot restore, run the §17.1 clock step; `wg show` | recent handshake, offset < 1 s |
@@ -1560,7 +1578,7 @@ Record the output of each test in `docs/run_log_template.md`. A single failure =
 ### Level 3 — Small phishing pilot (50 phishing + 50 benign)
 - Source: freshest public feed entries (pick URLs listed **within the last 24 h** to maximize liveness) + Tranco benign.
 - Run one batch of 100. Watch live: gateway egress log, `htop` on the VM, gateway `tcpdump` byte counts.
-- Review outputs: liveness rate, failure-reason distribution, feature sanity (e.g., phishing pages with `has_password_field`), crash rate, mean duration.
+- Review outputs: liveness rate, failure-reason distribution, feature sanity (e.g., phishing pages with `login_form = 1`, `page_rank` near 0 for new phishing domains), the share of rows with `page_fetched = 1`, crash rate, mean duration. Run `route_p_u` on the rows and compare the `full` and `url_only` P values; a large systematic gap on the benign half is a warning (class-source bias, §29).
 - Check the abort criteria (§18.2) were never tripped.
 - Revert snapshot; confirm the VM is clean.
 
@@ -1661,7 +1679,7 @@ Watch from a second terminal:
 
 After data collection is complete:
 - [ ] Power off VMs; delete VM disks: `VBoxManage unregistervm lejet-an --delete`, same for gateway.
-- [ ] Securely delete `C:\LeJetData\quarantine\*` (keep only validated `clean/` data and manifests).
+- [ ] Securely delete `D:\LeJetData\quarantine\*` (keep only validated `clean/` data and manifests).
 - [ ] Delete pcaps and gateway logs.
 - [ ] Revoke/rotate the VPN config; delete `wg0.conf` copies.
 - [ ] Remove `known_hosts_lejet` entries and the lab SSH key.
@@ -1708,7 +1726,7 @@ After data collection is complete:
 - [ ] Windows updated; Defender and Tamper Protection on; Controlled Folder Access on for thesis/project folders
 - [ ] Offline backup of thesis + code done (not just OneDrive)
 - [ ] Home public IP noted (for the VPN test)
-- [ ] ≥ 50 GB free on `C:` (§7.6) **or** lab on an external SSD; VM folder and `C:\LeJetData` are outside OneDrive
+- [ ] Lab on the `D:` SSD (≥ 50 GB free there); `D:\VMs\LeJet` and `D:\LeJetData` are outside OneDrive. Windows itself still needs 10–15 GB free on `C:`
 - [ ] VirtualBox updated to latest 7.x; no Extension Pack; no Guest Additions in either VM
 - [ ] Ubuntu ISO checksum (and signature) verified
 - [ ] Lab-only SSH key created with a passphrase; host `known_hosts_lejet` configured
@@ -1717,9 +1735,9 @@ After data collection is complete:
 **C. Repo and code (§8, §13, §14, §16)**
 - [ ] `.gitignore` in place; `wg0.conf`, data, VM images, ISO excluded; only `wg0.conf.example` committed
 - [ ] Hashed requirements (`host.txt`, `vm.txt`) generated and installed
-- [ ] The 55 URL-string features implemented with the dataset's exact column names, computed on the **raw** URL (§13.2)
-- [ ] **Level 0a parity test ≥ 99% exact match per feature**; the two open questions settled (`nb_redirection`/`nb_external_redirection` string-based or not; brand/keyword/suspicious-TLD lists reproduced)
-- [ ] The 20 HTML feature definitions written down from the paper's feature table, with every ambiguity noted; fixtures pass (§16 Level 0)
+- [ ] The 14 URL-text features come from `src/features/link_features.py` (not re-implemented), computed on `normalize_link(raw)` (§13.2); output uses the cleaned set's column names
+- [ ] **Level 0a parity test green** (`tests/test_link_features.py`: 13 features ≥ 99.9%, `random_domain` ≈ 92%, also green inside the VM)
+- [ ] The 12 HTML feature definitions written down from the paper's feature table, with every ambiguity noted; fixtures pass (§16 Level 0); `page_fetched` set only for real pages
 - [ ] RDAP stage implemented: IANA bootstrap cached, `-1` on failure, `rdap_ok`/`rdap_skipped` set; `domain_registration_length` definition settled **(open, V17)**
 - [ ] Final-URL rule implemented (§13.2b): `final_*` and `orig_*` columns, `chain_complete`, `final_is_popular`
 - [ ] Free-hosting handling implemented (§13.2c): `free_hosting_suffixes.txt` reviewed, private-suffix registrable domain, RDAP skipped for flagged hosts, unit tests pass
@@ -1747,17 +1765,17 @@ After data collection is complete:
 - [ ] Built; internal network only (no NAT/bridged/host-only); IPv6 disabled; no `vbox` kernel modules
 - [ ] Local nftables loaded; SSH only from `10.77.0.1`; only expected listeners (`ss -tulpn`)
 - [ ] `fetcher` user has no shell/sudo; run script uses `systemd-run` limits; extra sandboxing properties added **(open, S12)**
-- [ ] Scoped passwordless `sudo` (exact commands only) so scripts work over non-interactive SSH **(open, S14)**
+- [x] Scoped passwordless `sudo` (exact commands only) so scripts work over non-interactive SSH **(S14 done 2026-10-12: root-owned helpers plus one rule, §21.8 item 5.12)**
 - [ ] Pinned, hashed Python packages installed; code copied in; `python -I` used
 - [ ] `tldextract` configured offline with private suffixes (no runtime download, no cache dir)
-- [ ] *(optional browser stage)* AppArmor profile or sysctl fallback; Playwright/Chromium installed; `chromium_sandbox=True`; no `--no-sandbox` anywhere
+- [x] *(optional browser stage)* AppArmor profile or sysctl fallback; Playwright/Chromium installed; `chromium_sandbox=True`; no `--no-sandbox` anywhere (AppArmor profile + self-test, 2026-10-12)
 
 **F. Verification (§16)**
 - [ ] Level 0a (URL parity) green
 - [ ] Level 0 (local fixtures, incl. all HTML fixtures and server-side HTTP fixtures) green
 - [ ] Level 2 isolation tests all pass **including 25 (DNS not threat-filtered) and 26 (stale-clock recovery)**; kill-switch test done manually
 - [ ] `preflight.sh` passes and writes a fresh token; the fetcher refuses to start without it
-- [ ] Level 1 safe external pilot (~20 URLs) green; RDAP success rate **per TLD measured, `.ph` included**
+- [x] Level 1 safe external pilot (22 URLs) green (see the Level 1 line in §21.8 for the numbers); RDAP success rate per TLD: .com/.org/.net/.edu/.gov/.uk ok, `.ph` not available (2 hosts), small sample
 - [ ] Firewall ruleset hash recorded for the preflight check
 
 **G. Snapshots**
@@ -1816,7 +1834,7 @@ After data collection is complete:
 - Treat *all* output, including RDAP responses and page strings, as hostile data.
 - Keep the lab SSH key and VPN config out of git and out of OneDrive.
 - Keep URL lists defanged in documents and chats.
-- Compute the 55 URL-string features on the **raw** URL and the web features on the **final** URL.
+- Compute the 14 URL-text features on the **original SMS link** and the web features (HTML, RDAP/DNS, `page_rank`) on the **final** URL.
 - Record the label source and the sampling inputs for every row.
 - Report results with and without dead/blocked/free-hosting rows.
 
@@ -1836,6 +1854,177 @@ After data collection is complete:
 - [ ] Final batch accepted; data frozen; manifests archived
 - [ ] Decommissioning done (§19)
 - [ ] Thesis sections written: architecture and safeguards (§2, §16, §18), data policy (§6), feature definitions and parity result (§14, §16), limitations (§20, §27), sampling and bias diagnostics (§29)
+
+### 21.8 Phase-by-phase progress tracker
+Legend: `[x]` done and verified, `[ ]` not done, `[-]` skipped on purpose. Last updated 2026-10-11. Tick a box only with evidence. This groups the work by phase and subphase; 21.1–21.7 above remain the gate checklists.
+
+#### Phase 0: Governance and approvals (§6)
+- [x] 0.1 Written adviser approval to contact live phishing infrastructure from an isolated VM (save the reply)
+- [x] 0.2 Data policy chosen (option A/B/C/D, default A) and written in the thesis ethics section
+- [x] 0.3 Fetcher ethics rules written down (load pages only; no forms, credentials, clicks, downloads, exploitation)
+- [x] 0.4 Freeze window (fetch date range) chosen and recorded
+- [x] 0.5 URL provenance rule agreed (only dataset or public-feed URLs)
+- [x] 0.6 University policy on contacting malicious infrastructure checked
+- [x] 0.7 Stop conditions (§18.2) agreed before the first run
+
+#### Phase 1: Host hardening and prep (§7)
+**1.1 Windows (§7.1)**
+- [x] Windows Update fully applied (no reboot pending; re-check for newer updates)
+- [x] Real-time protection on; Tamper Protection on
+- [x] Controlled Folder Access on, `D:\Le-Jet` protected (add the thesis documents folder if it is elsewhere)
+- [-] Standard (non-admin) daily account (skipped on purpose; UAC is on)
+- [x] Offline backup of thesis + code on a USB drive, then unplugged
+- [x] Home public IP noted (from the host browser)
+- [x] Docker Desktop closed; `wsl --shutdown` run
+
+**1.2 VirtualBox (§7.2)**
+- [x] VirtualBox 7.2.20 installed (confirm it is still the latest 7.x before the first run)
+- [x] Extension Pack removed
+- [x] Guest Additions confirmed absent in the lab VMs (existing VMs show none attached; confirm inside the lab VMs once built)
+- [x] Machine folder set to `D:\VMs\LeJet`
+- [x] Free disk checked (D: 860 GB, C: 98 GB)
+
+**1.3 Host folders (§7.3)**
+- [x] `D:\VMs\LeJet`
+- [x] `D:\LeJetData\iso`, `input`, `quarantine`, `clean`, `manifests` created (outside OneDrive)
+
+**1.4 Verify downloads (§7.4)**
+- [x] Ubuntu 24.04 server ISO downloaded to `D:\LeJetData\iso` (24.04.5)
+- [x] SHA256 matches `SHA256SUMS` (97f3d7ff…fe01cafae0fd8)
+- [ ] GPG signature of `SHA256SUMS` checked (skipped for now: HTTPS download from releases.ubuntu.com, hash verified; optional, do later with Gpg4win)
+
+**1.5 Lab SSH key (§7.5)**
+- [x] `lejet_ed25519` created with a passphrase; used only for the lab VMs
+
+**1.6 Free disk space on C: (optional, §7.6)**
+- [ ] `C:` has about 15 GB free or more (currently 98 GB, fine)
+
+#### Phase 2: Repo skeleton (§8)
+- [x] 2.1 New folders and docs created (`docs/run_log_template.md`, `docs/threat_model.md`, `infra/{vm,gateway,analysis}/`, `scripts/`, `tests/fixtures/`)
+- [x] 2.1 New `src/lejet/` modules written (`schema.py`, `domains.py`, `settings.py`, `storage.py`, `pipeline.py`, `cli.py`, `parse_pool.py`, `stages/{dns,rdap,http}_stage.py`, `features/{html,external}_features.py`); I used plain dataclasses/dicts instead of pydantic (fewer dependencies in the VM)
+- [x] 2.1 Import style settled: `tests/conftest.py` puts `src` and the repo root on `sys.path`; on the VM a `.pth` file in the venv does the same (works under `python -I`)
+- [x] 2.2 `git status` shows none of: `wg0.conf`, data, VM disks, ISOs, `.env`, `known_hosts_lejet`
+- [x] 2.3a VM lock file with hashes: `requirements/vm.txt` (snapshot) and the authoritative copies inside each bundle, generated by `scripts/build_vm_bundle.py` (offline wheels for Python 3.12 / linux, `nostril` built from its pinned commit) and checked by `scripts/verify_vm_bundle.py` (manifest, hashes, complete dependency closure)
+- [ ] 2.3b Host lock file (`host.txt`): not generated; the host still uses `requirements.txt` (only the VM needed the hashed install)
+- [ ] 2.3 Versions to record per run noted (pip freeze, kernel, VirtualBox, Chromium if used)
+
+#### Phase 3: Create the two VMs (§9)
+- [x] 3.1 `infra/vm/create_vms.ps1` written and run (`lejet-gw`: NAT + `lejet-net`; `lejet-an`: `lejet-net` only)
+- [x] 3.2 Settings checked on both VMs (via `VBoxManage showvminfo`): clipboard, drag and drop, VRDE, 3D, audio, USB, serial all off; no shared folders; no Bridged or Host-Only. (Optionally re-check in the GUI.)
+- [x] 3.3a `lejet-gw`: Ubuntu Server 24.04 (minimized) installed; user `ops`; OpenSSH; no snaps; ISO ejected
+- [x] 3.3b `lejet-an`: Ubuntu Server 24.04 (minimized) installed; user `ops`; no snaps; ISO ejected. OpenSSH: **to confirm via the gateway** (install later through the gateway if missing)
+- [x] 3.4a `lejet-gw`: static netplan applied (`10.77.0.1/24`); IPv6 disabled; SSH password and key login tested from the host. Note: after a reboot Ubuntu re-enables the per-interface IPv6 switch and a link-local `fe80::` address appears, so both VMs' netplan files carry `link-local: []` on every interface (verified after reboot on both)
+- [x] 3.4b `lejet-an`: static netplan applied (`10.77.0.2/24`, default route via `10.77.0.1`); IPv6 disabled (`/etc/sysctl.d/60-lejet-ipv6.conf`)
+- [x] 3.5 Baseline snapshots `gw-os-installed`, `an-os-installed` (taken 2026-10-11, both VMs powered off, ISO ejected)
+
+#### Phase 4: Gateway VM configuration (§10)
+- [x] 4.1 `apt full-upgrade` and packages installed (nftables, wireguard, unbound, chrony, tcpdump, unattended-upgrades, jq)
+- [x] 4.2 SSH hardened (key-only, `AllowUsers ops`, `PermitOpen 10.77.0.2:22`); key login tested from the host; password login refused. Note: the file is `/etc/ssh/sshd_config.d/00-lejet.conf` (not `99-`), because the installer's `50-cloud-init.conf` sets `PasswordAuthentication yes` and SSH uses the first value it reads
+- [x] 4.3 Kernel settings in `/etc/sysctl.d/70-lejet-gw.conf` applied (verified: ip_forward=1, rp_filter=1, redirects/source-route off, log_martians=1, IPv6 off)
+- [x] 4.4.0 WireGuard config obtained from provider (Mullvad, Manila `ph-mnl-wg-001`, saved as `D:\LeJetData\wg0.conf`); provider terms checked 2026-10-11; support email sent, **reply pending** (add it to `docs/` when it arrives)
+- [x] 4.4.1 WireGuard up with kill switch; no `DNS=`/`PostUp`/`PostDown`; endpoint is an IP; exit IP differs from home IP (exit `129.227.118.172`, Manila, `mullvad_exit_ip: true`; kill switch tested: with `wg0` down the gateway reaches nothing). **MTU note:** big downloads from the analysis VM stalled at the default `wg0` MTU 1420; lowering it to 1280 fixed it. Make it permanent by adding `MTU = 1280` under `[Interface]` in `/etc/wireguard/wg0.conf` (status: done, `MTU = 1280` is now in `wg0.conf` and takes effect at the next tunnel start)
+- [x] 4.5 nftables loaded (default drop, private ranges dropped and logged, rate limit, MSS clamp, egress logging); file kept in `infra/gateway/nftables.conf`, enabled at boot. The `lejet-*` log lines still have to be seen in Level 2 tests 24 once the analysis VM generates traffic
+- [x] 4.6 Unbound uses a non-filtering upstream (Cloudflare 1.1.1.1/1.0.0.1 over DoT); rebinding protection verified (`localtest.me` returns no answer); config kept in `infra/gateway/unbound.conf`; gateway resolves through 127.0.0.1; queries logged in the journal. Note: Unbound still returns AAAA (IPv6) records to clients even with `do-ip6: no`, so the pipeline must connect over IPv4 only
+- [x] 4.7 chrony serves the analysis VM; offset under 1 s (offset 0.0001 s, 6 sources via the VPN; listening on `10.77.0.1:123` only; settings in `/etc/chrony/conf.d/lejet.conf`; the analysis VM's sync from the gateway is checked in Phase 5)
+- [x] 4.8a Packet-capture and log directory created (`/var/log/lejet`, mode 750); `tcpdump` tested; journal is persistent. Grep firewall logs with the specific prefixes (`lejet-egress`, `lejet-blocked`, `lejet-ratelimit`), because the hostname `lejet-gw` appears in every journal line
+- [ ] 4.8b Log-pull procedure written (script to pull the gateway journal and pcaps before each snapshot revert)
+- [x] 4.9 Snapshot `gw-configured-clean` (taken 2026-10-11, VM powered off; automated Level 2 tests were green; reboot of the gateway verified first)
+
+#### Phase 5: Analysis VM configuration (§11)
+- [x] 5.1 First boot and updates (via the gateway). Note: the first `apt update` hung on big files until the gateway's `wg0` MTU was lowered to 1280 (see the MTU note under 4.4.1)
+- [x] 5.2 Time synced from the gateway (`^* _gateway`, offset about 0.00001 s, also stable with the local firewall on)
+- [x] 5.3 SSH hardened; only the gateway may connect (`/etc/ssh/sshd_config.d/00-lejet.conf`: key-only, no root, `AllowUsers ops`, no forwarding; key login works, password login refused with `Permission denied (publickey)`; the local firewall limits SSH to `10.77.0.1`)
+- [x] 5.4a Local nftables loaded and enabled (`infra/analysis/nftables.conf`, table `inet lejet_an`); tested: DNS, web via VPN work; `1.1.1.1:22`, `10.0.2.2:445`, `10.77.0.1:22` blocked
+- [x] 5.4b Only expected listeners (`ss -tulpn`) checked: sshd :22 (firewall limits it to `10.77.0.1`), chrony control port on loopback :323, systemd-resolved stub on loopback :53; nothing else
+- [x] 5.5 Unneeded services removed or disabled (snapd purged, avahi/cups off, `ctrl-alt-del` masked); `vboxguest` (built into the Ubuntu kernel) blacklisted in `/etc/modprobe.d/lejet-no-vbox.conf`, verified after reboot: no `vbox` modules, firewall and chrony came back by themselves. Note: do not run `apt autoremove` blindly (`ubuntu-server-minimal` was removed with snapd)
+- [x] 5.6 Unprivileged `fetcher` user (no shell, no sudo) and directories created (verified: `nologin`, locked password, not allowed to run sudo, cannot write to `/etc` or `/opt`, can write to `/var/lib/lejet/work`)
+- [x] 5.7a Offline bundle built and verified on the host (19 runtime wheels + 6 test wheels, hashes, closure complete); its test subset passes (373 passed, 1 skipped) with pandas/numpy/scikit-learn blocked, which simulates the VM
+- [x] 5.7b Bundle installed on the VM (`scripts/deploy_to_vm.ps1`: pinned wheels, code in `/opt/lejet`, `.pth`, RDAP bootstrap) and the test suite run INSIDE the VM with `python -I`: **375 passed, 1 skipped** (2026-10-12). The first in-VM runs found 3 real problems that the host could not show: (1) the Linux lxml turns garbage such as `<` or NUL bytes into an empty page while the Windows build raises, so `parse_document` now returns `None` when the text has no tag-like start; (2) two pool timeout tests assumed a 2-3 MB page is slow to parse, which is false on a fast VM, so the worker has a test-only `LEJET_TEST_PARSE_DELAY` and `_Worker.call` starts its timer before the page is written; (3) `lejet-export.sh` was missing from the bundle (the packer now fails loudly via the verifier)
+- [x] 5.8 *(optional browser stage)* Chromium for Playwright installed (2026-10-12): `playwright==1.63.0` is hash-pinned in the offline bundle; the browser itself is fetched once by `infra/analysis/install_browser.sh` from Playwright's CDN over HTTPS into `/opt/lejet/browsers` (root-owned) and every file is hashed into `/opt/lejet/browsers/SHA256SUMS` (authenticity rests on TLS to the CDN: Playwright publishes no signed hash list)
+- [x] 5.9 *(optional browser stage)* Chromium sandbox enabled on Ubuntu 24.04; no `--no-sandbox`: an AppArmor profile (`/etc/apparmor.d/lejet-chromium`, written by the installer) grants `userns` to exactly the Playwright Chromium binaries; `chromium_sandbox=True` and a code guard (`chromium_args_ok`) refuse any sandbox-off switch; `python -I -m lejet.browser_selftest` proves from `/proc` that no Chromium process runs without its sandbox (**BROWSER SELFTEST OK**)
+- [x] 5.12 Root-owned helpers and one passwordless sudo rule (`/etc/sudoers.d/91-lejet-helpers`, checked by `visudo` before install): `lejet-sudo-preflight`, `-install-urls` (validates every line of the push file), `-batch`, `-export`, `-shots`, plus `systemctl poweroff`. Replaces the open S14 item: nothing `ops` can edit ever runs as root without a password
+- [x] 5.13 `scripts/run_batch.ps1`: the whole run in one command (build push file, push, preflight, run, export, pull, validate, report, optional `-Screenshots`, optional `-Reset`), with the SSH key in the Windows ssh-agent and BatchMode; sets BOTH VM clocks from the host at the start of every run (see the clock finding below)
+- [x] 5.14 Finding, VM stability: the analysis VM hung at boot ("Loading essential drivers") with 4 vCPUs every time and about half the time with 2 under VirtualBox's Windows (Hyper-V/NEM) backend; **1 vCPU booted 7 of 7 times**, as the gateway always has. The vCPU count is part of the snapshot, so `an-configured-clean` was retaken at 1 vCPU
+- [x] 5.15 Finding, clock: after the host slept, the gateway clock was 6977 s (about 2 h) behind and chrony only slewed. Upstream encrypted DNS then failed intermittently (certificates look "not yet valid"): 14 of 22 pages became `dns_timeout`. Fixed by stepping both clocks from the host; run_batch.ps1 does it every run. Test 26 (stale-clock recovery after a snapshot restore) is covered the same way
+- [x] 5.10a `infra/analysis/lejet-run.sh` (refuses to start without a fresh preflight token; `fetcher` user; systemd memory/CPU/task/file limits; read-only file system except `/var/lib/lejet`; 4 h ceiling) and `lejet-export.sh` written and syntax-checked
+- [x] 5.10b First real run on the VM (`ssh -t lejet-an ~/lejet-run.sh b0001`, `ops` password for `systemd-run`; 2026-10-12): 22 benign URLs, 18 done, 3 `http_4xx`, 1 `too_many_redirects`. Fixed on the way: `lejet-run.sh`/`lejet-export.sh` tested `-f` on files `ops` cannot see (now `sudo test -f`); `push_urls.ps1` counted lines with a redirect that ran as `ops`
+- [x] 5.11a Snapshot `an-configured-clean` (first taken 2026-10-11 before the pipeline; **retaken 2026-10-12** with the pipeline v1 installed, tests green, pilot data wiped, VM powered off). Preflight 18 PASS / 0 FAIL / 8 SKIP, ruleset hash recorded
+- [ ] 5.11b Monthly snapshot refresh schedule set (see §21.4)
+
+#### Phase 6: Management access and data transfer (§12)
+- [x] 6.1 Host SSH config (`lejet-gw`, `lejet-an` via jump) with `known_hosts_lejet` (`~/.ssh/config`; fingerprints recorded; analysis VM fingerprint checked against the VM console)
+- [ ] 6.2 Direction rules understood (host pushes in, host pulls out; the VM never connects to the host)
+- [x] 6.3 `scripts/push_urls.ps1` works (file is `url_id<TAB>raw_url`; sha256 and line count recorded). Real push done 2026-10-12: 22 lines, sha256 on the VM equal to the host's
+- [x] 6.4 Export and pull procedure works (JSONL.gz + manifest + sha256, pulled into quarantine). Real pull done 2026-10-12: sha256 verified, `VALIDATION OK: 22 rows`, `D:\LeJetData\clean\b0001.clean.jsonl` written
+- [x] 6.5 `scripts/validate_output.py` written and tested with malicious fixtures (48 cases: formula injection, ANSI/bidi, oversized lines, zip bomb, extra/missing fields, NaN/Infinity, duplicates, wrong types and ranges, bad sha256, row-count mismatch) and chained with the real exporter (`tests/test_chain_validator.py`)
+
+#### Phase 7: The inspection pipeline (§13, §14, §15)
+- [x] 7.1 Stage 0: normalization and safety gate (private/obfuscated IPs, ports, credentials in URL); the gate runs again on every redirect hop. Test-only `allow_loopback` added to `urlnorm.normalize`
+- [x] 7.1b Final-URL rule (§13.2b) and free-hosting handling (§13.2c): `final_*` and `orig_*` columns, `final_is_popular` (flag from a frozen list; none supplied yet), RDAP never requested for flagged hosts (tested)
+- [x] 7.2 Stage 1: DNS (`dns_record`; direction 0 = has records, 1 = none, -1 = failure; rebinding backstop with `safety.is_ip_allowed`)
+- [x] 7.3 Stage 1b: RDAP (IANA bootstrap file, cache, 1 request/s per server, one retry, `-1` on failure, `rdap_ok`/`rdap_skipped`; `domain_registration_length` = days until expiry, settled by the public set's medians). **Live coverage, first measurement (Level 1 pilot b0001, 2026-10-12): RDAP worked for .com/.org/.net/.edu/.gov/.uk hosts (20 of 22 rows) and failed for both .ph hosts tried (`up.edu.ph`, `gov.ph`): the .ph registry has no usable RDAP, so registration features for .ph domains will be -1. Report this as a limitation; more TLDs are still to be measured on a bigger sample**
+- [x] 7.4 Stage 3: HTTP probe (manual redirects, decoded 2 MB cap, 10 MB announcement refusal, wall-clock deadlines, per-URL cookie jar, HTTP/1.1, gzip only), tested against a local server
+- [x] 7.5 Static HTML features (12): definitions and every ambiguity in `docs/html_feature_definitions.md`; process pool with kill-on-timeout (`parse_pool.py`); linear-time regexes; **to be compared with the paper's feature table by you**
+- [x] 7.6 Stage 5: feature extraction; the 14 URL-text features come from `src/features/link_features.py` (not re-implemented), computed on the original link
+- [x] 7.7 Stage 6: persist (SQLite WAL, one transaction per URL, resume), JSONL.gz export, manifest, sha256 sidecar
+- [x] 7.8 Concurrency and politeness limits set (20 concurrent, 2 starts/s, seeded jitter and shuffle, one request per registrable domain)
+- [x] 7.9 Failure taxonomy implemented (plus `read_timeout`); exactly one row per URL with every feature key (tested)
+- [ ] 7.10a Detectors: challenge/parked/default pages written and tested on fixtures; **their rates on real data are still to be reported (V4)**
+- [ ] 7.10b Canary URLs (known-answer URLs added to every batch) not defined yet (V14)
+- [x] 7.11 `page_rank` host-side lookup (`scripts/lookup_page_rank.py`; key from a file outside the repo, never printed; failures are -1; tested against a fake API; **not run against the real service: needs your key**)
+- [x] 7.12 *(optional)* Browser render stage = real screenshots (off by default; `run_batch.ps1 -Screenshots`): `src/lejet/stages/shot_stage.py`, `pngcheck.py`, `cli screenshots`, helper `lejet-sudo-shots`, host `validate_shots.py`, `make_gallery.py`, `pull_shots.ps1`. Safeguards: unprivileged `fetcher`, own systemd unit (3 GB, 2048 tasks, 2 h), sandbox on, a fresh context per page, **a local guard proxy (`guard_proxy.py`) is the SSRF guard**: every connection Chromium makes (page, redirects, sub-resources, WebSockets) goes through one proxy per page that resolves each name itself and refuses, at connect time, anything that is not a public address on port 80/443 (any non-public answer refuses the whole name: DNS rebinding; numeric host tricks such as `2130706433` or `0x7f.1` refused; 80 adversarial tests). Design history, both found by real-browser runs: (1) an in-browser request filter never saw redirect targets (Chromium follows redirects natively; the connection to a private address was stopped only by the VM firewall); (2) the fix of re-fetching every request through Playwright's Node client (`route.fetch`) broke bot-protected phishing pages (`ECONNRESET`, different TLS fingerprint): only 36 of 88 attempts captured on the smishing batch, 24 of the failures were pages the plain fetch loaded. The proxy keeps Chromium's native network stack and puts the check where it cannot be bypassed. The 10 links that failed under (2) all captured under the proxy. Downloads/popups/dialogs/permissions blocked, strict PNG structure check in the VM and again on the host, archive validated member by member, inert image-only gallery. 701 host tests + 69 real-browser/stage tests in the VM. First real run: b0006, 22 benign URLs, 17 fetched, **14 of 17 screenshots in the first run, 17 of 17 after a fix to the request handler** (checked by hand in one browser session); python.org and bbc.co.uk looked exactly like the live pages. **Capture-all rule (b0007): every URL that is safe to open gets an attempt, not only those the plain fetch loaded** (`capture_target`: skipped only for refused-by-gate and non-existent DNS names; failed TLS tolerated; one retry): **21 of 22 captured**; the one miss, up.edu.ph, is a true redirect loop. The block pages are evidence: gov.ph shows Cloudflare "Error 1005: the owner has banned the ASN (21859)", i.e. some sites refuse the VPN provider's whole address range (a limitation to report; plain-fetch 403s on gov.ph, w3.org, inquirer.net came from this kind of blocking). `scripts/sync_results.ps1` copies validated reports, data and screenshots into `D:\Le-Jet\results\<batch>\` (git-ignored except the .md reports)
+- [x] 7.15 Team smishing links (two spreadsheets, 113 links, 2 duplicates, 111 unique, 36 shorteners) cleaned by `scripts/clean_smishing_links.py` (invisible characters, newlines, defanged text, the classic `trusted.com@evil.com` form kept and flagged, duplicates merged, reviewer names not copied) and run through the lab (batch smish01: 47 loaded, 32 reachable but blocked, 32 not live). **The team's labels vs the lab:** of 29 "live", 18 load; of 48 "dead", 10 load; of 11 "unsure", 7 load. `scripts/build_smishing_workbook.py` writes one workbook (Summary, Cleaned, Live, Reachable-blocked, Not live, Unsure) with every URL defanged and a caveat column: 7 of the 47 loaded pages are on free hosting platforms, end on the shortener's own page, or end on a very popular site (page rank 9-10), so they are probably not usable phishing pages. `edgeone.dev`, `edgeone.app`, `eu.cc` were added to the free-hosting list from this data. **Second run (smish02, guard-proxy screenshots): 49 loaded, 33 reachable-blocked, 29 not live; 80 of 88 screenshot attempts captured** (23 links not attempted: 19 names that do not exist in DNS, 4 redirects into forbidden space; the 8 failures: 5 silent servers, 1 TLS error, 2 other). **Reproducibility: the plain-fetch result was identical for 109 of the 111 links across the two runs** (the 2 differences were sites that erred in run 1 and loaded in run 2). Page rank answered for 42 domains. Screenshots: `D:\LeJetData\clean\shots\smish02\index.html`; workbook: `smishing_links_cleaned.xlsx`
+- [x] 7.14 `page_rank` (host side, Open PageRank): `scripts/lookup_page_rank.py` now reads the key from a `.env` file outside the repo (`--env-file D:\LeJetData\secrets\.env`; the variable `OPENPAGERANK_API_KEY`, then `--key-file`; the value is never printed or logged, bad files are refused without echoing it; 32 tests). **Run for real on 2026-10-12 against batch b0007: 22 of 22 domains ranked, 0 failed batches**, range 7 to 10 for benign sites; the output `b0007.model_input.csv` has all 31 model columns. Free-hosting platform rank caveat (§14.0.2) still applies
+- [x] 7.13 Certificate-age columns for TLDs without RDAP (`ct_first_cert_days`, `ct_ok`, `registration_unavailable_tld`; crt.sh with a start-of-run health probe, one request at a time, no retry after a timeout, circuit breaker). `.ph` has neither RDAP nor port-43 WHOIS (IANA's WHOIS field for `.ph` is empty); the 13 no-RDAP rows of the b0002-b0004 pilots (11 `.ph`, 2 `.jp`) all got `registration_unavailable_tld = 1`. **crt.sh itself was down (502 / timeouts, also from the host) on 2026-10-12, so the certificate age has not yet been seen on real data**; Cert Spotter's free index only goes back to about September 2025, so it is not a substitute
+- [x] 7.13 Per-stage timing (`stage_ms_*`) recorded
+
+#### Phase 8: Test ladder (§16). Do not skip levels.
+- [x] Level 0a: URL-text parity test green on the host (24 tests + 41 golden-value tests, `tests/test_link_features_golden.py`) **and inside the VM** (the golden test is the pandas-free version that runs there; it passed inside the VM on 2026-10-12 as part of the 375 tests)
+- [ ] Level 0: local-fixture tests green. Host: the complete suite passes (HTML fixtures, server-side HTTP fixtures, DNS/RDAP fakes, storage, CLI, validator, `route_p_u` hand-off with tiny forests). **Inside the VM: still to do** (`deploy_to_vm.ps1` runs it)
+- [ ] Level 2: all 26 isolation tests pass (including 25 DNS not filtered, 26 stale-clock recovery); kill switch tested by hand. Status 2026-10-11: automated tests 18 PASS / 0 FAIL / 8 SKIP; 24 done by hand (with the analysis firewall flushed for a few seconds, the gateway logged `lejet-blocked-private 10.77.0.2 -> 10.0.2.2:445`, `lejet-blocked-other ... -> 1.1.1.1:22` and `lejet-egress ... :443`); still to do by hand: 25 (DNS not filtered), 26 (stale clock after a snapshot restore); 13 (kill switch) was shown on the gateway; 4, 11, 12 optional; 18 N/A in v1
+- [ ] `preflight.sh` passes and writes a fresh token (done: `infra/analysis/preflight.sh`, token in `/run/lejet-preflight-ok`); the fetcher refuses to start without it (to do: check the token in `lejet-run.sh`, §11.10)
+- [x] Firewall ruleset hash recorded (analysis VM: `/etc/lejet-ruleset.sha256` from `nft -s list ruleset`; gateway: `/etc/lejet-ruleset.sha256` from `nft -s` of its own tables `inet lejet` and `ip lejet_nat` only, because `wg-quick` adds its own table, which would change the hash after a reboot)
+- [x] Level 1: safe external pilot (22 benign URLs, batch b0001, 2026-10-12): pushed, run, exported, pulled and validated end to end; 18 done, 3 `http_4xx` (w3.org, inquirer.net, gov.ph answered 403 to the bot), 1 `too_many_redirects` (up.edu.ph, 9 hops: to be checked whether a real loop). RDAP: 20/22 ok, both .ph hosts failed (no RDAP for .ph). Only 2 `.ph` hosts and 1 run: small sample
+- [ ] Level 3: phishing pilot (50 phishing + 50 benign) reviewed; abort criteria never tripped
+- [ ] Level 4: scale-up 500, then 2,000, then the full 10,000+ run
+
+#### Phase 9: Batch operating procedure (§17, §18)
+**9.1 Before every batch**
+- [ ] Batch built from the frozen matched list (≤ 1,000 URLs, interleaved, ≤ 20 per domain); canaries added
+- [ ] Host checks: Windows Update/Defender ok, offline backup recent, Docker/WSL stopped
+- [ ] VMs off, snapshots reverted, gateway started first
+- [ ] Clocks fixed from the host; WireGuard restarted
+- [ ] VPN handshake recent; exit IP differs from home IP
+- [ ] Upstream DNS still non-filtering; `preflight.sh` green; firewall hash unchanged
+- [ ] `urls.txt` and RDAP cache pushed; packet capture running; run log opened
+
+**9.2 Run and monitor (§17.2, §18.1)**
+- [ ] Gateway egress only TCP 80/443, about 10/s or less; VM CPU/disk/processes as expected
+
+**9.3 After every batch**
+- [ ] Results exported, gateway logs pulled before the revert, results in quarantine with hash verified
+- [ ] Validator passed; row count = input count; canary rows correct
+- [ ] Batch statistics recorded; RDAP cache pulled back
+- [ ] Abort criteria reviewed (§18.2); VMs powered off and reverted; run log completed
+
+**9.4 Incident response (§18.3), only if an abort trigger fires**
+- [ ] Hard power off, preserve evidence, disconnect if host impact is suspected, full Defender scan, rotate credentials and keys, tell the adviser, then restore
+
+#### Phase 10: Dataset preparation (§20, §29)
+- [ ] Phishing URL set frozen (feeds, date range, label source)
+- [ ] Benign sampling plan executed (§29.12); seed fixed
+- [ ] Frozen `urls.txt` and host-side `labels.csv` produced
+- [ ] Duplicate and label-conflict report
+- [ ] Bias diagnostics run before any model training (nuisance-only AUC, SMD table, importance check)
+- [ ] Data-quality issues for the thesis documented (§20)
+
+#### Phase 11: Decommissioning and cleanup (§19)
+- [ ] VMs powered off and deleted (`unregistervm --delete`)
+- [ ] `D:\LeJetData\quarantine\*` securely deleted (keep `clean/` and manifests)
+- [ ] pcaps and gateway logs deleted
+- [ ] VPN config revoked/rotated; `wg0.conf` copies deleted
+- [ ] `known_hosts_lejet` entries and lab SSH key removed
+- [ ] Offline copy of `clean/` data + manifests archived
 
 ---
 
@@ -1900,7 +2089,7 @@ if lsmod | grep -qi vbox; then bad "vbox modules loaded"; else ok "no vbox modul
 if ss -tulnH | awk '{print $5}' | grep -vE '^(127\.|\[::1\]|10\.77\.0\.2:22$|\*:123$|.*:323$)' | grep -q .; then bad "unexpected listeners"; else ok "listeners"; fi
 # firewall unchanged
 if [ -f /opt/lejet/nft.sha256 ]; then
-  [ "$(sudo nft list ruleset | sha256sum | cut -d' ' -f1)" = "$(cut -d' ' -f1 /opt/lejet/nft.sha256)" ] && ok "nft hash" || bad "nft hash differs"
+  [ "$(sudo nft -s list ruleset | sha256sum | cut -d' ' -f1)" = "$(cut -d' ' -f1 /opt/lejet/nft.sha256)" ] && ok "nft hash" || bad "nft hash differs"
 else bad "no recorded nft hash"; fi
 # clock
 off=$(chronyc tracking | awk '/System time/ {print $4}'); awk -v o="$off" 'BEGIN{exit !(o<1.0)}' && ok "clock offset ${off}s" || bad "clock offset"
@@ -2035,9 +2224,9 @@ ssh lejet-an
 | M0 | Approvals, folders, ISO verified | §21.1 first items done |
 | M1 | Gateway VM up with firewall, VPN, DNS, chrony | `dig` via gateway works; kill switch works |
 | M2 | Analysis VM up with hardening | Level 2 tests 1–24 pass |
-| M2a | 55 URL features implemented | Level 0a parity ≥ 99% per feature |
+| M2a | 14 URL-text features (already in `link_features.py`) wired into Stage 0 | Level 0a parity green on host and in the VM |
 | M3 | Fetcher v1: Stage 0, 1, 1b (RDAP), 3 (HTTP) | Level 0 server-side fixtures green; RDAP parse tests green |
-| M4 | 20 static-HTML features | Level 0 HTML fixtures green |
+| M4 | 12 static-HTML features + `page_fetched` + `route_p_u` hand-off test | Level 0 HTML fixtures green |
 | M4b (optional) | Browser stage for JS-built pages | Only if the near-empty-page rate justifies it; browser fixtures green |
 | M5 | Safe external pilot | Level 1 green |
 | M6 | Host validator + export/import flow | malicious-fixture round trip passes |
@@ -2048,18 +2237,20 @@ ssh lejet-an
 **Suggested first working session ("just try web inspection"):** M0 → M1 → M2 → M3/M4 against local fixtures (Level 0), then Level 2 and Level 1. You will have seen web inspection work end-to-end, safely, without touching a single malicious URL. Only after that move to Level 3.
 
 ---
-## 24. Integration with the SmishGuard app
+## 24. Integration with the Le-Jet pipeline
 
-The lab VMs exist to **collect training data**. The finished product needs a separate path for a user who pastes a link.
+The lab VMs exist to **collect the fresh set** (dataset C, `data/dataset_and_training_plan.md` §8), which is used only to test the website-inspection claim and never to train. The finished product needs a separate path for a user who pastes a message.
 
 ### 24.1 Request flow
 ```
-User ──▶ SmishGuard app (Flask) ──▶ 1. extract URL from the SMS text
-                                    2. the 55 URL-string features (instant, no network)
-                                    3. ask the inspector for the 24 web features  ──▶ isolated VM
-                                    4. combine ──▶ model ──▶ verdict + reasons
+SMS ──▶ extract_links / normalize_link          (src/features/link_features.py)
+    ──▶ 14 URL-text features + has_url          (instant, no network)
+    ──▶ ask the inspector for page evidence     ──▶ isolated VM: dns_record, 3 RDAP features, 12 HTML features
+    ──▶ host: page_rank lookup for the final registrable domain
+    ──▶ route_p_u(url_only, full, frame)        (src/features/model/rf_extractor.py; page_fetched picks the extractor)
+    ──▶ P, u + CNN + URL features ──▶ gates ──▶ classifier ──▶ verdict + reasons
 ```
-Only step 3 touches the web. The app already follows this pattern for Safe Browsing (`src/serving/safe_browsing_client.py`: call out with a timeout, never raise, fall back on error). The inspector client should do the same.
+Only the inspector step touches the web. If the page fails, the row still gets P and u from the `url_only` extractor, so the user always gets an answer. The serving code carried over from SmishGuard (`src/serving/predict.py`) already uses the pattern "call out with a timeout, never raise, fall back on error" for Safe Browsing (`src/serving/safe_browsing_client.py`); the inspector client should do the same. Wiring the inspector into `predict.py` is future work: today `predict.py` still calls the old SmishGuard model path and has not been adapted to the Le-Jet fusion classifier (README status table).
 
 ### 24.2 Option 1 — thesis demo on your laptop (build this)
 - A small **inspector service** runs inside the analysis VM and listens on `127.0.0.1:8080` of the VM only.
@@ -2074,7 +2265,8 @@ Only step 3 touches the web. The app already follows this pattern for Safe Brows
     ```json
     {"status":"ok|partial|failed","fail_reason":"none|dns_nxdomain|connect_timeout|http_4xx|...|rejected_url",
      "flags":{"fetch_ok":true,"rdap_ok":false,"html_available":true},
-     "features":{"nb_hyperlinks":31,"...":"the 20 HTML + 4 RDAP/DNS features","domain_age":-1},
+     "features":{"nb_hyperlinks":31,"...":"the 12 HTML + 4 external features","domain_age":-1},
+     "final_reg_domain":"example[.]test",
      "stage_ms":{"dns":41,"rdap":612,"http":930,"html":38},"duration_ms":1650}
     ```
   - Error codes: `400` bad URL, `429` rate-limited, `503` busy/queue full, `504` inspector timeout.
@@ -2086,7 +2278,7 @@ Only step 3 touches the web. The app already follows this pattern for Safe Brows
 A hosted inspector service on a cloud server with throwaway workers (containers with gVisor or microVMs), a job queue, rate limiting and caching; the main app calls it over an authenticated internal API. Scales, but needs money and the provider's abuse-policy approval.
 
 ### 24.4 What the finished product must handle
-- **Fallback:** if the inspector times out, the URL is dead, or the VM is down, answer with the URL-string features (and text model). Two model variants (URL+text only vs full 79) or one model with indicator flags.
+- **Fallback:** if the inspector times out, the URL is dead, or the VM is down, answer with the 14 URL-text features and the `url_only` extractor (this is exactly the `route_p_u` fallback). The two extractors already are the "two model variants"; no extra flags are needed beyond `page_fetched`.
 - **Train/serve consistency:** same fetch settings, same user agent, same timeouts, same RDAP logic, same missing-value rule as in the training run.
 - **Abuse protection:** users can submit anything: refuse private IPs, localhost, odd ports and schemes; rate-limit; never follow a link into your own network.
 - **Privacy:** only the URL goes to the inspector, never the message text; tell users that links are checked.
@@ -2101,7 +2293,7 @@ Estimates, **not measurements** — replace them with your own from Levels 1 and
 
 | Stage (v1) | Typical | Slow case |
 |---|---|---|
-| Stage 0: normalize + 55 URL features | < 5 ms | same |
+| Stage 0: normalize + 14 URL-text features | < 5 ms | same |
 | Stage 1: DNS (via gateway + VPN) | 30–200 ms | up to 3 s (timeout) |
 | Stage 1b: RDAP (runs in parallel with the fetch; cache hits ≈ 0) | 200–1500 ms | 4 s (timeout) |
 | Stage 3: HTTP fetch + 1–3 redirects | 300 ms – 3 s | 10+ s (shorteners, slow hosts) |
@@ -2114,7 +2306,7 @@ So the full web check will usually take **more than one second**. The VPN adds r
 
 How to keep it feeling fast: answer from the URL/text model first, then upgrade when the web check completes; short-circuit on DNS failure or a Safe Browsing match; cache by URL; keep connections and the RDAP bootstrap warm; use a 10–15 s cap for interactive use; offer a "passive-only" mode (DNS + RDAP + headers, ≈ 0.5–2 s) trained on its own feature subset.
 
-**Required instrumentation:** record `stage_ms_*` and `duration_ms` for every URL (columns in §14.0.5). For the thesis, report median and 95th percentile per stage and overall, split by outcome (live, dead, error), and discuss the accuracy-versus-latency trade-off.
+**Required instrumentation:** record `stage_ms_*` and `duration_ms` for every URL (columns in §14.0.6). For the thesis, report median and 95th percentile per stage and overall, split by outcome (live, dead, error), and discuss the accuracy-versus-latency trade-off.
 
 ---
 
@@ -2122,15 +2314,17 @@ How to keep it feeling fast: answer from the URL/text model first, then upgrade 
 
 **What it is:** a free Google service (v4 Lookup API, `threatMatches:find`) that says whether a URL is on Google's list of known dangerous sites (malware, social engineering/phishing, unwanted software, harmful apps) — the same list behind Chrome's red warning page.
 
-**How SmishGuard uses it today** (`src/serving/safe_browsing_client.py`, `src/serving/predict.py`): `matched` → immediate "malicious" hard bypass without running the CNN; `clean` or `error` → the model decides and the verdict is shown alongside. Research Mode and baseline models skip it so scores stay comparable.
+**Status in Le-Jet (2026-10-11):** the dataset plan lists Google Safe Browsing as *removed* from the thesis design (`data/dataset_and_training_plan.md` §11–12; the group still has to write down why). The code is still present in the carried-over serving files, so this section only records what it was and how it relates to inspection. Do not build anything on it for the inspector.
+
+**How SmishGuard used it** (`src/serving/safe_browsing_client.py`, `src/serving/predict.py`, still in the repo): `matched` → immediate "malicious" hard bypass without running the CNN; `clean` or `error` → the model decides and the verdict is shown alongside. Research Mode and baseline models skip it so scores stay comparable.
 
 **Strengths:** fast (≈ 100–300 ms), no browser or VM, high precision on a match, a useful fallback when web inspection fails.
 
 **Limits:** poor coverage of fresh threats (smishing sites often live for hours before being listed — a new phishing URL usually comes back `clean`); yes/no only, so it gives no learnable features; third-party dependency that needs an API key and sends each URL to Google.
 
-**How it fits with web inspection:** Safe Browsing answers "is this *already known* to be bad?" (fast, high precision, low recall). The model plus web features answers "does it *look and behave* like phishing even if nobody reported it yet?" Keep both.
+**How it fits with web inspection (if the group ever re-adds it):** Safe Browsing answers "is this *already known* to be bad?" (fast, high precision, low recall). The model plus web features answers "does it *look and behave* like phishing even if nobody reported it yet?" The two are complementary.
 
-**For the thesis:** do **not** use Safe Browsing as a training feature (it would leak the label); report it as a separate baseline/fallback, and measure how often your model flags URLs that Safe Browsing marked `clean`.
+**For the thesis:** if it is mentioned at all, do **not** use Safe Browsing as a training feature (it would leak the label); report it as a separate baseline/fallback, and measure how often your model flags URLs that Safe Browsing marked `clean`.
 
 ## 27. Review: loopholes and gaps found
 
@@ -2143,10 +2337,10 @@ A line-by-line review of this plan. **Status** says whether the plan body was al
 | V1 | Critical | The gateway's upstream DNS was Quad9 `9.9.9.9`, which **blocks known-malicious domains** | Live phishing domains returned NXDOMAIN, so they looked dead; `dns_record`, liveness and labels would all be wrong | **Fixed** (§10.6: Cloudflare, plus a warning and test 25). Also turn off your VPN's DNS/malware blocking |
 | V2 | Critical | URL-string features were to be computed on the **normalized** URL | Dataset values come from the raw string; normalizing first changes `length_url`, `nb_dots`, `nb_www`, `punycode`… and breaks the parity test | **Fixed** (§13.2: raw string for features, normalized only for fetching) |
 | V3 | High | Which domain do the HTML/RDAP features describe when the URL **redirects or is a shortener**? (e.g., `bit.ly/x` → phishing page) | RDAP on `bit.ly` says "old, legitimate domain" and hides the signal; HTML features describe the destination | **DECIDED (§13.2b): features come from the final URL.** URL-string features stay on the original URL (dataset parity); HTML features, "internal/external", RDAP and DNS describe the final URL's registrable domain; the original-domain values are stored as `orig_*` columns. Remaining risk: redirects to a big benign site (cloaking) make the features describe the benign destination, so flag them with `final_is_popular` |
-| V4 | High | **Bot walls, parked, suspended and default server pages** are parsed as if they were the site (Cloudflare "Just a moment", CAPTCHA, "Account suspended", Apache/nginx default page, registrar parking) | Features describe the wall, not the phishing page; the label becomes noise | **Partly fixed** (new `fail_reason` values `challenge_page`, `parked_or_default_page`). **Open:** write the detectors (title/body markers, `cf-mitigated`/`cf-chl` headers, 403/429/503 with tiny bodies) and report their rate |
+| V4 | High | **Bot walls, parked, suspended and default server pages** are parsed as if they were the site (Cloudflare "Just a moment", CAPTCHA, "Account suspended", Apache/nginx default page, registrar parking) | Features describe the wall, not the phishing page; the label becomes noise | **Partly fixed** (new `fail_reason` values `challenge_page`, `parked_or_default_page`). **Open:** write the detectors (title/body markers, `cf-mitigated`/`cf-chl` headers, 403/429/503 with tiny bodies) and report their rate. They now also decide `page_fetched`: a wall mistaken for a page would be scored by the `full` extractor |
 | V5 | High | **Shared hosting and free subdomains** (`*.pages.dev`, `*.workers.dev`, `*.vercel.app`, `*.netlify.app`, `*.github.io`, `*.web.app`, `*.blogspot.com`, `*.weebly.com`, `*.000webhostapp.com`, IPFS gateways, tunnelling hosts) | The registrable domain is an old, legitimate platform, so `domain_age`/`whois_registered_domain` look benign for exactly the sites attackers like | **DECIDED (§13.2c):** private-suffix registrable domains, `free_hosting_subdomain` / `hosting_platform` / `platform_path_hosting` flags from a curated list, RDAP skipped for those hosts (features `-1`, `rdap_skipped = 1`). **Still open:** keep the list current, and add a Certificate-Transparency first-seen date as a substitute age (§28 item 6, v1.1) |
 | V6 | High | **Class-source bias**: benign URLs from Tranco are homepages of old, popular domains; phishing URLs from feeds are deep links on new domains | The model learns "homepage vs deep link" and "old vs new domain", not phishing | **DECIDED (§29 benign sampling plan):** benign URLs are drawn from five groups with realistic structure, hard negatives are required, classes are matched on coarse nuisance bins (common support, not identical distributions), and a nuisance-only classifier is the bias test. Results are reported on the full set and on a matched subset |
-| V7 | High | **Concept drift**: the 79 features were designed in 2020–21; 2025–26 kits use JavaScript frameworks, Cloudflare Turnstile, serverless hosting, QR-code and short-lived pages | Static features can degrade badly on modern kits; a model validated on the old dataset may fail on new data | **Open.** Report the near-empty-page rate and the per-feature missing rate; keep a held-out *recent* test set; discuss in the thesis |
+| V7 | High | **Concept drift**: the public set's features were designed in 2020–21 and the extractors are trained on it; 2025–26 kits use JavaScript frameworks, Cloudflare Turnstile, serverless hosting, QR-code and short-lived pages | Static features can degrade badly on modern kits; a model validated on the old dataset may fail on new data | **Open.** Report the near-empty-page rate and the per-feature missing rate; keep a held-out *recent* test set; discuss in the thesis |
 | V8 | High | **Static parse is blind to JavaScript-built pages** (an empty `<div id=root>` shell has no forms or links) | Many phishing forms exist only after JS runs, so `login_form`, `nb_hyperlinks`, etc. read as 0 | **Open.** Measure with `html_bytes`/`script_count`; if high, enable the optional browser stage for the near-empty subset only |
 | V9 | Medium | Liveness bias (dead = phishing) | Model may learn dead-ness | Documented (§20) and indicator columns exist. Also keep dead-URL rows out of any headline accuracy number |
 | V10 | Medium | `fetch_ok` semantics were ambiguous (did an RDAP failure make `fetch_ok` false?) | Inconsistent rows | **Fixed** (§13.10 defines `fetch_ok`, `rdap_ok`, `html_available`) |
@@ -2155,11 +2349,13 @@ A line-by-line review of this plan. **Status** says whether the plan body was al
 | V13 | Medium | Cookies were disabled | Sites that set a cookie on a redirect loop forever → false `too_many_redirects` | **Fixed** (§13.5: per-URL in-memory cookie jar) |
 | V14 | Medium | The VM could relabel or fabricate rows (it computed `url_id`; the host trusted its output) | "Integrity of the dataset" was listed as an asset with no control beyond schema checks | **Partly fixed** (host generates `url_id`). **Open:** add **canary URLs** to every batch (a few URLs whose results you know: `example.com`, an NXDOMAIN name, a local fixture) and fail the batch if canary rows are wrong |
 | V15 | Medium | The same URL may appear with **two labels** or twice in different batches | Dedup by `url_id` silently drops one | **Open.** Host-side duplicate/conflict report before pushing |
-| V16 | Medium | The 4 brand features use the authors' lists; Philippine brands are absent | Dataset parity vs. local relevance conflict | Keep two columns: the paper's version for parity, plus a separate PH-brand feature (§28) |
+| V16 | Low | ~~The 4 brand features use the authors' lists~~ | **Obsolete (2026-10-11):** the brand features are not in the 31-feature scope | Philippine-brand features remain an optional extra (§28.1 item 4), outside the frozen extractors |
 | V17 | Medium | `domain_registration_length` definition is unclear (total term vs. remaining) | A wrong definition inverts the feature | **Open:** settle from the paper; helper `days_to_expiry` is stored |
 | V18 | Low | RDAP has no data for many ccTLDs (`.ph` unverified) and registries rate-limit by IP | Many `-1` values, or `429` bursts through the shared VPN IP | **Open:** measure in Level 1; cache; back off; report the missing rate per TLD |
 | V19 | Low | The RDAP cache and IANA bootstrap file are **lost on every snapshot revert** | Repeated lookups → more rate limiting | **Open:** keep a host-side RDAP cache (domain → result, timestamp) pushed with each batch and pulled back |
 | V20 | Low | VPN exit country/IP reputation changes what cloaking kits show | Systematic bias toward "benign-looking" pages | Documented (§20). Record exit country per batch; if possible re-fetch a sample from a PH exit |
+| V21 | High | **`page_rank` train/serve mismatch**: the training column is Open PageRank values from the 2021 dataset; the live lookup is made today, on the host, with a possibly different scale or coverage | A shifted feature silently shifts P and u for every inspected link | **Open.** Before the pilot, look up a sample of public-set domains today and compare with the stored values; record the API date in the manifest; lookup failures are `-1`, unrated domains `0` (§14.0.2); report results with and without `page_rank` (it is also an ablation in `rf_extractor.ABLATIONS`) |
+| V22 | High | **The 12 HTML features and the RDAP/DNS features are re-implemented by us**, but the extractors were trained on the dataset authors' values, and the public set's pages are mostly dead, so there is no parity test for them | A different counting rule changes the inputs the forest sees, with no error message | **Open.** Write each definition from the paper (§14.0.3), test with fixtures, then compare the **distribution** of each feature on live benign and phishing pages with the public set's (class means, `-1` rate); investigate any feature whose distribution differs sharply |
 
 ### 27.2 Safety / infrastructure loopholes
 
@@ -2168,7 +2364,7 @@ A line-by-line review of this plan. **Status** says whether the plan body was al
 | S1 | High | The firewall **logged accepted connections but not dropped ones**, yet abort criterion #1 depends on seeing blocked attempts | A probing compromised VM would leave no log trail | **Fixed** (§10.5: rate-limited `lejet-blocked-private` / `lejet-blocked-other` logs) |
 | S2 | High | The **gateway itself could not resolve names** (its resolver pointed at the blocked NAT DNS) | `apt`, `chrony`, the IANA bootstrap would silently fail | **Fixed** (§10.6: local Unbound + resolved config) |
 | S3 | High | **WireGuard + snapshot revert**: stale clock → handshake rejected (replay-protection timestamp), plus bad TLS validation and wrong `domain_age` | Batch starts "randomly" without a VPN, or with wrong ages | **Fixed** (§17.1 clock step, test 26) |
-| S4 | High | **CPU-bound parsing in the asyncio loop**: one hostile page freezes every other URL; a catastrophic regex pins a core | Hung batches, timeouts mistaken for dead sites | **Fixed in design** (§13.5: process pool with per-task kill timeout). Also use linear-time regexes (`re2`) or bounded patterns for `popup_window`, `onmouseover`, `right_clic` over 2 MB of attacker text (ReDoS) |
+| S4 | High | **CPU-bound parsing in the asyncio loop**: one hostile page freezes every other URL; a catastrophic regex pins a core | Hung batches, timeouts mistaken for dead sites | **Fixed in design** (§13.5: process pool with per-task kill timeout). The three script-pattern features (`popup_window`, `onmouseover`, `right_clic`) were dropped on 2026-10-11, which removes the main ReDoS exposure; keep any remaining regex bounded or linear-time |
 | S5 | High | Live-service mode (§24) exposes a **long-running** VM to URLs chosen by arbitrary users | Persistent compromise across users, abuse of your VPN IP to hit third parties, SSRF probing, no revert between requests | **Open.** For a deployed inspector use one **ephemeral worker per request** (fresh process/container or VM revert), authentication, per-user and global rate limits, an allow-list of schemes, and daily VM reverts. Keep the research lab and the demo service on separate VMs |
 | S6 | Medium | Decompression bombs and exotic encodings | Memory/CPU exhaustion | **Fixed** (§13.5: count decoded bytes, gzip only) |
 | S7 | Medium | HTTP/2 parser surface | More code exposed to hostile servers | **Fixed** (`http2=False`) |
@@ -2189,7 +2385,7 @@ A line-by-line review of this plan. **Status** says whether the plan body was al
 ### 27.3 Things I could not verify (treat as assumptions)
 - VirtualBox 7.x flag spellings, interface names (`enp0s3`/`enp0s8`), the AppArmor path of the Chromium binary, and the exact `systemd-run` properties on your Ubuntu build.
 - That RDAP serves the TLDs you need (especially `.ph`), and that a given VPN provider's terms allow this use.
-- The exact definitions of the 20 HTML features and of `nb_redirection`/`nb_external_redirection` in the original paper.
+- The exact definitions of the 12 HTML features in the original paper (and of `domain_registration_length`), and whether `page_rank` still uses the same 0–10 scale as the training column.
 - Nothing in this plan has been executed; the first run will find more issues.
 
 ### 27.4 Recommended order for fixing the **Open** items
@@ -2203,7 +2399,7 @@ A line-by-line review of this plan. **Status** says whether the plan body was al
 
 ## 28. Suggested additional features
 
-All of these are chosen to stay compatible with the v1 safety model (no JavaScript execution, one fetch per URL) unless marked **[browser]** or **[reference data]**. Add them as **extra columns after** the 79 dataset-compatible ones, never replacing them, so the parity tests still work.
+All of these are chosen to stay compatible with the v1 safety model (no JavaScript execution, one fetch per URL) unless marked **[browser]** or **[reference data]**. Add them as **extra columns after** the 31 model-input ones, never replacing them, so the parity tests still work and the frozen extractors still receive exactly the columns they were trained on (they are never retrained on SMS data).
 
 ### 28.1 Top 10 to add first (best value for effort)
 1. **Data-exfiltration endpoints in the page:** form `action` or script strings pointing to `api.telegram.org/bot…`, Discord webhooks, `formspree.io`, `emailjs`, `getform`, `web3forms`, Google Forms/Apps Script, `mailto:`; plus counts of `fetch(`/`XMLHttpRequest`/`sendBeacon` to external hosts. Very common in phishing kits and fully static.
@@ -2228,7 +2424,7 @@ Server header family, `X-Powered-By` present, HSTS/CSP/X-Frame-Options present, 
 ### 28.4 Domain / DNS extras
 RDAP registrar name (hashed or bucketed), registrar-status flags (`clientHold`, `serverHold`, `pendingDelete`), days since last update, nameserver count/provider, DNSSEC flag, MX present, SPF/DMARC present, number of A/AAAA/CNAME records, TTL, whether the host resolves to a shared IP seen with many other URLs in your dataset (careful: this can leak labels between train and test).
 
-### 28.5 Cross-URL and SMS-context features (SmishGuard-specific, probably your strongest contribution)
+### 28.5 Cross-URL and SMS-context features (Le-Jet-specific, probably your strongest contribution)
 - **Message ↔ page consistency:** the SMS claims to be from brand X (from text), but the URL's domain/title/forms belong to brand Y or to none; the message is urgent/"verify now" while the page asks for an OTP/PIN.
 - Message features combined with link features: shortener used, link position, link density, sender type, language (Tagalog/English/Taglish mix).
 - Dataset-level graph features (shared IP/ASN/NS/certificate/DOM-fingerprint cluster size) with strict cluster-wise train/test splits.
@@ -2237,7 +2433,7 @@ RDAP registrar name (hashed or bucketed), registrar-status flags (`clientHold`, 
 Rendered form count vs static form count (JS-injected forms), popup/dialog/download counts, `beforeunload` traps, notification/clipboard/fullscreen permission requests, number and domains of third-party requests, WebSocket use, canvas/audio fingerprinting calls, auto-redirect after load, screenshot perceptual hash and logo/brand similarity to reference pages **[reference data]** (fetch the real brand pages once to build the references).
 
 ### 28.7 Cautions when adding features
-- Keep the original 79 untouched and add new ones as a separate group so you can report an ablation (79 vs 79 + extras).
+- Keep the 31 untouched and add new ones as a separate group so you can report an ablation (31 vs 31 + extras). Extras cannot go into the frozen extractors; they would need their own model or a new extractor trained on a public set that has those columns.
 - Anything derived from a reputation service (Safe Browsing, VirusTotal, feed membership) is a **label leak** if the same service produced your labels. Keep those out of training features.
 - Features that depend on the date of collection (CT first-seen, domain age, certificate age) must be computed at the **same fetch time** for both classes.
 - Every new feature needs: a definition, a fixture test, a missing-value rule (`-1` + indicator), and a note on what fraction of rows have it.
@@ -2272,7 +2468,7 @@ Build a candidate pool about **3× the target** per group (dead links, filters a
 
 Example for a 10,000-row training set (5,000 phishing + 5,000 benign): A 2,000, B 1,000, C 750, D 750, E 500. Treat these shares as a **starting proposal** and adjust them to match the phishing set (§29.5).
 
-**Group B is mandatory:** login forms are the most phishing-looking thing a legitimate site has, so without them `login_form`, `submit_email`, `sfh` and `domain_in_title` would simply become "is it phishing" detectors.
+**Group B is mandatory:** login forms are the most phishing-looking thing a legitimate site has, so without them `login_form` and `domain_in_title` would simply become "is it phishing" detectors.
 
 ### 29.4 Cleaning filters (apply to every candidate)
 1. **Not in any phishing/malware feed** you hold (OpenPhish, PhishTank, URLhaus, PhishStats), and not flagged by Safe Browsing at the time of fetch. Use these only as a **filter**, never as a model feature (label leakage, §26).
