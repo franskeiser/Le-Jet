@@ -47,6 +47,7 @@ MAX_URL_LEN = 2048            # reject longer URLs outright
 MAX_DECODED_BYTES = 2 * 1024 * 1024    # read at most 2 MB of HTML body
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # abort if the server announces > 10 MB
 MAX_RDAP_BYTES = 256 * 1024            # RDAP JSON response cap
+MAX_CT_BYTES = 2 * 1024 * 1024         # crt.sh JSON response cap (a busy domain has thousands of certs)
 MAX_STR_FIELD = 512           # default cap for any stored free-text field
 MAX_TITLE = 120               # <title> and similar
 

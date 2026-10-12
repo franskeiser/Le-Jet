@@ -1,0 +1,74 @@
+# Free-hosting and shared platforms (WEB_INSPECTION_PLAN.md section 13.2c).
+#
+# Starter list, NOT verified as current: review it and extend it from your own data.
+# The Public Suffix List's private section is used in addition to this file (see
+# lejet/domains.py), so most of the well-known platforms are caught either way.
+#
+# Syntax, one rule per line:
+#   example.com        every host UNDER example.com is a free-hosting subdomain
+#   byethost*          any host with a label that starts with "byethost"
+#   path:host/prefix   a path-hosted platform: one hostname shared by all users, the
+#                      content is in the path (e.g. docs.google.com/forms)
+
+# static / serverless hosting
+pages.dev
+workers.dev
+vercel.app
+netlify.app
+github.io
+gitlab.io
+web.app
+firebaseapp.com
+onrender.com
+herokuapp.com
+glitch.me
+surge.sh
+edgeone.dev
+edgeone.app
+eu.cc
+
+# site builders / blogs
+wixsite.com
+weebly.com
+blogspot.com
+wordpress.com
+webflow.io
+carrd.co
+notion.site
+canva.site
+
+# tunnels / dynamic DNS
+ngrok-free.app
+ngrok.io
+trycloudflare.com
+loca.lt
+duckdns.org
+ddns.net
+
+# object storage
+s3.amazonaws.com
+storage.googleapis.com
+blob.core.windows.net
+r2.dev
+
+# IPFS gateways
+ipfs.io
+dweb.link
+cloudflare-ipfs.com
+
+# free web hosts
+000webhostapp.com
+infinityfreeapp.com
+epizy.com
+rf.gd
+byethost*
+
+# path-hosted platforms (rule 4: RDAP skipped, never counted as a "popular" redirect)
+path:docs.google.com/forms
+path:forms.gle/
+path:sites.google.com/
+path:linktr.ee/
+path:www.facebook.com/
+path:facebook.com/
+path:m.facebook.com/
+path:fb.com/
