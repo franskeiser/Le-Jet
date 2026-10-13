@@ -1,6 +1,10 @@
 # src/features/model/fusion_data.py
 """Turns one split of the SMS data into the three tensors the fusion model trains on.
 
+LEGACY (two web-set extractors, superseded 2026-10-14 by src/unified/, see docs/unified_architecture.md).
+Still used by src/serving and the demo until they move to the unified forest.
+
+
 Per message:
     token_ids  fastText vocabulary indices for the CNN (padded to SEQ_LEN_L)
     aux        17 numbers, in AUX_COLUMNS order: the 14 link-text features, has_url, P, u

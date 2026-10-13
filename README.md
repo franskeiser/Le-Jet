@@ -2,6 +2,8 @@
 
 **Thesis:** A Random Forest-Guided Static Gating Framework for Financial-Related Smishing Classification Using SMS Text
 
+> **Architecture change (2026-10-14, proposed):** the two web-set extractors are being replaced by one Random Forest extractor trained on the same dataset as the CNN, with page inspection and the web-derived features kept. See [`docs/unified_architecture.md`](docs/unified_architecture.md). The diagram and sections below, and the serving path, still describe the previous design until the unified model is trained on a fresh inspected set. Page features in the current unified dataset are a temporary placeholder; scores from it are not study results.
+
 Le-Jet classifies SMS messages as smishing or legitimate. A CNN reads the message text. For messages with a link, a Random Forest **feature extractor** reads the link's spelling together with its web page and domain data (all in the same forest) and outputs P, u and a per-feature breakdown of its verdict. These are concatenated with the CNN features, re-weighted by static gates, and passed to the final classifier.
 
 ```
@@ -25,6 +27,17 @@ SMS text ──> fastText 300-d ──> CNN (64 filters, kernel 3) ──┐    
 ```
 
 The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_training_plan.md). For background on how this repo differs from SmishGuard, read [`CONTEXT.md`](CONTEXT.md).
+
+## Code map
+
+| Folder | Role |
+|---|---|
+| `src/unified/` | **Current design**: unified dataset builder, the single RF extractor, joint training (`run_unified`) |
+| `src/features/model/` | CNN, fusion head, gating, RF contributions (shared). `rf_extractor.py`, `run_experiment.py`, `fusion_data.py` are **legacy** (two web-set extractors) |
+| `src/serving/`, `src/demo/` | API, live inspection, defense demo; still on the legacy extractors |
+| `src/lejet/` | Isolated-lab page inspector |
+| `src/data/`, `src/features/` | Data preparation, link features, embeddings |
+| `docs/` | Index in [`docs/README.md`](docs/README.md) |
 
 ## Status
 

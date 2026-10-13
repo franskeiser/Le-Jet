@@ -2,6 +2,7 @@
 
 | | |
 |---|---|
+| **Superseded** | 2026-10-14 (proposed): one extractor on one dataset, see `unified_architecture.md`. Kept as history. |
 | **Status** | Option C implemented 2026-10-11. To be confirmed with the group and the adviser. |
 | **Evidence** | `experiments/phase0/summary.txt` (from `src/data/phase0_domain_lookups.py`) |
 | **Code** | `src/features/model/rf_extractor.py` (`extract_p_u`, `route_p_u`) |
