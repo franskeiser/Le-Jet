@@ -13,7 +13,7 @@ The old design trained two forests (`url_only`, `full`) on a separate public web
 ```
 ONE dataset, one row per SMS: text + link + 14 link-text features + 17 page/domain features
    │
-   one grouped split (data/splits: train / rf_fit / test), by domain or template
+   one grouped split (data/splits_unified: train / rf_fit / test), by domain or template
    │
    RF extractor (one forest, 31 inputs, NaN allowed)
    ├─ train rows: out-of-fold P, u, c_*   (5-fold, grouped; a row is never scored by a forest that saw it)
@@ -28,7 +28,12 @@ has_url, P, u, c_* (34 values) ────────────────�
 - **Gates:** CNN gates from a forest on the frozen CNN's features of the `rf_fit` rows; RF-output gates from the final forest's permutation importance on the same rows (held out from both models); `has_url`, P, u fixed at 1.0. The `rf_fit` split is kept for this and for nothing else, so the split files are unchanged.
 
 ## The dataset (`data/processed/unified_dataset.csv`)
-Built by `python -m src.unified.build_unified_dataset`.
+Built by `python -m src.unified.build_unified_dataset`. **15,000 rows, balanced: 7,500 smishing and 7,500 legitimate.**
+- The 3,056 redacted-`<URL>` rows are dropped (training excluded them anyway).
+- All 7,869 real-link rows are kept (4,405 smishing, 3,464 legitimate): only they reach the forest.
+- Each class is filled to 7,500 with randomly drawn no-link messages (3,095 smishing, 4,036 legitimate).
+- `--size N` changes the total; `--size 0` keeps everything.
+- Link share is now 59% of smishing and 46% of legitimate (before: 68% and 32%), so "has a link" is a weaker shortcut.
 
 | Group | Columns |
 |---|---|
@@ -52,10 +57,14 @@ No fresh inspected set exists yet. Until it does, the 7,869 old SMS rows with a 
 
 Two things to watch with NaN page columns: the forest must not learn that missing page features mean a class (check the NaN rate per class), and old rows without inspection should not be mixed into the RF's training set once the fresh rows exist.
 
+## Splits
+`python -m src.unified.make_splits` writes `data/splits_unified/seed_<s>/{train,rf_fit,test}_ids.txt` (75% / 10% / 15%, grouped by domain or synthetic template, as before). Groups of 100 or more rows always go to Training: three scam domains (`usdtjerc.com` 1,168 rows, `usdtwtrc.com` 752, `usdqerc.com` 175) hold 44% of all smishing links, and left to chance they made one test set 66% smishing. Test and RF-Fitting are therefore built from the many small domains, about 58% legitimate / 42% smishing, so report balanced accuracy.
+
 ## Training
 ```
 python -m src.unified.build_hybrid_temp_links
 python -m src.unified.build_unified_dataset
+python -m src.unified.make_splits
 python -m src.unified.run_unified                       # full RF
 python -m src.unified.run_unified --rf-inputs url_only  # page-inspection ablation
 ```

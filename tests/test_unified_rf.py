@@ -88,3 +88,32 @@ def test_unified_dataset_marks_only_borrowed_rows_as_loaded():
     assert out["inspect_status"].tolist() == ["loaded", "not_attempted", "not_attempted"]
     assert out["page_origin"].tolist() == ["hybrid_temp", "none", "none"]
     assert out.loc[1:, PAGE_COLUMNS].isna().all().all()
+
+
+def test_balance_keeps_every_link_row_and_both_classes_equal():
+    from src.unified.build_unified_dataset import balance
+    rng = np.random.default_rng(0)
+    rows = []
+    for label, n_link, n_none, n_red in [("smishing", 30, 40, 10), ("legitimate", 20, 80, 2)]:
+        for status, n in [("link", n_link), ("none", n_none), ("redacted", n_red)]:
+            rows += [{"label": label, "link_status": status, "message_id": f"{label}{status}{i}"} for i in range(n)]
+    out = balance(pd.DataFrame(rows), size=100, seed=1)
+    assert out["label"].value_counts().to_dict() == {"smishing": 50, "legitimate": 50}
+    assert (out["link_status"] == "link").sum() == 50           # all 30 + 20 link rows kept
+    assert (out["link_status"] == "redacted").sum() == 0
+    assert out["message_id"].is_unique
+
+
+def test_baseline_inputs_standardise_link_rows_and_zero_the_rest():
+    from src.unified.run_baseline import AUX_COLUMNS, PAGE_FEATURES, fit_scaler, raw_aux
+    df = make_frame(nan_pages=0.3)
+    linked = df[urf.link_mask(df)]
+    scaler = fit_scaler(linked)
+    aux = raw_aux(df, scaler)
+    assert list(aux.columns) == AUX_COLUMNS and not aux.isna().any().any()
+    no_link = ~urf.link_mask(df)
+    assert (aux.loc[no_link].drop(columns="has_url") == 0).all().all()
+    z = aux.loc[~no_link, "url_length"]
+    assert abs(z.mean()) < 1e-6 and abs(z.std() - 1) < 0.02            # standardised on its own rows
+    missing = linked[PAGE_FEATURES].isna().any(axis=1).to_numpy()
+    assert (aux.loc[linked.index, "page_missing"].to_numpy() == missing).all()

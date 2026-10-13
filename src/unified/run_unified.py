@@ -12,7 +12,7 @@ Per seed (docs/unified_architecture.md):
     Test     everything above is fixed before the Test split is read, once.
 
 The rf_fit split of the old design is kept as the held-out slice that fits the gates, so the split
-files (data/splits) are unchanged.
+files are data/splits_unified (python -m src.unified.make_splits), built from the unified table itself.
 
 --rf-inputs full      the forest reads link text + page/domain features (31 inputs)
 --rf-inputs url_only  link text only (14 inputs); the page-inspection ablation
@@ -37,6 +37,7 @@ from src.config import ARTIFACTS_ROOT, DENSE_UNITS, NUM_FILTERS, SEEDS, SEQ_LEN_
 from src.unified.build_unified_dataset import OUT_PATH as DEFAULT_DATA
 from src.data.split_dataset import load_split_ids
 from src.unified import unified_rf as urf
+from src.unified.make_splits import SPLITS_DIR
 from src.features.model.cnn_encoder import TextEncoder
 from src.features.model.fusion_classifier import FusionClassifier, load_phase_a_encoder_weights
 from src.features.model.fusion_data import RECIPE_COLUMNS, class_weights, load_embedding_layer, load_vocab
@@ -53,9 +54,9 @@ DEFAULT_MODEL_DIR = ARTIFACTS_ROOT / "models" / "unified"
 VAL_FRACTION_OF_TRAIN = 0.15
 
 
-def load_part(df: pd.DataFrame, seed: int, name: str) -> pd.DataFrame:
+def load_part(df: pd.DataFrame, seed: int, name: str, splits_dir: Path = SPLITS_DIR) -> pd.DataFrame:
     """Rows of one split. Redacted-link rows are dropped (docs/training_rules.md rule 1)."""
-    ids = load_split_ids(seed, name)
+    ids = load_split_ids(seed, name, str(splits_dir))
     part = df[df["message_id"].isin(ids) & (df["link_status"] != "redacted")]
     return part.reset_index(drop=True)
 
@@ -83,9 +84,9 @@ def run_seed(df: pd.DataFrame, seed: int, args) -> tuple[list[dict], dict]:
     model_dir.mkdir(parents=True, exist_ok=True)
     word_to_idx = load_vocab()
 
-    train_full = load_part(df, seed, "train")
-    rf_fit_df = load_part(df, seed, "rf_fit")
-    test_df = load_part(df, seed, "test")
+    train_full = load_part(df, seed, "train", args.splits_dir)
+    rf_fit_df = load_part(df, seed, "rf_fit", args.splits_dir)
+    test_df = load_part(df, seed, "test", args.splits_dir)
     label_col = "label"
 
     # ---- RF extractor: settings, out-of-fold outputs for training rows, final forest ----
@@ -179,6 +180,7 @@ def run_seed(df: pd.DataFrame, seed: int, args) -> tuple[list[dict], dict]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
+    parser.add_argument("--splits-dir", type=Path, default=SPLITS_DIR)
     parser.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
     parser.add_argument("--rf-inputs", choices=list(urf.INPUTS), default="full")
     parser.add_argument("--no-tune", action="store_true", help="skip the RF grid search, use DEFAULT_PARAMS")

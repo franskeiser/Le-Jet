@@ -51,14 +51,40 @@ def build(sms: pd.DataFrame, links: pd.DataFrame) -> pd.DataFrame:
     return merged[COLUMNS]
 
 
+def balance(df: pd.DataFrame, size: int, seed: int) -> pd.DataFrame:
+    """Down-sample to `size` rows, half smishing and half legitimate.
+
+    Redacted-<URL> rows are dropped (docs/training_rules.md rule 1 excludes them anyway). Every row
+    with a real link is kept, because only those reach the forest; each class is then filled up to
+    size/2 with randomly drawn no-link messages. If a class has more link rows than its share, its
+    link rows are down-sampled instead."""
+    per_class = size // 2
+    parts = []
+    for label in ("smishing", "legitimate"):
+        rows = df[(df["label"] == label) & (df["link_status"] != "redacted")]
+        linked, unlinked = rows[rows["link_status"] == "link"], rows[rows["link_status"] != "link"]
+        if len(linked) >= per_class:
+            parts.append(linked.sample(per_class, random_state=seed))
+            continue
+        need = per_class - len(linked)
+        if len(unlinked) < need:
+            raise ValueError(f"{label}: only {len(rows)} usable rows, need {per_class}")
+        parts.append(pd.concat([linked, unlinked.sample(need, random_state=seed)]))
+    return pd.concat(parts).sample(frac=1, random_state=seed).reset_index(drop=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--sms", default=str(ROOT / DATASET_PATH))
     ap.add_argument("--links", type=Path, default=HYBRID_PATH)
     ap.add_argument("--out", type=Path, default=OUT_PATH)
+    ap.add_argument("--size", type=int, default=15000, help="balanced total rows (half per class); 0 keeps everything")
+    ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
     out = build(pd.read_csv(args.sms), pd.read_csv(args.links, low_memory=False))
+    if args.size:
+        out = balance(out, args.size, args.seed)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(args.out, index=False)
     print(f"wrote {args.out}: {len(out)} rows")
