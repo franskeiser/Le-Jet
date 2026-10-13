@@ -1,0 +1,330 @@
+{
+  "counts": {
+    "fresh_test": {
+      "smishing": 46,
+      "legitimate": 90
+    },
+    "page_reached": 75,
+    "shorteners": {
+      "smishing": 1,
+      "legitimate": 1
+    }
+  },
+  "seeds": [
+    2024
+  ],
+  "link_level": {
+    "2024": {
+      "url_only_all": {
+        "n": 136,
+        "smishing": 46,
+        "legitimate": 90,
+        "smishing_recall": {
+          "n": 46,
+          "k": 24,
+          "rate": 0.5217,
+          "ci95": [
+            0.3814,
+            0.6588
+          ]
+        },
+        "legitimate_recall": {
+          "n": 90,
+          "k": 86,
+          "rate": 0.9556,
+          "ci95": [
+            0.8912,
+            0.9826
+          ]
+        },
+        "balanced_accuracy": 0.7387,
+        "auc": 0.9275
+      },
+      "full_page_reached": {
+        "n": 75,
+        "smishing": 18,
+        "legitimate": 57,
+        "smishing_recall": {
+          "n": 18,
+          "k": 16,
+          "rate": 0.8889,
+          "ci95": [
+            0.672,
+            0.969
+          ]
+        },
+        "legitimate_recall": {
+          "n": 57,
+          "k": 56,
+          "rate": 0.9825,
+          "ci95": [
+            0.9071,
+            0.9969
+          ]
+        },
+        "balanced_accuracy": 0.9357,
+        "auc": 0.9854
+      },
+      "url_only_same_rows_as_full": {
+        "n": 75,
+        "smishing": 18,
+        "legitimate": 57,
+        "smishing_recall": {
+          "n": 18,
+          "k": 9,
+          "rate": 0.5,
+          "ci95": [
+            0.2903,
+            0.7097
+          ]
+        },
+        "legitimate_recall": {
+          "n": 57,
+          "k": 54,
+          "rate": 0.9474,
+          "ci95": [
+            0.8563,
+            0.9819
+          ]
+        },
+        "balanced_accuracy": 0.7237,
+        "auc": 0.8938
+      },
+      "routed_all": {
+        "n": 136,
+        "smishing": 46,
+        "legitimate": 90,
+        "smishing_recall": {
+          "n": 46,
+          "k": 31,
+          "rate": 0.6739,
+          "ci95": [
+            0.5297,
+            0.7913
+          ]
+        },
+        "legitimate_recall": {
+          "n": 90,
+          "k": 88,
+          "rate": 0.9778,
+          "ci95": [
+            0.9226,
+            0.9939
+          ]
+        },
+        "balanced_accuracy": 0.8258,
+        "auc": 0.9722
+      },
+      "routed_without_shorteners": {
+        "n": 134,
+        "smishing": 45,
+        "legitimate": 89,
+        "smishing_recall": {
+          "n": 45,
+          "k": 30,
+          "rate": 0.6667,
+          "ci95": [
+            0.5207,
+            0.7864
+          ]
+        },
+        "legitimate_recall": {
+          "n": 89,
+          "k": 87,
+          "rate": 0.9775,
+          "ci95": [
+            0.9217,
+            0.9938
+          ]
+        },
+        "balanced_accuracy": 0.8221,
+        "auc": 0.9715
+      },
+      "url_only_without_shorteners": {
+        "n": 134,
+        "smishing": 45,
+        "legitimate": 89,
+        "smishing_recall": {
+          "n": 45,
+          "k": 23,
+          "rate": 0.5111,
+          "ci95": [
+            0.37,
+            0.6504
+          ]
+        },
+        "legitimate_recall": {
+          "n": 89,
+          "k": 85,
+          "rate": 0.9551,
+          "ci95": [
+            0.8901,
+            0.9824
+          ]
+        },
+        "balanced_accuracy": 0.7331,
+        "auc": 0.9253
+      }
+    }
+  },
+  "message_level_seed": 2024,
+  "fusion_dir": "models\\fusion\\rf_vec_live",
+  "message_level": {
+    "n_with_stored_page": 74,
+    "fusion_page_shown_all": {
+      "n": 136,
+      "smishing": 46,
+      "legitimate": 90,
+      "smishing_recall": {
+        "n": 46,
+        "k": 27,
+        "rate": 0.587,
+        "ci95": [
+          0.4434,
+          0.7171
+        ]
+      },
+      "legitimate_recall": {
+        "n": 90,
+        "k": 90,
+        "rate": 1.0,
+        "ci95": [
+          0.9591,
+          1.0
+        ]
+      },
+      "balanced_accuracy": 0.7935,
+      "auc": 0.956
+    },
+    "fusion_page_hidden_all": {
+      "n": 136,
+      "smishing": 46,
+      "legitimate": 90,
+      "smishing_recall": {
+        "n": 46,
+        "k": 18,
+        "rate": 0.3913,
+        "ci95": [
+          0.2639,
+          0.5354
+        ]
+      },
+      "legitimate_recall": {
+        "n": 90,
+        "k": 89,
+        "rate": 0.9889,
+        "ci95": [
+          0.9397,
+          0.998
+        ]
+      },
+      "balanced_accuracy": 0.6901,
+      "auc": 0.8645
+    },
+    "cnn_only_all": {
+      "n": 136,
+      "smishing": 46,
+      "legitimate": 90,
+      "smishing_recall": {
+        "n": 46,
+        "k": 19,
+        "rate": 0.413,
+        "ci95": [
+          0.2829,
+          0.5566
+        ]
+      },
+      "legitimate_recall": {
+        "n": 90,
+        "k": 50,
+        "rate": 0.5556,
+        "ci95": [
+          0.4527,
+          0.6538
+        ]
+      },
+      "balanced_accuracy": 0.4843,
+      "auc": 0.518
+    },
+    "fusion_page_shown_reached_only": {
+      "n": 75,
+      "smishing": 18,
+      "legitimate": 57,
+      "smishing_recall": {
+        "n": 18,
+        "k": 13,
+        "rate": 0.7222,
+        "ci95": [
+          0.4913,
+          0.875
+        ]
+      },
+      "legitimate_recall": {
+        "n": 57,
+        "k": 57,
+        "rate": 1.0,
+        "ci95": [
+          0.9369,
+          1.0
+        ]
+      },
+      "balanced_accuracy": 0.8611,
+      "auc": 0.9581
+    },
+    "fusion_page_hidden_reached_only": {
+      "n": 75,
+      "smishing": 18,
+      "legitimate": 57,
+      "smishing_recall": {
+        "n": 18,
+        "k": 4,
+        "rate": 0.2222,
+        "ci95": [
+          0.09,
+          0.4522
+        ]
+      },
+      "legitimate_recall": {
+        "n": 57,
+        "k": 56,
+        "rate": 0.9825,
+        "ci95": [
+          0.9071,
+          0.9969
+        ]
+      },
+      "balanced_accuracy": 0.6024,
+      "auc": 0.7641
+    },
+    "cnn_only_reached_only": {
+      "n": 75,
+      "smishing": 18,
+      "legitimate": 57,
+      "smishing_recall": {
+        "n": 18,
+        "k": 8,
+        "rate": 0.4444,
+        "ci95": [
+          0.2456,
+          0.6628
+        ]
+      },
+      "legitimate_recall": {
+        "n": 57,
+        "k": 33,
+        "rate": 0.5789,
+        "ci95": [
+          0.4498,
+          0.6981
+        ]
+      },
+      "balanced_accuracy": 0.5116,
+      "auc": 0.5229
+    }
+  },
+  "notes": [
+    "Small sample: read every rate with its interval.",
+    "Legitimate links are generated well-known sites, smishing links come from the team's collection; the two groups differ in more than spelling, so this is a sanity check, not a headline result.",
+    "Shorteners are almost all smishing here (confound, plan 29.8): see the *_without_shorteners rows."
+  ]
+}

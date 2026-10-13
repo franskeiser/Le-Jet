@@ -1,4 +1,12 @@
 # src/config.py
+import os
+from pathlib import Path
+
+# Where trained models, experiment reports and the demo data are written and read. Defaults to the
+# repository (models/, experiments/, data/demo/). Set LEJET_ARTIFACTS to another folder to keep them
+# elsewhere (e.g. D:\LeJetData\artifacts when Windows Controlled Folder Access blocks writes into the repo).
+# Inputs that are committed (the embeddings, the cleaned data, the splits) are always read from the repo.
+ARTIFACTS_ROOT = Path(os.environ.get("LEJET_ARTIFACTS", Path(__file__).resolve().parents[1]))
 
 # Shared random seeds — used for ALL stochastic operations:
 # train/val/test splits, Random Forest fits, NN weight initialization, etc.

@@ -343,5 +343,13 @@ def defang_url(url: str) -> str:
     """Make a URL un-clickable for anything that leaves the VM or appears in
     a document/spreadsheet: http(s) -> hxxp(s), '.' -> '[.]'."""
     s = strip_dangerous_chars(str(url))
-    s = re.sub(r"^https?", lambda m: m.group(0).replace("http", "hxxp"), s, flags=re.I)
+    # EVERY http(s):// is neutralised, not only the first: redirect pages carry whole links inside their
+    # query string (`?continue=https://accounts.google.com/`), which must not stay clickable either.
+    s = re.sub(r"(?i)\bhttp(s?)://", lambda m: "hxxp" + m.group(1) + "://", s)
     return s.replace(".", "[.]")
+
+
+def defang_embedded_urls(text: str) -> str:
+    """Only the embedded-link part of defang_url, safe to apply to text that is ALREADY defanged (it does not
+    touch dots, so it is idempotent): any remaining http(s):// becomes hxxp(s)://."""
+    return re.sub(r"(?i)\bhttp(s?)://", lambda m: "hxxp" + m.group(1) + "://", str(text))

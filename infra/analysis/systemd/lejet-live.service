@@ -1,0 +1,40 @@
+# The RESIDENT live worker: the pipeline and one shared Chromium stay loaded between links, so a demo link does not pay
+# for Python, library and browser start-up every time. Installed by install_bundle.sh as /etc/systemd/system/lejet-live.service.
+#
+# It is the same unprivileged user and the same kind of limits as the per-run units (lejet-sudo-batch / lejet-sudo-shots):
+#   * user `fetcher` (no shell, no sudo), private /tmp, read-only file system except /var/lib/lejet, no /home;
+#   * memory 3.5 GB without swap (the VM has 5.9 GB), one CPU, at most 2048 tasks and 8192 open files;
+#   * the Chromium SANDBOX stays on. NoNewPrivileges is deliberately NOT set, exactly as for lejet-sudo-shots: it would
+#     stop the AppArmor profile that lets Chromium create its sandbox namespaces;
+#   * recycled every hour (RuntimeMaxSec) and restarted if it dies; while it is down the helper uses the per-process path.
+# It never receives anything from the host directly: only lejet-sudo-live (root) drops a tiny, id-checked request file into
+# /var/lib/lejet/live/req after the isolation gate and the input checks, and the worker itself re-checks the gate token.
+[Unit]
+Description=Le-Jet resident live worker (pipeline + shared Chromium)
+After=network-online.target lejet-gate.service
+
+[Service]
+User=fetcher
+Group=fetcher
+# run as root ("+"): create the folders the unprivileged worker writes to
+ExecStartPre=+/usr/bin/install -d -o fetcher -g fetcher -m 700 /var/lib/lejet/work /var/lib/lejet/work/home
+ExecStartPre=+/usr/bin/install -d -o fetcher -g fetcher -m 750 /var/lib/lejet/out /var/lib/lejet/out/export /var/lib/lejet/live /var/lib/lejet/live/req /var/lib/lejet/live/state /var/lib/lejet/live/done
+ExecStart=/opt/lejet/venv/bin/python -I -m lejet.live_worker
+Environment=HOME=/var/lib/lejet/work/home TMPDIR=/var/lib/lejet/work PLAYWRIGHT_BROWSERS_PATH=/opt/lejet/browsers
+EnvironmentFile=-/etc/lejet/provenance.env
+Restart=always
+RestartSec=10
+RuntimeMaxSec=3600
+TimeoutStopSec=30
+MemoryMax=3500M
+MemorySwapMax=0
+CPUQuota=100%
+TasksMax=2048
+LimitNOFILE=8192
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/lejet
+
+[Install]
+WantedBy=multi-user.target

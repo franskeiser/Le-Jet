@@ -17,12 +17,19 @@ Variants:
     pu_only  has_url + P + u: link features only inside the RF
     rf_vec   has_url + P + u + 31 per-feature RF contributions (the RF as a feature extractor)
 
+Optional (--live-train data/live/live_links.csv --tag _live): Phase C's head also trains on rows built from the
+lab-inspected links of the `live_train` part (src/features/model/live_training.py), each shown to the head with or without
+its page evidence (MixedAuxDataset). Phase A, the gates and every validation/test score stay on the real data only, and
+`fresh_test` is never read here. The default run is unchanged.
+
 Usage (from the project root):
     python -m src.features.model.run_experiment
     python -m src.features.model.run_experiment --seeds 42 --variant no_pu --epochs 3
+    python -m src.features.model.run_experiment --variant rf_vec --live-train data/live/live_links.csv --tag _live
 """
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +38,7 @@ import torch
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_recall_fscore_support
 from torch.utils.data import DataLoader
 
-from src.config import DENSE_UNITS, NUM_FILTERS, SEEDS, SEQ_LEN_L
+from src.config import ARTIFACTS_ROOT, DENSE_UNITS, NUM_FILTERS, SEEDS, SEQ_LEN_L
 from src.data.split_dataset import load_phase_a_train_val, load_split_df, resolve_label_column
 from src.features.model.cnn_encoder import TextEncoder
 from src.features.model.fusion_classifier import FusionClassifier, load_phase_a_encoder_weights
@@ -42,16 +49,16 @@ from src.features.model.rf_extractor import load_extractor
 from src.features.model.rf_feature_extractor import extractor_gates
 from src.features.model.rf_gating_module import run_one_seed
 from src.features.model.train import (
-    LABEL_TO_IDX, FusionDataset, SmishDataset, train_phase_a, train_phase_c,
+    LABEL_TO_IDX, FusionDataset, MixedAuxDataset, SmishDataset, train_phase_a, train_phase_c,
 )
 
 REAL_SOURCE = "v2_2026-09-15"
 VARIANT_COLUMNS = {"with_pu": AUX_COLUMNS, "no_pu": AUX_COLUMNS[:-2],  # no_pu drops P and u
                    "pu_only": RECIPE_COLUMNS["pu_only"], "rf_vec": RECIPE_COLUMNS["rf_vec"]}
 VARIANT_RECIPE = {"with_pu": "link_pu", "no_pu": "link_pu", "pu_only": "pu_only", "rf_vec": "rf_vec"}
-IMPORTANCE_CSV = ROOT / "experiments" / "rf_extractor" / "importance_per_seed.csv"
-DEFAULT_OUT = ROOT / "experiments" / "fusion"
-DEFAULT_MODEL_DIR = ROOT / "models" / "fusion"
+IMPORTANCE_CSV = ARTIFACTS_ROOT / "experiments" / "rf_extractor" / "importance_per_seed.csv"
+DEFAULT_OUT = ARTIFACTS_ROOT / "experiments" / "fusion"
+DEFAULT_MODEL_DIR = ARTIFACTS_ROOT / "models" / "fusion"
 
 
 def seed_everything(seed: int) -> None:
@@ -114,12 +121,28 @@ def evaluate_groups(test_df: pd.DataFrame, y_true: np.ndarray, y_pred: np.ndarra
     return [{"group": name, **score_group(y_true[mask], y_pred[mask])} for name, mask in groups.items()]
 
 
+def live_head_set(live_path, args, seed, recipe, col_idx, train_ids, train_aux, train_y):
+    """The real SMS rows (their only P and u come from url_only, as before) plus the live_train rows (each read with or
+    without page evidence at random). Returns (dataset, all token ids, all labels)."""
+    from src.features.model import live_training as lt
+    rows = lt.build_rows(Path(live_path), "live_train", repeats=args.live_repeats, seed=seed)
+    ids, base, alt, y = lt.build_tensors(rows, load_extractor("url_only", seed), load_extractor("full", seed),
+                                         load_vocab(), recipe)
+    base, alt = base[:, col_idx], alt[:, col_idx]
+    print(f"[seed {seed}] live rows added to the head: {len(rows)} "
+          f"({int(y.sum())} smishing, {int((1 - y).sum())} legitimate, {int((rows['page_fetched'] == 1).sum())} with a page)")
+    all_ids, all_y = torch.cat([train_ids, ids]), torch.cat([train_y, y])
+    all_base, all_alt = torch.cat([train_aux, base]), torch.cat([train_aux, alt])
+    return MixedAuxDataset(all_ids, all_base, all_alt, all_y, p_alt=args.live_p_alt), all_ids, all_y
+
+
 def run_seed(seed: int, variant: str, args) -> tuple[list[dict], dict]:
     seed_everything(seed)
     columns = VARIANT_COLUMNS[variant]
     recipe = VARIANT_RECIPE[variant]
     col_idx = columns_index(columns, recipe)
-    model_dir = Path(args.model_dir) / variant
+    tag = getattr(args, "tag", "") or ""
+    model_dir = Path(args.model_dir) / (variant + tag)
     model_dir.mkdir(parents=True, exist_ok=True)
     word_to_idx = load_vocab()
 
@@ -133,29 +156,39 @@ def run_seed(seed: int, variant: str, args) -> tuple[list[dict], dict]:
     embedding, _ = load_embedding_layer()
     cnn = TextEncoder(embedding, NUM_FILTERS)
     phase_a_path = model_dir / f"phase_a_seed{seed}.pt"
-    phase_a_metrics = train_phase_a(
-        cnn,
-        DataLoader(SmishDataset(train_ids, train_y), batch_size=args.batch_size, shuffle=True),
-        DataLoader(SmishDataset(val_ids, val_y), batch_size=512),
-        epochs=args.epochs, lr=args.lr, patience=args.patience,
-        checkpoint_path=str(phase_a_path), class_weights=weights,
-    )
-    cnn.load_state_dict(torch.load(phase_a_path, map_location="cpu"))  # best epoch, not the last
+    reuse = getattr(args, "reuse_from", None)
+    if reuse:
+        # Phase A and the gates of an earlier finished run: only Phase C is trained again, so any change in the
+        # scores comes from the head alone. The CNN and the gates are copied untouched.
+        for name in (f"phase_a_seed{seed}.pt", f"gates_seed{seed}.csv", f"gates_seed{seed}.npy"):
+            shutil.copy2(Path(reuse) / name, model_dir / name)
+        cnn.load_state_dict(torch.load(phase_a_path, map_location="cpu"))
+        phase_a_metrics = {"reused_from": str(reuse)}
+        gates = torch.from_numpy(np.load(model_dir / f"gates_seed{seed}.npy").astype(np.float32))
+    else:
+        phase_a_metrics = train_phase_a(
+            cnn,
+            DataLoader(SmishDataset(train_ids, train_y), batch_size=args.batch_size, shuffle=True),
+            DataLoader(SmishDataset(val_ids, val_y), batch_size=512),
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            checkpoint_path=str(phase_a_path), class_weights=weights,
+        )
+        cnn.load_state_dict(torch.load(phase_a_path, map_location="cpu"))  # best epoch, not the last
 
-    # ---- Gates: forests on the RF-Fitting split, frozen CNN ------------------------------
-    rf_df = load_split_df(seed, "rf_fit")
-    _, rf_aux, _ = load_seed_inputs(seed, "rf_fit", rf_df, recipe)
-    gate_result = run_one_seed(
-        cnn, rf_df["sms_text"].astype(str).tolist(),
-        pd.DataFrame(rf_aux[:, col_idx].numpy(), columns=columns).to_dict("records"),
-        rf_df[label_col].tolist(), word_to_idx, SEQ_LEN_L, seed, n_repeats=args.gate_repeats,
-        out_dir=str(model_dir), url_gates_override=recipe_url_gates(recipe, seed),
-    )
-    gates = torch.from_numpy(np.load(gate_result["gate_path"]).astype(np.float32))
+        # ---- Gates: forests on the RF-Fitting split, frozen CNN --------------------------
+        rf_df = load_split_df(seed, "rf_fit")
+        _, rf_aux, _ = load_seed_inputs(seed, "rf_fit", rf_df, recipe)
+        gate_result = run_one_seed(
+            cnn, rf_df["sms_text"].astype(str).tolist(),
+            pd.DataFrame(rf_aux[:, col_idx].numpy(), columns=columns).to_dict("records"),
+            rf_df[label_col].tolist(), word_to_idx, SEQ_LEN_L, seed, n_repeats=args.gate_repeats,
+            out_dir=str(model_dir), url_gates_override=recipe_url_gates(recipe, seed),
+        )
+        gates = torch.from_numpy(np.load(gate_result["gate_path"]).astype(np.float32))
+        pd.DataFrame({"feature": gate_result["feature_names"], "gate": gates.numpy()}).to_csv(
+            model_dir / f"gates_seed{seed}.csv", index=False)
     cnn_gates, url_gates = gates[:NUM_FILTERS], gates[NUM_FILTERS:]
     assert len(url_gates) == len(columns), "gate array does not match the aux columns"
-    pd.DataFrame({"feature": gate_result["feature_names"], "gate": gates.numpy()}).to_csv(
-        model_dir / f"gates_seed{seed}.csv", index=False)
 
     # ---- Phase C: fusion model, its own copy of the Phase A encoder ----------------------
     embedding, _ = load_embedding_layer()
@@ -167,9 +200,16 @@ def run_seed(seed: int, variant: str, args) -> tuple[list[dict], dict]:
     _, val_aux, _ = load_seed_inputs(seed, "train", val_df, recipe)
     train_aux, val_aux = train_aux[:, col_idx], val_aux[:, col_idx]
     phase_c_path = model_dir / f"phase_c_seed{seed}.pt"
+    live_path = getattr(args, "live_train", None)
+    head_ids, head_y = train_ids, train_y
+    if live_path:
+        head_set, head_ids, head_y = live_head_set(live_path, args, seed, recipe, col_idx, train_ids, train_aux, train_y)
+        weights = class_weights(head_y)                    # recomputed on everything the head trains on
+    else:
+        head_set = FusionDataset(train_ids, train_aux, train_y)
     phase_c_metrics = train_phase_c(
         model,
-        DataLoader(FusionDataset(train_ids, train_aux, train_y), batch_size=args.batch_size, shuffle=True),
+        DataLoader(head_set, batch_size=args.batch_size, shuffle=True),
         DataLoader(FusionDataset(val_ids, val_aux, val_y), batch_size=512),
         epochs=args.epochs, lr=args.lr, checkpoint_path=str(phase_c_path), patience=args.patience,
         class_weights=weights,
@@ -216,6 +256,13 @@ def main() -> None:
     parser.add_argument("--gate-repeats", type=int, default=30, help="permutation-importance repeats")
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--live-train", type=Path, default=None,
+                        help="live_links.csv: also train the head on its live_train rows (see the module docstring)")
+    parser.add_argument("--live-repeats", type=int, default=8, help="synthetic texts per live link")
+    parser.add_argument("--live-p-alt", type=float, default=0.5, help="chance a live row is read WITH its page evidence")
+    parser.add_argument("--reuse-from", type=Path, default=None,
+                        help="folder of a finished run of the same variant: copy its Phase A and gates, train only Phase C")
+    parser.add_argument("--tag", default="", help="suffix for the output folders, e.g. _live (keeps the default run intact)")
     args = parser.parse_args()
 
     all_rows, infos = [], []
@@ -224,7 +271,7 @@ def main() -> None:
         all_rows += rows
         infos.append(info)
 
-    out = args.out / args.variant
+    out = args.out / (args.variant + args.tag)
     out.mkdir(parents=True, exist_ok=True)
     per_seed = pd.DataFrame(all_rows)
     per_seed.to_csv(out / "metrics_per_seed.csv", index=False)

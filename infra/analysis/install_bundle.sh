@@ -10,8 +10,9 @@
 #      PYTHONPATH and the current directory, but still reads .pth files in site-packages);
 #   5. fetches the IANA RDAP bootstrap file while the network is open;
 #   6. locks permissions (root owns the code; `fetcher` can only read it) and self-checks;
-#   7. installs four root-owned helpers in /usr/local/sbin plus a sudoers rule that lets `ops` run
-#      exactly those without a password (see infra/analysis/helpers/).
+#   7. installs six root-owned helpers in /usr/local/sbin plus a sudoers rule that lets `ops` run
+#      exactly those without a password (see infra/analysis/helpers/), and the background isolation gate
+#      (a systemd timer that repeats the 26-check self-test every few minutes).
 set -euo pipefail
 
 BUNDLE="${1:-/tmp/lejet-bundle}"
@@ -69,11 +70,11 @@ print("   sample features:", lf.link_text_features(lf.normalize_link("gcash-veri
 for bad in ("pandas", "numpy"):
     assert bad not in sys.modules, bad + " should not be needed"
 PY
-echo "== 7/7 root-owned helpers (passwordless sudo for exactly four fixed commands)"
+echo "== 7/7 root-owned helpers (passwordless sudo for exactly six fixed commands) and the background gate"
 HELPERS="$BUNDLE/infra/analysis/helpers"
 install -d -o root -g root -m 755 /usr/local/lib/lejet /etc/lejet
 install -o root -g root -m 755 "$BUNDLE/infra/analysis/preflight.sh" /usr/local/lib/lejet/preflight.sh
-for h in preflight install-urls batch export shots; do
+for h in preflight install-urls batch export shots live; do
   install -o root -g root -m 755 "$HELPERS/lejet-sudo-$h.sh" "/usr/local/sbin/lejet-sudo-$h"
 done
 # provenance for the export manifest: created once, then yours to edit (root-owned)
@@ -82,6 +83,17 @@ if [ ! -f /etc/lejet/provenance.env ]; then
   chmod 644 /etc/lejet/provenance.env
 fi
 install -d -o ops -g ops -m 755 /home/ops/incoming
+# the background isolation gate: the self-test every few minutes, under the lock that lejet-sudo-live shares
+install -o root -g root -m 644 "$BUNDLE/infra/analysis/systemd/lejet-gate.service" /etc/systemd/system/lejet-gate.service
+install -o root -g root -m 644 "$BUNDLE/infra/analysis/systemd/lejet-gate.timer" /etc/systemd/system/lejet-gate.timer
+systemctl daemon-reload
+systemctl enable --now lejet-gate.timer >/dev/null 2>&1 && echo "   background isolation gate: lejet-gate.timer enabled"
+# the resident live worker (pipeline + shared Chromium stay loaded between links); restarted so it runs the code just installed.
+# If it cannot start (e.g. the browser is not installed yet) nothing breaks: lejet-sudo-live falls back to the per-process path.
+install -o root -g root -m 644 "$BUNDLE/infra/analysis/systemd/lejet-live.service" /etc/systemd/system/lejet-live.service
+systemctl daemon-reload
+systemctl enable lejet-live.service >/dev/null 2>&1 || true
+if systemctl restart lejet-live.service; then echo "   resident live worker: lejet-live.service (re)started"; else echo "   WARNING: lejet-live.service did not start; live runs use the per-process path"; fi
 tmp_sudoers="$(mktemp)"
 install -m 440 "$HELPERS/91-lejet-helpers.sudoers" "$tmp_sudoers"
 if visudo -cf "$tmp_sudoers" >/dev/null; then

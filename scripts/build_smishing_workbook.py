@@ -163,8 +163,9 @@ def join(meta: List[Dict[str, Any]], rows: List[Dict[str, Any]], shots: Dict[str
                        page_rank=ranks.get(uid, ""), domain_age=("" if age in (-1, None) else age),
                        cls=cls, caveat=caveats(m, row, ranks.get(uid, "")))
             if shot_ok and shot:                                    # where the BROWSER ended up, and how much it shows
-                rec["browser_url"] = shot.get("final_url", "")
-                rec["title"] = shot.get("title", "")
+                # page-controlled text: any link inside it is neutralised again, whatever the VM sent
+                rec["browser_url"] = safety.defang_embedded_urls(shot.get("final_url", ""))
+                rec["title"] = safety.defang_embedded_urls(shot.get("title", ""))
                 if shot.get("rescued"):
                     rec["blank"] = "no: picture taken before the page wiped itself (hides from automated browsers)"
                 elif shot.get("text_chars") == 0 and shot.get("bytes", 0) < 12000:

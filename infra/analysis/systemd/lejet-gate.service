@@ -1,0 +1,11 @@
+# The isolation self-test (26 checks) as a background gate. Installed by install_bundle.sh as /etc/systemd/system/lejet-gate.service.
+# Runs the root-owned /usr/local/lib/lejet/preflight.sh under an exclusive lock, so it never overlaps a live run
+# (lejet-sudo-live holds the same lock shared). A pass writes /run/lejet-preflight-ok; a failure deletes it.
+[Unit]
+Description=Le-Jet isolation self-test (background gate)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -x /run/lejet-gate.lock /usr/local/lib/lejet/preflight.sh
+TimeoutStartSec=420

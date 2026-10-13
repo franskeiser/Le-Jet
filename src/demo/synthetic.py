@@ -32,9 +32,11 @@ from sklearn.model_selection import GroupShuffleSplit
 from src.features.link_features import LINK_TEXT_FEATURES, extract_links, link_text_features, no_link_features, normalize_link
 from src.features.model.rf_extractor import LABEL_TO_IDX, VARIANTS, fit_rf, load_dataset
 
+from src.config import ARTIFACTS_ROOT
+
 ROOT = Path(__file__).resolve().parents[2]
-DEMO_DATA = ROOT / "data" / "demo" / "synthetic_demo.csv"
-DEMO_MODEL_DIR = ROOT / "models" / "demo"
+DEMO_DATA = ARTIFACTS_ROOT / "data" / "demo" / "synthetic_demo.csv"
+DEMO_MODEL_DIR = ARTIFACTS_ROOT / "models" / "demo"
 EXTRACTOR_INPUTS = VARIANTS["full"]
 PAGE_COLUMNS = EXTRACTOR_INPUTS[len(LINK_TEXT_FEATURES):]  # page_rank, 12 webpage, 4 external
 SEED = 42

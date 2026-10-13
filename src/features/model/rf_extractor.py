@@ -40,12 +40,12 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import GroupShuffleSplit, ParameterGrid
 
-from src.config import SEEDS
+from src.config import ARTIFACTS_ROOT, SEEDS
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA = ROOT / "data" / "processed" / "web_phishing_clean.csv"
-DEFAULT_MODEL_DIR = ROOT / "models" / "rf_extractor"
-DEFAULT_REPORT_DIR = ROOT / "experiments" / "rf_extractor"
+DEFAULT_MODEL_DIR = ARTIFACTS_ROOT / "models" / "rf_extractor"
+DEFAULT_REPORT_DIR = ARTIFACTS_ROOT / "experiments" / "rf_extractor"
 
 LABEL_TO_IDX = {"legitimate": 0, "phishing": 1}
 

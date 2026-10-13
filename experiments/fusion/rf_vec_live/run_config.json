@@ -1,0 +1,83 @@
+{
+  "args": {
+    "seeds": "[42, 123, 2024]",
+    "variant": "rf_vec",
+    "epochs": "30",
+    "patience": "3",
+    "lr": "0.001",
+    "batch_size": "64",
+    "gate_repeats": "30",
+    "model_dir": "D:\\Le-Jet\\models\\fusion",
+    "out": "D:\\Le-Jet\\experiments\\fusion",
+    "live_train": "data\\live\\live_links.csv",
+    "live_repeats": "8",
+    "live_p_alt": "0.5",
+    "reuse_from": "models\\fusion\\rf_vec",
+    "tag": "_live"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "variant": "rf_vec",
+      "phase_a_val": {
+        "reused_from": "models\\fusion\\rf_vec"
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.9624524714828897,
+        "val_balanced_accuracy": 0.9624409546139271,
+        "val_precision": 0.9483146067415731,
+        "val_recall": 0.9623717217787914,
+        "val_f1": 0.955291454442558
+      },
+      "class_weights": [
+        0.8413360118865967,
+        1.2324161529541016
+      ],
+      "n_train": 11919,
+      "n_val": 2104,
+      "n_test": 3098
+    },
+    {
+      "seed": 123,
+      "variant": "rf_vec",
+      "phase_a_val": {
+        "reused_from": "models\\fusion\\rf_vec"
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.961465271170314,
+        "val_balanced_accuracy": 0.9612474750109944,
+        "val_precision": 0.9480225988700565,
+        "val_recall": 0.959954233409611,
+        "val_f1": 0.953951108584423
+      },
+      "class_weights": [
+        0.8401293158531189,
+        1.2350146770477295
+      ],
+      "n_train": 11908,
+      "n_val": 2102,
+      "n_test": 3074
+    },
+    {
+      "seed": 2024,
+      "variant": "rf_vec",
+      "phase_a_val": {
+        "reused_from": "models\\fusion\\rf_vec"
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.966270783847981,
+        "val_balanced_accuracy": 0.9668562135549231,
+        "val_precision": 0.9498327759197325,
+        "val_recall": 0.9703872437357631,
+        "val_f1": 0.96
+      },
+      "class_weights": [
+        0.8415423035621643,
+        1.2319737672805786
+      ],
+      "n_train": 11924,
+      "n_val": 2105,
+      "n_test": 3088
+    }
+  ]
+}

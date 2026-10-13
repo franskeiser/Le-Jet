@@ -43,14 +43,17 @@ TEST_FILES = [
     "tests/test_http_stage.py", "tests/test_pipeline_local.py", "tests/test_storage_export.py",
     "tests/test_cli.py", "tests/test_schema.py", "tests/test_link_features_golden.py",
     "tests/test_ct_stage.py", "tests/test_pipeline_ct.py", "tests/test_pngcheck.py",
-    "tests/test_shot_stage.py", "tests/test_shot_browser.py", "tests/test_guard_proxy.py",
+    "tests/test_shot_stage.py", "tests/test_shot_browser.py", "tests/test_guard_proxy.py", "tests/test_live_worker.py",
     "tests/fixtures/link_features_golden.json",
 ]
 EXTRA_FILES = ["infra/analysis/install_bundle.sh", "infra/analysis/preflight.sh",
                "infra/analysis/lejet-run.sh", "infra/analysis/lejet-export.sh",
                "infra/analysis/helpers/lejet-sudo-preflight.sh", "infra/analysis/helpers/lejet-sudo-install-urls.sh",
                "infra/analysis/helpers/lejet-sudo-batch.sh", "infra/analysis/helpers/lejet-sudo-export.sh",
-               "infra/analysis/helpers/lejet-sudo-shots.sh", "infra/analysis/install_browser.sh",
+               "infra/analysis/helpers/lejet-sudo-shots.sh", "infra/analysis/helpers/lejet-sudo-live.sh",
+               "infra/analysis/systemd/lejet-gate.service", "infra/analysis/systemd/lejet-gate.timer",
+               "infra/analysis/systemd/lejet-live.service",
+               "infra/analysis/preflight_sequential.sh", "infra/analysis/install_browser.sh",
                "infra/analysis/helpers/91-lejet-helpers.sudoers",
                "requirements/vm.in", "requirements/vm-test.in"]
 

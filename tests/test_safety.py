@@ -122,6 +122,26 @@ def test_sanitizers():
     assert "http" not in d.replace("hxxp", "")
 
 
+def test_defang_neutralises_links_embedded_in_a_url():
+    """A redirect page carries whole links inside its query string; none may stay clickable."""
+    import re
+    url = ("https://accounts.google.com/v3/signin/rejected?continue=https://accounts.google.com/"
+           "&followup=http://example.org/x&next=HTTPS://Evil.example.net/")
+    d = safety.defang_url(url)
+    assert not re.search(r"(?i)\bhttps?://", d)
+    assert d.startswith("hxxps://accounts[.]google[.]com/")
+    assert d.lower().count("hxxps://") == 3 and d.lower().count("hxxp://") == 1
+    # the lab's output validator must accept it
+    assert "://" in d
+
+
+def test_defang_embedded_is_idempotent_and_leaves_dots_alone():
+    once = safety.defang_url("https://a.example.com/?u=https://b.example.org/")
+    assert safety.defang_embedded_urls(once) == once                     # already safe: unchanged
+    assert safety.defang_embedded_urls("see https://x.example.com/a.b") == "see hxxps://x.example.com/a.b"
+    assert safety.defang_embedded_urls("no link here") == "no link here"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

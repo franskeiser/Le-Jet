@@ -38,6 +38,17 @@ The full plan is in [`data/dataset_and_training_plan.md`](data/dataset_and_train
 | Web inspector for SMS links | Planned ([`WEB_INSPECTION_PLAN.md`](WEB_INSPECTION_PLAN.md)) |
 | CNN, gating and fusion classifier | Done. Final architecture and its evidence: [`docs/final_model.md`](docs/final_model.md) |
 
+## Frontend + API on the final model
+
+The React frontend (`frontend/`, a git submodule) talks to `src/serving/api.py`, which runs the final model (CNN + two frozen RF extractors + gated fusion). Page evidence comes only from the isolated lab VMs: links they already inspected (`data/live/live_links.csv`) answer at once, and a new link is handed to the lab (`POST /inspect`, about 3 minutes, real steps shown in the page) and opened there, never on this computer and never by the server. If the lab is not running, the link is not opened and the page says so. Details, evaluation and rules: [docs/live_set_and_serving.md](docs/live_set_and_serving.md).
+
+Before a live demo: start both lab VMs (`VBoxManage startvm lejet-gw --type headless`, then `lejet-an`) and load the SSH key (`ssh-add $HOME\.ssh\lejet_ed25519`).
+
+```powershell
+python -m src.serving.api --fusion-dir models\fusion\rf_vec_live     # http://127.0.0.1:5000
+cd frontend; npm install; npm run dev                                # http://localhost:5050
+```
+
 ## Defense demo (synthetic prototype)
 
 A local web page that takes a pasted SMS and shows the verdict, the link evidence (P and u) and what moved the score. **Prototype only:** it is trained on synthetic SMS text wrapped around real URLs from the public web set, and page inspection is simulated from a stored table. No link is ever opened. Scores from it are not study results.

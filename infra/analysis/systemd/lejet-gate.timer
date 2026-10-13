@@ -1,0 +1,12 @@
+# Run the isolation self-test shortly after start-up, then again 4 minutes after each run has finished.
+# Installed by install_bundle.sh as /etc/systemd/system/lejet-gate.timer. A live run needs a pass that is at most 10 minutes old.
+[Unit]
+Description=Le-Jet isolation self-test, every few minutes
+
+[Timer]
+OnActiveSec=5s
+OnUnitInactiveSec=4min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
