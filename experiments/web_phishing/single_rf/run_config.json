@@ -1,0 +1,85 @@
+{
+  "args": {
+    "data": "data\\processed\\web_phishing_linked.csv",
+    "splits_dir": "data\\splits_web_phishing",
+    "out": "experiments\\web_phishing",
+    "seeds": "[42, 123, 2024]"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "params": {
+        "single": {
+          "max_depth": "20",
+          "max_features": "sqrt",
+          "min_samples_leaf": "1",
+          "n_estimators": "500"
+        },
+        "full": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "5",
+          "n_estimators": "500"
+        },
+        "url_only": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "5",
+          "n_estimators": "500"
+        }
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 123,
+      "params": {
+        "single": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "1",
+          "n_estimators": "200"
+        },
+        "full": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "5",
+          "n_estimators": "500"
+        },
+        "url_only": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "5",
+          "n_estimators": "200"
+        }
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 2024,
+      "params": {
+        "single": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "1",
+          "n_estimators": "500"
+        },
+        "full": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "1",
+          "n_estimators": "500"
+        },
+        "url_only": {
+          "max_depth": "None",
+          "max_features": "sqrt",
+          "min_samples_leaf": "5",
+          "n_estimators": "200"
+        }
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    }
+  ]
+}
