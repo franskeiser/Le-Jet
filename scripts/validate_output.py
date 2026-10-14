@@ -60,8 +60,11 @@ _BINARY = {"https_presence", "shortened_url_indicator", "has_ip_address", "rando
            "login_form", "external_favicon", "iframe", "empty_title", "domain_in_title",
            "domain_with_copyright", "whois_registered_domain", "dns_record"}
 
-_STR_FIELDS = {"url_id": 16, "batch_id": 64, "fetch_ts": 20, "url": 1100, "fail_reason": 40,
-               "hosting_platform": 100, "reg_domain": 300, "final_url": 1100, "final_reg_domain": 300,
+# url / final_url: the VM keeps at most 1024 characters and THEN defangs ('.' -> '[.]', so up to 3x): 3072 is the
+# real worst case. A cap of 1100 rejected a valid row (a Steam login redirect with a long return parameter, 2026-10-14).
+_URL_CAP = 3100
+_STR_FIELDS = {"url_id": 16, "batch_id": 64, "fetch_ts": 20, "url": _URL_CAP, "fail_reason": 40,
+               "hosting_platform": 100, "reg_domain": 300, "final_url": _URL_CAP, "final_reg_domain": 300,
                "scheme_used": 8}
 _INT_EXTRAS = ["dns_ok", "near_empty", "body_truncated", "stage_reached", "days_to_expiry",
                "free_hosting_subdomain", "platform_path_hosting", "rdap_skipped", "punycode",

@@ -50,7 +50,8 @@ EXPECTED_KEYS = {"url_id": str, "ok": bool, "error": str, "bytes": int, "sha256"
                  "height": int, "partial": bool, "blocked_requests": int, "ms": int,
                  "final_url": str, "title": str, "text_chars": int, "rescued": bool}
 # page-controlled text: capped, and free of control / bidirectional-override characters
-_TEXT_LIMITS = {"final_url": 1100, "title": 200}
+# final_url: kept at <=1024 characters on the VM, then defanged ('.' -> '[.]', up to 3x), so 3100 covers the worst case
+_TEXT_LIMITS = {"final_url": 3100, "title": 200}
 _BAD_CHARS = re.compile("[\x00-\x1f\x7f\x80-\x9f‎‏‪-‮⁦-⁩]")
 
 
