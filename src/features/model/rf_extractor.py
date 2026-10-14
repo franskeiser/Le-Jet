@@ -1,5 +1,9 @@
 """Phase 2: train the Random Forest feature extractor on the public web phishing set.
 
+LEGACY (two web-set extractors, superseded 2026-10-14 by src/unified/, see docs/unified_architecture.md).
+Still used by src/serving and the demo until they move to the unified forest.
+
+
 Plan: data/dataset_and_training_plan.md section 5. Design decision: docs/decision_web_inspection.md.
 
 The extractor turns one link's features into two numbers that are concatenated with the

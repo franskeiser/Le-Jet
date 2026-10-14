@@ -1,5 +1,9 @@
 """Train and evaluate the gated fusion model for every seed.
 
+LEGACY (two web-set extractors, superseded 2026-10-14 by src/unified/, see docs/unified_architecture.md).
+Still used by src/serving and the demo until they move to the unified forest.
+
+
 Per seed (docs/dataset_and_training_plan.md 7.2-7.3, docs/training_rules.md):
     Phase A  train the CNN alone (embedding + conv + temp head) on the Training split, with
              a validation slice carved from Training for early stopping.

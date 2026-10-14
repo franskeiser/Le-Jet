@@ -1,5 +1,7 @@
 # Le-Jet: final model
 
+**Superseded in part (2026-10-14, proposed):** the two-extractor RF design below is being replaced by one extractor on one dataset; see [`unified_architecture.md`](unified_architecture.md). The CNN, head, gating and `c_` ideas carry over.
+
 **Written 2026-10-12.** Every number below was read from a saved file in this repo. Figures from the synthetic demo are labeled; they show how the model behaves and are **not study results**.
 
 **Thesis:** A Random Forest-Guided Static Gating Framework for Financial-Related Smishing Classification Using SMS Text

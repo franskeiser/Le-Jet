@@ -1,0 +1,111 @@
+{
+  "args": {
+    "data": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\data\\processed\\unified_dataset.csv",
+    "splits_dir": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\data\\splits_unified",
+    "seeds": "[42, 123, 2024]",
+    "rf_inputs": "full",
+    "no_tune": "False",
+    "epochs": "30",
+    "patience": "3",
+    "lr": "0.001",
+    "batch_size": "64",
+    "gate_repeats": "30",
+    "model_dir": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\models\\unified",
+    "out": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\experiments\\unified"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "rf_inputs": "full",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "1",
+        "n_estimators": "500"
+      },
+      "phase_a_val": {
+        "val_accuracy": 0.9696117051209905,
+        "val_balanced_accuracy": 0.9692243656935178,
+        "val_precision": 0.9638297872340426,
+        "val_recall": 0.978401727861771,
+        "val_f1": 0.9710610932475884
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.9684862127180641,
+        "val_balanced_accuracy": 0.9680016902995587,
+        "val_precision": 0.9608050847457628,
+        "val_recall": 0.9794816414686826,
+        "val_f1": 0.9700534759358289
+      },
+      "n_train": 10065,
+      "n_val": 1777,
+      "n_rf_fit": 1265,
+      "n_test": 1893,
+      "rf_test_links": 888,
+      "rf_test_f1": 0.9387755102040817,
+      "rf_test_auc": 0.9897322977553581
+    },
+    {
+      "seed": 123,
+      "rf_inputs": "full",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "1",
+        "n_estimators": "500"
+      },
+      "phase_a_val": {
+        "val_accuracy": 0.971862689926843,
+        "val_balanced_accuracy": 0.9714317801696898,
+        "val_precision": 0.964968152866242,
+        "val_recall": 0.9816414686825053,
+        "val_f1": 0.9732334047109208
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.9707371975239167,
+        "val_balanced_accuracy": 0.9703042793004292,
+        "val_precision": 0.9639065817409767,
+        "val_recall": 0.980561555075594,
+        "val_f1": 0.9721627408993576
+      },
+      "n_train": 10068,
+      "n_val": 1777,
+      "n_rf_fit": 1262,
+      "n_test": 1893,
+      "rf_test_links": 856,
+      "rf_test_f1": 0.8495821727019499,
+      "rf_test_auc": 0.9622442044853886
+    },
+    {
+      "seed": 2024,
+      "rf_inputs": "full",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "1",
+        "n_estimators": "200"
+      },
+      "phase_a_val": {
+        "val_accuracy": 0.9696117051209905,
+        "val_balanced_accuracy": 0.9692243656935178,
+        "val_precision": 0.9638297872340426,
+        "val_recall": 0.978401727861771,
+        "val_f1": 0.9710610932475884
+      },
+      "phase_c_val": {
+        "val_accuracy": 0.971862689926843,
+        "val_balanced_accuracy": 0.9713841929073406,
+        "val_precision": 0.9639830508474576,
+        "val_recall": 0.9827213822894169,
+        "val_f1": 0.9732620320855615
+      },
+      "n_train": 10068,
+      "n_val": 1777,
+      "n_rf_fit": 1262,
+      "n_test": 1893,
+      "rf_test_links": 854,
+      "rf_test_f1": 0.8974358974358975,
+      "rf_test_auc": 0.9810913114372234
+    }
+  ]
+}

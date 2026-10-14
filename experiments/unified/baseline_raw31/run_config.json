@@ -1,0 +1,52 @@
+{
+  "args": {
+    "data": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\data\\processed\\unified_dataset.csv",
+    "seeds": "[42, 123, 2024]",
+    "tag": "full",
+    "splits_dir": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\data\\splits_unified",
+    "epochs": "30",
+    "patience": "3",
+    "lr": "0.001",
+    "batch_size": "64",
+    "model_dir": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\models\\unified",
+    "out": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\experiments\\unified"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "phase_c_val": {
+        "val_accuracy": 0.967923466516601,
+        "val_balanced_accuracy": 0.9674617334961029,
+        "val_precision": 0.9607635206786851,
+        "val_recall": 0.978401727861771,
+        "val_f1": 0.9695024077046549
+      },
+      "n_train": 10065,
+      "n_test": 1893
+    },
+    {
+      "seed": 123,
+      "phase_c_val": {
+        "val_accuracy": 0.9690489589195272,
+        "val_balanced_accuracy": 0.9687795834147604,
+        "val_precision": 0.9657754010695188,
+        "val_recall": 0.9751619870410367,
+        "val_f1": 0.9704459967759269
+      },
+      "n_train": 10068,
+      "n_test": 1893
+    },
+    {
+      "seed": 2024,
+      "phase_c_val": {
+        "val_accuracy": 0.9707371975239167,
+        "val_balanced_accuracy": 0.9703042793004292,
+        "val_precision": 0.9639065817409767,
+        "val_recall": 0.980561555075594,
+        "val_f1": 0.9721627408993576
+      },
+      "n_train": 10068,
+      "n_test": 1893
+    }
+  ]
+}

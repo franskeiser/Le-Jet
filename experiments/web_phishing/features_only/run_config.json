@@ -1,0 +1,87 @@
+{
+  "args": {
+    "data": "data\\processed\\web_phishing_linked.csv",
+    "splits_dir": "data\\splits_web_phishing",
+    "out": "experiments\\web_phishing",
+    "variants": "['url_only', 'full']",
+    "seeds": "[42, 123, 2024]",
+    "epochs": "100",
+    "patience": "8",
+    "lr": "0.001",
+    "batch_size": "64"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "variant": "url_only",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "5",
+        "n_estimators": "500"
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 123,
+      "variant": "url_only",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "5",
+        "n_estimators": "200"
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 2024,
+      "variant": "url_only",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "5",
+        "n_estimators": "200"
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 42,
+      "variant": "full",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "5",
+        "n_estimators": "500"
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 123,
+      "variant": "full",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "5",
+        "n_estimators": "500"
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    },
+    {
+      "seed": 2024,
+      "variant": "full",
+      "rf_params": {
+        "max_depth": "None",
+        "max_features": "sqrt",
+        "min_samples_leaf": "1",
+        "n_estimators": "500"
+      },
+      "n_train": 8905,
+      "n_test": 1515
+    }
+  ]
+}
