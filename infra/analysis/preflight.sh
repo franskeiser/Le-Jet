@@ -8,6 +8,9 @@
 # 3-4 s timeout (test 9 waits for four ports in a row). Those probes do not depend on each other, so they run at the same time.
 # What does NOT change: every command, every timeout, every pass rule, the token logic, and the output format. The two
 # resource-limit tests (19 memory, 20 fork) run alone, after the network probes, so they cannot disturb them.
+# Test 15 (listening sockets) also runs alone, after the probes: test 10 opens a temporary UDP socket on a random port
+# (0.0.0.0:<high port>) for up to 3 s, and `ss -tuln` run at the same moment listed it as an "unexpected listener"
+# (a false FAIL seen on 2026-10-14). Two preflights must not overlap either: lejet-sudo-preflight takes the gate lock.
 # A bug in this file can only make the preflight FAIL (no token is written, so nothing is fetched): it fails closed.
 #
 # Usage:  ./preflight.sh [--router-ip IP] [--home-ip IP] [--record]
@@ -140,10 +143,13 @@ t23() {  # 23 Firewall ruleset unchanged
   else skip 23 "no reference hash yet (run once with --record)"; fi
 }
 
-# phase 1: everything that only probes the network or reads the system, all at once
-for n in 1 2 3 4 5 6 7 8 9 10 11 12 14 15 16 17 21; do ( "t$n" ) & done
+# phase 1: everything that only probes the network or reads the system, all at once (NOT t15: see phase 2)
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 14 16 17 21; do ( "t$n" ) & done
 wait
-# phase 2: the two resource-limit tests, alone (they must not disturb the probes, and the probes must not disturb them)
+# phase 2: tests that must run alone. t15 lists the listening sockets, so it must not run while a probe of phase 1
+# (test 10's UDP socket) is open. t19 and t20 are the resource-limit tests: they must not disturb the probes, and the
+# probes must not disturb them.
+t15
 t19
 t20
 # phase 3: clock and firewall hash, after the load of phase 2 is gone

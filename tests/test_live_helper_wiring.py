@@ -71,6 +71,40 @@ def test_a_failed_self_test_deletes_the_token_so_it_blocks_live_runs():
     assert "if [ $FAIL -eq 0 ]" in PREFLIGHT
 
 
+def _phase_calls() -> tuple[list[int], list[str]]:
+    """The test numbers the preflight starts in parallel (phase 1) and the lines it runs alone afterwards."""
+    lines = [l.strip() for l in PREFLIGHT.splitlines()]
+    loop = next(l for l in lines if l.startswith("for n in ") and '"t$n"' in l)
+    parallel = [int(x) for x in loop.split(" in ")[1].split(";")[0].split()]
+    after_wait = lines[lines.index("wait") + 1:]
+    alone = [l for l in after_wait if re.fullmatch(r"t\d+", l)]
+    return parallel, alone
+
+
+def test_the_listener_check_runs_alone_after_the_parallel_probes():
+    # 2026-10-14: test 10's temporary UDP socket (0.0.0.0:<random port>) was listed by a parallel test 15: a false FAIL
+    parallel, alone = _phase_calls()
+    assert 15 not in parallel and "t15" in alone
+    assert alone.index("t15") < alone.index("t19") < alone.index("t20")      # before the heavy resource tests too
+    assert 10 in parallel                                                    # the UDP probe still runs in phase 1
+
+
+def test_no_preflight_test_was_dropped_by_the_change():
+    parallel, alone = _phase_calls()
+    ran = sorted(parallel + [int(a[1:]) for a in alone])
+    skipped = [int(n) for n in re.findall(r'^skip (\d+) "', PREFLIGHT, re.M)]
+    assert sorted(ran + skipped) == list(range(1, 27))                       # 26 checks, each exactly once
+    assert len(set(ran)) == len(ran)
+
+
+def test_a_manual_preflight_takes_the_gate_lock_so_two_runs_never_overlap():
+    helper = read("helpers/lejet-sudo-preflight.sh")
+    code = "\n".join(l for l in helper.splitlines() if not l.lstrip().startswith("#"))
+    assert re.search(r"exec flock -x -w \d+ /run/lejet-gate\.lock /usr/local/lib/lejet/preflight\.sh$", code, re.M)
+    assert "[ $# -eq 0 ]" in code                                            # still takes no arguments (no --record)
+    assert "/run/lejet-gate.lock" in SERVICE                                 # the same lock the background gate holds
+
+
 def test_the_gate_repeats_often_enough_for_the_ten_minute_limit():
     assert "OnUnitInactiveSec=4min" in TIMER and "OnActiveSec=" in TIMER
     assert "Type=oneshot" in SERVICE and "TimeoutStartSec=" in SERVICE
