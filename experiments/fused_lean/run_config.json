@@ -1,0 +1,11 @@
+{
+  "seeds": [
+    42,
+    123,
+    2024
+  ],
+  "domain_cap": 20,
+  "p_blank": 0.25,
+  "p_text_drop": 0.1,
+  "data": "D:\\NYOLAN FILES HDD\\pup\\4th year\\Thesis\\Lejet\\Le-Jet\\data\\processed\\fresh_lean_synthetic.csv"
+}
