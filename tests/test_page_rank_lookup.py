@@ -52,8 +52,11 @@ class _API(http.server.BaseHTTPRequestHandler):
             for d in doms:
                 if d in RANKS and RANKS[d] is not None:
                     items.append({"status_code": 200, "page_rank_integer": RANKS[d], "domain": d})
-                elif d in RANKS:
-                    items.append({"status_code": 404, "page_rank_integer": None, "domain": d})
+                elif d == "weird404.test":      # a 404 that is NOT "Domain not found": a failure, never a 0
+                    items.append({"status_code": 404, "error": "Server busy", "page_rank_integer": 0, "rank": None, "domain": d})
+                elif d in RANKS:                # the REAL answer for an unknown domain (seen 2026-10-15)
+                    items.append({"status_code": 404, "error": "Domain not found", "page_rank_integer": 0,
+                                  "page_rank_decimal": 0, "rank": None, "domain": d})
             body = json.dumps({"status_code": 200, "response": items}).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
@@ -125,6 +128,13 @@ def test_a_domain_the_service_did_not_answer_is_minus_one_not_zero(tmp_path, api
     rc, rows = run(tmp_path, api, ["example.com", "never-answered.test"])
     by = {r["final_reg_domain"].replace("[.]", "."): r for r in rows}
     assert by["never-answered.test"]["page_rank"] == "-1" and by["never-answered.test"]["page_rank_ok"] == "0"
+
+
+def test_the_real_domain_not_found_answer_is_unrated_zero_and_other_404s_are_failures(tmp_path, api):
+    rc, rows = run(tmp_path, api, ["unrated.example.org", "weird404.test"])
+    by = {r["final_reg_domain"].replace("[.]", "."): r for r in rows}
+    assert by["unrated.example.org"]["page_rank"] == "0" and by["unrated.example.org"]["page_rank_ok"] == "1"
+    assert by["weird404.test"]["page_rank"] == "-1" and by["weird404.test"]["page_rank_ok"] == "0"
 
 
 def test_a_different_scale_is_a_failure_not_a_value(tmp_path, api):

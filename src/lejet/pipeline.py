@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set,
 from urllib.parse import urlsplit
 
 from lejet import domains, safety, schema, urlnorm
-from lejet.features import external_features
+from lejet.features import external_features, hannousse_html, hannousse_url
 from lejet.parse_pool import ParsePool
 from lejet.settings import Settings
 from lejet.stages.dns_stage import DnsStage, DnspythonResolver, Resolver
@@ -171,6 +171,16 @@ class Pipeline:
             except Exception as exc:                            # noqa: BLE001
                 insp.errors.append(("stage0", type(exc).__name__, "link_text_features"))
         insp.row.update({name: feats.get(name, -1) for name in schema.URL_TEXT_FEATURES})
+        # The 56 URL-based columns of the public 87-feature set, from the SAME normalised link. A failure here
+        # leaves them at -1 and never touches the 14 model inputs above.
+        if len(raw_url) <= safety.MAX_URL_LEN:
+            try:
+                full = hannousse_url.url_features(lf.normalize_link(raw_url))
+                insp.row.update({f"hf_{k}": v for k, v in full.items() if f"hf_{k}" in insp.row})
+                # the two redirect counts are only known once the chain has been followed (see Stage 3)
+                insp.row["hf_nb_redirection"] = insp.row["hf_nb_external_redirection"] = -1
+            except Exception as exc:                            # noqa: BLE001
+                insp.errors.append(("stage0", type(exc).__name__, "hannousse_url"))
 
     async def _domain_features(self, host: str, reg_domain: str, path: str,
                                insp: Inspection) -> Dict[str, Any]:
@@ -254,6 +264,14 @@ class Pipeline:
             row["final_status"] = http.final_status
             row["body_truncated"] = int(http.body_truncated)
             final_url = http.final_url or final_url
+            if http.hops:                                        # public-set nb_redirection / nb_external_redirection
+                try:
+                    redir = hannousse_url.redirection_features(
+                        insp.normalized_url, [h.host for h in http.hops[:http.redirects]])
+                    row["hf_nb_redirection"] = redir["nb_redirection"]
+                    row["hf_nb_external_redirection"] = redir["nb_external_redirection"]
+                except Exception as exc:                        # noqa: BLE001
+                    insp.errors.append(("stage3", type(exc).__name__, "redirection_features"))
             for note in http.errors:
                 insp.errors.append(("http", "note", note))
         else:
@@ -305,6 +323,10 @@ class Pipeline:
             if feats:
                 for name in schema.WEBPAGE_FEATURES:
                     row[name] = feats.get(name, -1)
+                extra = http.analysis.get("features_extra") or {}
+                for name in hannousse_html.EXTRA_CONTENT_FEATURES:
+                    if f"hf_{name}" in row:                      # the four unmeasured ones have no hf_ column
+                        row[f"hf_{name}"] = extra.get(name, -1)
                 row["html_available"] = 1
                 row["stage_reached"] = 5
             row["html_bytes"] = int(http.analysis.get("html_bytes", -1))

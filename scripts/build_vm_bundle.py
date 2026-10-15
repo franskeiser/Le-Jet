@@ -44,6 +44,7 @@ TEST_FILES = [
     "tests/test_cli.py", "tests/test_schema.py", "tests/test_link_features_golden.py",
     "tests/test_ct_stage.py", "tests/test_pipeline_ct.py", "tests/test_pngcheck.py",
     "tests/test_shot_stage.py", "tests/test_shot_browser.py", "tests/test_guard_proxy.py", "tests/test_live_worker.py",
+    "tests/test_hannousse_url.py", "tests/test_hannousse_html.py",
     "tests/fixtures/link_features_golden.json",
 ]
 EXTRA_FILES = ["infra/analysis/install_bundle.sh", "infra/analysis/preflight.sh",

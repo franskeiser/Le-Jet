@@ -63,6 +63,16 @@ _BINARY = {"https_presence", "shortened_url_indicator", "has_ip_address", "rando
 # url / final_url: the VM keeps at most 1024 characters and THEN defangs ('.' -> '[.]', so up to 3x): 3072 is the
 # real worst case. A cap of 1100 rejected a valid row (a Steam login redirect with a long return parameter, 2026-10-14).
 _URL_CAP = 3100
+# features_full (the 73 public-set columns kept): the same finite-number discipline, with the ranges of the public set.
+_FULL_BINARY = {"ip", "nb_dslash", "https_token", "punycode", "port", "tld_in_path", "tld_in_subdomain",
+                "abnormal_subdomain", "prefix_suffix", "random_domain", "shortening_service", "path_extension",
+                "domain_in_brand", "brand_in_subdomain", "brand_in_path", "suspecious_tld", "login_form",
+                "external_favicon", "iframe", "popup_window", "onmouseover", "right_clic",
+                "empty_title", "domain_in_title", "domain_with_copyright", "whois_registered_domain"}
+_FULL_RATIO = {"ratio_digits_url", "ratio_digits_host", "ratio_intHyperlinks"}
+_FULL_PCT = {"links_in_tags", "ratio_intMedia", "ratio_extMedia", "safe_anchor"}
+_FULL_WEBPAGE = set(schema.WEBPAGE_FEATURES) | {"popup_window", "safe_anchor", "onmouseover", "right_clic"}
+
 _STR_FIELDS = {"url_id": 16, "batch_id": 64, "fetch_ts": 20, "url": _URL_CAP, "fail_reason": 40,
                "hosting_platform": 100, "reg_domain": 300, "final_url": _URL_CAP, "final_reg_domain": 300,
                "scheme_used": 8}
@@ -107,6 +117,9 @@ def check_record(rec: Any) -> List[str]:
         return ["record is not an object"]
     errs: List[str] = []
     keys = set(rec)
+    # `features_full` is optional so batches exported before it existed can still be checked; if present it is strict.
+    if keys == EXPECTED_KEYS | {"features_full"}:
+        keys = EXPECTED_KEYS
     if keys != EXPECTED_KEYS:
         extra, missing = sorted(keys - EXPECTED_KEYS), sorted(EXPECTED_KEYS - keys)
         if extra:
@@ -161,6 +174,27 @@ def check_record(rec: Any) -> List[str]:
                 errs.append(f"features.{name}: not 0, 1 or -1")
             elif v > 10**9:
                 errs.append(f"features.{name}: implausibly large")
+
+    full = rec.get("features_full")
+    if "features_full" in rec:
+        if not isinstance(full, dict) or list(full) != schema.FULL_FEATURES:
+            errs.append("features_full: wrong keys or order")
+        else:
+            for name, v in full.items():
+                if not _is_num(v):
+                    errs.append(f"features_full.{name}: not a finite number")
+                elif v < -1 or v > 10**9:
+                    errs.append(f"features_full.{name}: out of range")
+                elif name in _FULL_BINARY and v not in (-1, 0, 1):
+                    errs.append(f"features_full.{name}: not 0, 1 or -1")
+                elif name in _FULL_RATIO and v > 1:
+                    errs.append(f"features_full.{name}: above 1")
+                elif name in _FULL_PCT and v > 100:
+                    errs.append(f"features_full.{name}: above 100")
+                elif name == "statistical_report" and v not in (-1, 0, 1, 2):
+                    errs.append("features_full.statistical_report: not 0, 1, 2 or -1")
+            if rec.get("html_available") is False and any(full.get(n) != -1 for n in _FULL_WEBPAGE):
+                errs.append("features_full: page columns present although html_available is false")
 
     for name in _INT_EXTRAS:
         v = rec.get(name)
@@ -315,6 +349,17 @@ def write_clean(records: List[Dict[str, Any]], clean_dir: str, batch: str, csv_p
                     v = rec["features"][c] if c in rec["features"] else rec.get(c, "")
                     row.append(safety.csv_safe(v) if isinstance(v, str) else v)
                 w.writerow(row)
+        if any("features_full" in r for r in records):
+            # the same rows with the 73 exported public-set columns, for anyone who wants the full feature table
+            full_path = os.path.splitext(csv_path)[0] + ".full_features.csv"
+            head = ["url_id", "batch_id", "url", "page_fetched", "fail_reason"]
+            with open(full_path, "w", encoding="utf-8", newline="") as fh:
+                w = csv.writer(fh)
+                w.writerow(head + schema.FULL_FEATURES)
+                for rec in sorted(records, key=lambda r: r["url_id"]):
+                    full = rec.get("features_full") or {}
+                    w.writerow([safety.csv_safe(rec[h]) if isinstance(rec[h], str) else rec[h] for h in head]
+                               + [full.get(n, -1) for n in schema.FULL_FEATURES])
     return out
 
 

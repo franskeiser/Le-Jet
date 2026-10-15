@@ -31,6 +31,7 @@ def test_column_lists_match_the_frozen_extractors():
     assert full == schema.URL_TEXT_FEATURES + [schema.PAGE_RANK] + schema.WEBPAGE_FEATURES + schema.EXTERNAL_FEATURES
     assert len(full) == 31
     assert len(schema.VM_FEATURES) == 30
+    assert "subdomain_count" in schema.URL_TEXT_FEATURES and "nb_subdomains" not in schema.FULL_FEATURES   # same for nb_subdomains
 
 
 def test_html_feature_list_matches_schema():
@@ -119,3 +120,46 @@ def test_export_record_never_contains_a_clickable_url():
     row["final_url"] = "https://phish2.test/x"
     text = json.dumps(schema.export_record(row))
     assert "http://" not in text and "https://" not in text
+
+
+# ---------------------------------------------------------------------------------------
+# the exported public-set columns (73 of the set's 87)
+# ---------------------------------------------------------------------------------------
+def test_dataset_columns_are_the_public_sets_columns_in_order_and_features_full_is_a_subset():
+    import csv
+    from pathlib import Path
+    assert len(schema.DATASET_COLUMNS) == 87 and len(set(schema.DATASET_COLUMNS)) == 87
+    raw = Path(__file__).resolve().parents[1] / "data" / "raw" / "web-phishing" / "train-1.csv"
+    if raw.exists():                                   # only on the host
+        header = next(csv.reader(open(raw, encoding="utf-8")))
+        assert header[1:-1] == schema.DATASET_COLUMNS  # between `url` and `status`
+    assert len(schema.FULL_FEATURES) == 73 and len(schema.DROPPED_FROM_FULL) == 14
+    assert schema.FULL_FEATURES == [n for n in schema.DATASET_COLUMNS if n not in schema.DROPPED_FROM_FULL]
+    assert set(schema.DROPPED_FROM_FULL) == {
+        "ratio_intRedirection", "ratio_extRedirection", "ratio_intErrors", "ratio_extErrors", "google_index",
+        "nb_or", "nb_hyphens", "dns_record", "web_traffic",
+        "nb_subdomains", "ratio_extHyperlinks", "ratio_nullHyperlinks", "submit_email", "sfh"}
+
+
+def test_dropping_a_column_from_the_table_does_not_touch_the_model_inputs():
+    # nb_hyphens and dns_record are not exported in features_full, but they are still model inputs
+    assert "number_of_hyphens" in schema.URL_TEXT_FEATURES and "dns_record" in schema.EXTERNAL_FEATURES
+    assert "nb_hyphens" not in schema.FULL_FEATURES and "dns_record" not in schema.FULL_FEATURES
+    assert len(schema.VM_FEATURES) == 30
+    assert "subdomain_count" in schema.URL_TEXT_FEATURES and "nb_subdomains" not in schema.FULL_FEATURES   # same for nb_subdomains
+
+
+def test_every_full_column_has_exactly_one_source():
+    full = set(schema.FULL_FEATURES)
+    from_model, host, stored = set(schema.FULL_FROM_MODEL_INPUTS), set(schema.FULL_NOT_ON_VM), set(schema.HF_STORED)
+    assert not (from_model & stored) and not (host & stored) and not (from_model & host)
+    assert from_model | host | stored == full
+    assert host == {"page_rank"}
+    assert from_model <= set(schema.WEBPAGE_FEATURES) | set(schema.EXTERNAL_FEATURES)
+
+
+def test_a_new_row_has_every_hf_column_unknown_and_the_export_has_all_73():
+    row = schema.new_row("0" * 16, "http://a.example/", "b")
+    assert all(row[f"hf_{n}"] == -1 for n in schema.HF_STORED)
+    full = schema.export_record(row)["features_full"]
+    assert list(full) == schema.FULL_FEATURES and set(full.values()) == {-1}

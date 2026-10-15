@@ -29,6 +29,7 @@ from lxml import etree
 from lxml import html as lhtml
 
 from lejet import domains, safety
+from lejet.features.hannousse_html import collect_facts as _collect_facts, extra_features as _extra_features
 
 MAX_ELEMENTS = 20_000          # plan 13.5b: count at most 20,000 elements
 MAX_TEXT_CHARS = 2_000_000
@@ -222,13 +223,20 @@ def _iframe_hidden(el) -> bool:
 # feature extraction
 # ---------------------------------------------------------------------------
 def extract_features(root, base_url: str, base_reg: str, base_host: str,
-                     label: str, errors: List[str]) -> Tuple[Dict[str, Any], int]:
+                     label: str, errors: List[str],
+                     facts: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], int]:
     """The 12 features for one parsed page. Returns (features, script_count).
 
     Each group is wrapped separately: a failure makes only its features -1 and is logged
-    in `errors` (plan 13.5b: extractor_error)."""
+    in `errors` (plan 13.5b: extractor_error).
+
+    `facts`, if given, is filled during the SAME walk with the raw material of the other content features of the
+    public 87-feature set (see lejet.features.hannousse_html): it changes nothing about the 12 features."""
     feats: Dict[str, Any] = {name: -1 for name in WEBPAGE_FEATURES}
     script_count = 0
+    if facts is not None:
+        facts.update(anchors=0, unsafe_anchors=0, text_inputs=0, js_parts=[], js_chars=0,
+                     onmouseover_attr=False, event_button_attr=False)
 
     groups = {k: _Counts() for k in ("href", "link", "media", "form", "css", "favicon")}
     form_actions: List[Tuple[str, str]] = []     # (kind, action) for forms with an action attribute
@@ -246,6 +254,9 @@ def extract_features(root, base_url: str, base_reg: str, base_host: str,
             if not isinstance(tag, str):
                 continue
             tag = tag.lower()
+
+            if facts is not None:
+                _collect_facts(el, tag, facts)
 
             if tag == "a" or tag == "area":
                 href = el.get("href")
@@ -427,7 +438,7 @@ def analyze_page(body: bytes, content_type: Optional[str], base_url: str,
         "is_html": False, "redirect_kind": "", "redirect_url": "",
         "challenge": False, "parked": False, "features": {},
         "html_bytes": len(body), "script_count": -1, "near_empty": -1,
-        "title": "", "errors": [],
+        "title": "", "errors": [], "features_extra": {},
     }
     errors: List[str] = out["errors"]
 
@@ -459,7 +470,8 @@ def analyze_page(body: bytes, content_type: Optional[str], base_url: str,
     if target:
         out["redirect_kind"], out["redirect_url"] = kind, target[:2048]
 
-    feats, script_count = extract_features(root, base_url, base_reg, host, label, errors)
+    facts: Dict[str, Any] = {}
+    feats, script_count = extract_features(root, base_url, base_reg, host, label, errors, facts)
     out["script_count"] = script_count
 
     # title (cleaned) and plain text for the verdicts (visible_text() mutates `root`)
@@ -475,4 +487,8 @@ def analyze_page(body: bytes, content_type: Optional[str], base_url: str,
         out["parked"] = (not out["challenge"]) and is_parked_page(title, plain)
         if want_features and not out["challenge"] and not out["parked"]:
             out["features"] = feats
+            try:
+                out["features_extra"] = _extra_features(facts)
+            except Exception as exc:                          # noqa: BLE001 - logged, never raised
+                errors.append(f"extractor_error:extra:{type(exc).__name__}")
     return out

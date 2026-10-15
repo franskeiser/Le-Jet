@@ -135,6 +135,12 @@ def fetch_batch(domains: List[str], key: str, base_url: str, timeout: float = 15
             # a different scale (e.g. 0-100) would shift the trained feature: treat as a failure
         elif status in (200, 404) and rank is None:
             out[dom] = 0                                            # answered, but no rank: unrated = 0
+        elif status == 404 and str(item.get("error", "")).strip().lower() == "domain not found":
+            # what the real service sends for a domain it does not know (seen 2026-10-15): status_code 404,
+            # error "Domain not found", page_rank_integer 0. Unrated = 0, like the training column; NOT a failure.
+            # (Before this branch such domains became -1, and since nearly all of them were phishing sites the
+            # missing value itself leaked the label.)
+            out[dom] = 0
     return out
 
 
