@@ -159,6 +159,39 @@ Pages blanked (page not reached): UNGATED F1 0.935 ± 0.002, GATED 0.943 ± 0.01
 - Only about 380 test messages per seed: accuracy uncertainty is about ±2 points, which is also why 0.5 points between GATED and UNGATED cannot be resolved.
 - Not done: the shuffled-gate control inside the fused head, the optional page-state rule, the 700-row small-data check, a fresh forest refit on `fresh_dev` (the frozen web forest is used instead, so its saved gates still apply), and the "same recipe" choice of the static branch scale by cross-validation.
 
+### 2h. A fair neural baseline: the 1D feature CNN trained like the forest (2026-10-15)
+
+**Why.** `CNN_CONCAT` (2g) learns its link processing from about 760 paired rows, while the forest learned from the 11,430 web pages and was tuned. So the forest's edge over it could be data, not learner. Fix: give the neural model the same data, protocol and tuning budget, and change only the learner.
+
+**Neural expert** (`python -m src.unified.train_neural_expert`, about 25 minutes for 3 seeds; log in `logs/nn_expert.log`). The existing 1D feature CNN (`FeatureCNN` in `run_features_only.py`, now with a `dropout` argument) is trained on the same web train rows and domain-grouped splits as the forest, every page complete and blanked (blank = NaN -> 0 plus a `page_missing` flag), 8-setting grid (filters 16/32, dropout 0.3/0.5, signed log1p off/on) chosen by domain-grouped validation F1 (the forest's grid is 8 settings by grouped 3-fold CV), then frozen. Saved as `models/static_gating/nn_link_seed*.pt`; tables in `experiments/static_gating/nn_expert_*.csv`. The grid picked filters 32 and dropout 0.3 in every seed; log1p was chosen in 2 of 3.
+
+Expert alone on the web test (1,515 pages, 37 features, mean ± std over 3 seeds):
+
+| Test pages | Model | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|---|
+| Complete | Forest | 0.915 | 0.886 | 0.938 | 0.911 ± 0.007 |
+| Complete | 1D CNN | 0.898 ± 0.003 | 0.885 ± 0.010 | 0.897 ± 0.015 | 0.891 ± 0.004 |
+| Blanked | Forest | 0.827 | 0.784 | 0.870 | 0.825 ± 0.004 |
+| Blanked | 1D CNN | 0.825 ± 0.006 | 0.818 ± 0.016 | 0.805 ± 0.008 | 0.811 ± 0.004 |
+
+With the same data and protocol the gap shrinks to 2.0 F1 points on complete pages and 1.4 on blanked (it was 4.4 on the 31-feature complete-page experiment in 2c). The forest still leads in all three seeds.
+
+**Matched pair in the fused pipeline** (`run_fused_lean.py`): head input = 64 text features + logit of ONE expert's calibrated P + `page_missing` + `has_url` (67 inputs), same head and recipe. `RF_P` uses the forest's P, `NN_P` the 1D CNN's P. No contributions, no u, no gates.
+
+| Model (complete pages, 3 seeds) | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|
+| RF_P | 0.932 ± 0.035 | 0.948 ± 0.027 | 0.915 ± 0.045 | 0.931 ± 0.036 |
+| NN_P | 0.919 ± 0.027 | 0.930 ± 0.013 | 0.907 ± 0.042 | 0.918 ± 0.028 |
+
+Blanked pages F1: RF_P 0.929 ± 0.039, NN_P 0.911 ± 0.018. Per-seed F1 RF_P / NN_P: 0.961 / 0.943 (42), 0.942 / 0.888 (123), 0.891 / 0.924 (2024). McNemar RF_P vs NN_P: p = 0.09, 0.0003, 0.036, and in seed 2024 NN_P is the better one.
+
+**Reading (honest):**
+- With equal data and tuning, the forest is ahead of the neural expert on the web test in every seed, by about 1.4 to 2 F1 points. That is a small lead, in line with 2c and with the literature caveat (do not claim a large gap).
+- In the fused matched pair, RF_P is 1.3 F1 points above NN_P on average, but the sign flips in one seed and the spread over seeds (±0.03) is larger than the gap. **No consistent winner.** Do not claim "RF beats a neural expert" from the fused result.
+- Both matched models score below `CNN_CONCAT` (0.940) and well below UNGATED (0.960). So giving the head only a single probability throws away information; the extra benefit of UNGATED over RF_P (+2.9 F1; McNemar p = 0.39, 0.81, <0.001) comes from u and the 37 contributions, in 1 seed out of 3 significant.
+- RF_P and NN_P vary a lot between seeds (RF_P 0.891 to 0.961); the head is trained on about 760 rows and validated on about 128, so head training is noisy. More paired data would help most.
+- Not done: an MLP expert, expert-specific contributions for the neural model (e.g. gradient x input), a neural expert with the same u-like uncertainty, tuning the head.
+
 ### 2f. Next session (decided 2026-10-15)
 
 The title stays: Random Forest-guided static gating. The gating check (2e) showed no gain on either side alone, so the next work tests gating where it might still help. Nothing is running in the background.

@@ -1,0 +1,31 @@
+[seed 42] {'filters': 16, 'dropout': 0.3, 'log1p': False} val F1 0.8886
+[seed 42] {'filters': 16, 'dropout': 0.3, 'log1p': True} val F1 0.9059
+[seed 42] {'filters': 16, 'dropout': 0.5, 'log1p': False} val F1 0.8980
+[seed 42] {'filters': 16, 'dropout': 0.5, 'log1p': True} val F1 0.9096
+[seed 42] {'filters': 32, 'dropout': 0.3, 'log1p': False} val F1 0.9067
+[seed 42] {'filters': 32, 'dropout': 0.3, 'log1p': True} val F1 0.9143
+[seed 42] {'filters': 32, 'dropout': 0.5, 'log1p': False} val F1 0.9125
+[seed 42] {'filters': 32, 'dropout': 0.5, 'log1p': True} val F1 0.9106
+[seed 42] chosen {'filters': 32, 'dropout': 0.3, 'log1p': True}: web_test_complete F1 0.888, web_test_blanked F1 0.808
+[seed 123] {'filters': 16, 'dropout': 0.3, 'log1p': False} val F1 0.8924
+[seed 123] {'filters': 16, 'dropout': 0.3, 'log1p': True} val F1 0.9097
+[seed 123] {'filters': 16, 'dropout': 0.5, 'log1p': False} val F1 0.8990
+[seed 123] {'filters': 16, 'dropout': 0.5, 'log1p': True} val F1 0.9139
+[seed 123] {'filters': 32, 'dropout': 0.3, 'log1p': False} val F1 0.9224
+[seed 123] {'filters': 32, 'dropout': 0.3, 'log1p': True} val F1 0.9191
+[seed 123] {'filters': 32, 'dropout': 0.5, 'log1p': False} val F1 0.9098
+[seed 123] {'filters': 32, 'dropout': 0.5, 'log1p': True} val F1 0.9081
+[seed 123] chosen {'filters': 32, 'dropout': 0.3, 'log1p': False}: web_test_complete F1 0.895, web_test_blanked F1 0.811
+[seed 2024] {'filters': 16, 'dropout': 0.3, 'log1p': False} val F1 0.9104
+[seed 2024] {'filters': 16, 'dropout': 0.3, 'log1p': True} val F1 0.9152
+[seed 2024] {'filters': 16, 'dropout': 0.5, 'log1p': False} val F1 0.9171
+[seed 2024] {'filters': 16, 'dropout': 0.5, 'log1p': True} val F1 0.9086
+[seed 2024] {'filters': 32, 'dropout': 0.3, 'log1p': False} val F1 0.9184
+[seed 2024] {'filters': 32, 'dropout': 0.3, 'log1p': True} val F1 0.9232
+[seed 2024] {'filters': 32, 'dropout': 0.5, 'log1p': False} val F1 0.9147
+[seed 2024] {'filters': 32, 'dropout': 0.5, 'log1p': True} val F1 0.9095
+[seed 2024] chosen {'filters': 32, 'dropout': 0.3, 'log1p': True}: web_test_complete F1 0.890, web_test_blanked F1 0.815
+                   accuracy_mean  accuracy_std  precision_mean  precision_std  recall_mean  recall_std  f1_mean  f1_std
+group                                                                                                                  
+web_test_blanked          0.8249        0.0060          0.8176         0.0157       0.8050      0.0077   0.8111  0.0039
+web_test_complete         0.8975        0.0025          0.8853         0.0097       0.8968      0.0150   0.8909  0.0036

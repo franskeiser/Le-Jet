@@ -42,13 +42,13 @@ DEFAULT_OUT = Path("experiments/every_sms")
 class FeatureCNN(nn.Module):
     """Two conv layers over the feature vector, global max pool, one dense layer, one logit."""
 
-    def __init__(self, n_inputs: int, filters: int = 32, dense_units: int = 64):
+    def __init__(self, n_inputs: int, filters: int = 32, dense_units: int = 64, dropout: float = 0.3):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv1d(1, filters, kernel_size=3, padding=1), nn.ReLU(),
             nn.Conv1d(filters, filters * 2, kernel_size=3, padding=1), nn.ReLU(),
         )
-        self.head = nn.Sequential(nn.Linear(filters * 2 * 2, dense_units), nn.ReLU(), nn.Dropout(0.3),
+        self.head = nn.Sequential(nn.Linear(filters * 2 * 2, dense_units), nn.ReLU(), nn.Dropout(dropout),
                                   nn.Linear(dense_units, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -71,9 +71,9 @@ def cnn_matrix(df: pd.DataFrame, inputs: list[str], scaler, page_cols: list[str]
     return x.to_numpy(dtype=np.float32)
 
 
-def fit_cnn(x_tr, y_tr, x_val, y_val, seed: int, args) -> FeatureCNN:
+def fit_cnn(x_tr, y_tr, x_val, y_val, seed: int, args, **model_kwargs) -> FeatureCNN:
     seed_everything(seed)
-    model = FeatureCNN(x_tr.shape[1])
+    model = FeatureCNN(x_tr.shape[1], **model_kwargs)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     pos_weight = torch.tensor((1 - y_tr.mean()) / max(y_tr.mean(), 1e-9), dtype=torch.float32)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)

@@ -27,6 +27,10 @@ Per seed (42, 123, 2024):
   6. fresh_test is scored once: complete pages (headline) and pages blanked. Predictions are saved with message_id
      and the three models are asserted to hold identical ids. Paired McNemar (exact) per seed on complete pages.
 
+       RF_P / NN_P  the matched-expert pair (docs/progress.md, section 2h): 64 text features + logit of the calibrated P of ONE
+                 link expert + page_missing + has_url (67 inputs). RF_P uses the forest's P; NN_P uses the 1D feature CNN's P,
+                 trained on the same web set, splits, blank augmentation and tuning budget (train_neural_expert.py).
+                 Only the link learner differs. No contributions, no u, no gates.
 CNN_CONCAT trains with the same modality dropout and the same random draws as UNGATED and GATED.
 Also reported for reference: the frozen v2 CNN's own classifier, and GATED/UNGATED with the link or the text zeroed.
 
@@ -61,6 +65,7 @@ from src.features.text_preprocessing import text_tokens
 from src.unified import prepare_web_37 as w37
 from src.unified.gating_check import Head
 from src.unified.prepare_v2 import strip_links
+from src.unified.train_neural_expert import load_expert, predict_proba as nn_proba
 from src.unified.train_static_gating import EMB_V2, MODEL_DIR
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -273,6 +278,29 @@ def run_seed(seed: int, data: pd.DataFrame, web_urls: set) -> tuple[list, list, 
     preds[("CNN_CONCAT", "complete")] = predict(concat_head, cc("te", test, False))
     preds[("CNN_CONCAT", "blanked")] = predict(concat_head, cc("te", test, True))
 
+    # Matched experts: text + one expert's calibrated P (+ flags). Only the link learner differs between RF_P and NN_P.
+    nn_model, nn_scaler = load_expert(seed)
+
+    def nn_p(part, blank: bool) -> np.ndarray:
+        X = part[FEATURES].copy()
+        if blank:
+            X[PAGE] = np.nan
+        return nn_proba(nn_model, nn_scaler(X))
+
+    parts = {"tr": tr, "va": va, "dev": dev, "te": test}
+    P_nn = {n: {b: nn_p(parts[n], b) for b in (False, True)} for n in parts}
+    P_rf = {n: {b: link[n][b][1] for b in (False, True)} for n in parts}
+    nn_platt = LogisticRegression(C=1e6).fit(logit(np.concatenate([P_nn["dev"][False], P_nn["dev"][True]])).reshape(-1, 1), y_dev)
+    nn_cal = lambda p: nn_platt.predict_proba(logit(p).reshape(-1, 1))[:, 1]
+    for tag, P, calibrate in (("RF_P", P_rf, cal), ("NN_P", P_nn, nn_cal)):
+        lp_tr = logit(calibrate(P["tr"][False]))
+        lm, ls = lp_tr.mean(), lp_tr.std() + 1e-8
+        mk = lambda n, b: np.column_stack([z(text[n]), (logit(calibrate(P[n][b])) - lm) / ls,
+                                           np.full(len(parts[n]), float(b)), np.ones(len(parts[n]))]).astype(np.float32)
+        head = fit_head(mk("tr", False), mk("tr", True), y_tr, mk("va", False), y_va, seed, text_cols=N_TEXT)
+        preds[(tag, "complete")] = predict(head, mk("te", False))
+        preds[(tag, "blanked")] = predict(head, mk("te", True))
+
     for name, fused in variants.items():
         head = fit_head(inputs(fused, "tr", False), inputs(fused, "tr", True), y_tr,
                         inputs(fused, "va", False), y_va, seed, text_cols=N_TEXT)
@@ -301,7 +329,8 @@ def run_seed(seed: int, data: pd.DataFrame, web_urls: set) -> tuple[list, list, 
         pred_rows.append(pd.DataFrame({"seed": seed, "message_id": test["message_id"], "condition": cond, "model": model,
                                        "label": y_te, "pred": p}))
     for a, b in (("GATED", "UNGATED"), ("GATED", "CNN"), ("UNGATED", "CNN"), ("CNN_CONCAT", "CNN"),
-                 ("GATED", "CNN_CONCAT"), ("UNGATED", "CNN_CONCAT")):
+                 ("GATED", "CNN_CONCAT"), ("UNGATED", "CNN_CONCAT"), ("RF_P", "NN_P"), ("RF_P", "CNN"), ("NN_P", "CNN"),
+                 ("UNGATED", "RF_P")):
         tests.append({"seed": seed, "model_a": a, "model_b": b, "condition": "complete",
                       **mcnemar(y_te, preds[(a, "complete")], preds[(b, "complete")])})
 
