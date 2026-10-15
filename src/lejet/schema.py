@@ -40,6 +40,65 @@ EXTERNAL_FEATURES = [
 VM_FEATURES = URL_TEXT_FEATURES + WEBPAGE_FEATURES + EXTERNAL_FEATURES
 
 # ---------------------------------------------------------------------------
+# The public web-phishing set's columns (Hannousse & Yahiouche, 2021) that the lab exports next to the 31 model
+# inputs, as `features_full`. The set has 87; fourteen are left out on purpose (DROPPED_FROM_FULL), so
+# `features_full` has 73, in the public set's order and under its names. The model inputs (`features`) are NOT affected: two of the
+# dropped columns (nb_hyphens, dns_record) are still model inputs under their cleaned names.
+#   * URL-based (53)     -> lejet.features.hannousse_url   (computed from the original link, stored as hf_<name>)
+#   * content (4 extra)  -> lejet.features.hannousse_html  (stored as hf_<name>)
+#   * 12 content + 3 external -> the same values as the model inputs of the same name (no second copy)
+#   * page_rank          -> -1 on the VM; the host adds it (scripts/add_full_features.py)
+# ---------------------------------------------------------------------------
+DATASET_COLUMNS = [
+    "length_url", "length_hostname", "ip", "nb_dots", "nb_hyphens", "nb_at", "nb_qm", "nb_and", "nb_or",
+    "nb_eq", "nb_underscore", "nb_tilde", "nb_percent", "nb_slash", "nb_star", "nb_colon", "nb_comma",
+    "nb_semicolumn", "nb_dollar", "nb_space", "nb_www", "nb_com", "nb_dslash", "http_in_path",
+    "https_token", "ratio_digits_url", "ratio_digits_host", "punycode", "port", "tld_in_path",
+    "tld_in_subdomain", "abnormal_subdomain", "nb_subdomains", "prefix_suffix", "random_domain",
+    "shortening_service", "path_extension", "nb_redirection", "nb_external_redirection",
+    "length_words_raw", "char_repeat", "shortest_words_raw", "shortest_word_host", "shortest_word_path",
+    "longest_words_raw", "longest_word_host", "longest_word_path", "avg_words_raw", "avg_word_host",
+    "avg_word_path", "phish_hints", "domain_in_brand", "brand_in_subdomain", "brand_in_path",
+    "suspecious_tld", "statistical_report",
+    "nb_hyperlinks", "ratio_intHyperlinks", "ratio_extHyperlinks", "ratio_nullHyperlinks", "nb_extCSS",
+    "ratio_intRedirection", "ratio_extRedirection", "ratio_intErrors", "ratio_extErrors", "login_form",
+    "external_favicon", "links_in_tags", "submit_email", "ratio_intMedia", "ratio_extMedia", "sfh", "iframe",
+    "popup_window", "safe_anchor", "onmouseover", "right_clic", "empty_title", "domain_in_title",
+    "domain_with_copyright",
+    "whois_registered_domain", "domain_registration_length", "domain_age", "web_traffic", "dns_record",
+    "google_index", "page_rank",
+]
+assert len(DATASET_COLUMNS) == 87 and len(set(DATASET_COLUMNS)) == 87
+# Columns left out of features_full, and why (the user's decision of 2026-10-14).
+DROPPED_FROM_FULL = {
+    # cannot be captured by the lab
+    "ratio_intRedirection": "needs a request to every hyperlink of the page; the lab never fetches linked resources",
+    "ratio_extRedirection": "needs a request to every hyperlink of the page; the lab never fetches linked resources",
+    "ratio_intErrors": "needs a request to every hyperlink of the page; the lab never fetches linked resources",
+    "ratio_extErrors": "needs a request to every hyperlink of the page; the lab never fetches linked resources",
+    "google_index": "needs one Google search per link (against Google's terms)",
+    # not needed
+    "nb_or": "always 0 in the public set",
+    "nb_hyphens": "weak (correlation -0.10); still a model input as number_of_hyphens",
+    "dns_record": "weak (correlation 0.12); still a model input",
+    "web_traffic": "weak (correlation 0.06); the Alexa rank it held no longer exists",
+    # exact duplicates or no information (analysis of the public set's training split, 2026-10-14)
+    "nb_subdomains": "an exact function of nb_dots (1, 2 or 3); still a model input as subdomain_count",
+    "ratio_extHyperlinks": "exactly 1 - ratio_intHyperlinks in the lab (null links count as internal)",
+    "ratio_nullHyperlinks": "0 in every row of the public set, so it cannot be evaluated; dropped to keep the table lean",
+    "submit_email": "0 in every row of the public set, so it cannot be evaluated; dropped to keep the table lean",
+    "sfh": "0 in every row of the public set, so it cannot be evaluated; dropped to keep the table lean",
+}
+FULL_FEATURES = [n for n in DATASET_COLUMNS if n not in DROPPED_FROM_FULL]
+assert len(FULL_FEATURES) == 73
+# Columns of `features_full` that take their value from the model-input column of the same name.
+FULL_FROM_MODEL_INPUTS = [n for n in FULL_FEATURES if n in WEBPAGE_FEATURES or n in EXTERNAL_FEATURES]
+# Columns the VM cannot fill: -1 here (the host adds page_rank; see scripts/add_full_features.py).
+FULL_NOT_ON_VM = ["page_rank"]
+# Columns stored in the row as hf_<name> (everything else is read from the model-input column or is -1 on the VM).
+HF_STORED = [n for n in FULL_FEATURES if n not in FULL_FROM_MODEL_INPUTS and n not in FULL_NOT_ON_VM]
+
+# ---------------------------------------------------------------------------
 # fail_reason (plan 13.10). `read_timeout` is an addition: the plan's list has no value for
 # "connected but the server stalled / trickled the body", and calling that "dead" would
 # be wrong.
@@ -127,6 +186,7 @@ def utc_now_iso() -> str:
 def new_row(url_id: str, raw_url: str, batch_id: str) -> Dict[str, Any]:
     """A row with every key present and every value at its unknown default."""
     row: Dict[str, Any] = {name: -1 for name in VM_FEATURES}
+    row.update({f"hf_{name}": -1 for name in HF_STORED})
     row.update(BOOKKEEPING_DEFAULTS)
     row["url_id"] = url_id
     row["batch_id"] = batch_id
@@ -165,6 +225,19 @@ def clean_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def full_features(r: Dict[str, Any]) -> Dict[str, Any]:
+    """The 87 public-set columns of one cleaned row, in the public set's order (-1 = not measured / unknown)."""
+    out: Dict[str, Any] = {}
+    for name in FULL_FEATURES:
+        if name in FULL_FROM_MODEL_INPUTS:
+            out[name] = r.get(name, -1)
+        elif name in FULL_NOT_ON_VM:
+            out[name] = -1
+        else:
+            out[name] = r.get(f"hf_{name}", -1)
+    return out
+
+
 def _defang_domain(domain: str) -> str:
     return safety.strip_dangerous_chars(domain).replace(".", "[.]")
 
@@ -193,6 +266,7 @@ def export_record(row: Dict[str, Any]) -> Dict[str, Any]:
         },
         "duration_ms": r["duration_ms"],
         "features": features,
+        "features_full": full_features(r),
     }
     for name in EXTRA_EXPORT_FIELDS:
         value = r.get(name, BOOKKEEPING_DEFAULTS.get(name))

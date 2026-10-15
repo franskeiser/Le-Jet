@@ -261,3 +261,62 @@ def test_real_exports_from_the_pipeline_storage_validate(tmp_path):
     records, problems = vo.validate(info["jsonl"], sha256_file=info["jsonl"] + ".sha256")
     assert problems == [], problems
     assert len(records) == 4
+
+
+# ---------------------------------------------------------------------------------------
+# features_full: the 73 exported public-set columns
+# ---------------------------------------------------------------------------------------
+def test_features_full_is_checked_when_present_and_optional_when_absent(tmp_path):
+    rec = good_record(RAWS[0])
+    assert list(rec["features_full"]) == schema.FULL_FEATURES
+    assert vo.check_record(rec) == []
+    old_format = {k: v for k, v in rec.items() if k != "features_full"}
+    assert vo.check_record(old_format) == []                       # batches exported before it existed still validate
+
+
+@pytest.mark.parametrize("name, value, fragment", [
+    ("ip", 2, "not 0, 1 or -1"),
+    ("ratio_digits_url", 1.5, "above 1"),
+    ("safe_anchor", 120, "above 100"),
+    ("statistical_report", 3, "not 0, 1, 2"),
+    ("length_url", -2, "out of range"),
+    ("length_url", 10**10, "out of range"),
+    ("length_url", float("nan"), "not a finite number"),
+    ("length_url", "12", "not a finite number"),
+])
+def test_features_full_values_are_range_checked(name, value, fragment):
+    rec = good_record(RAWS[0])
+    rec["features_full"][name] = value
+    assert any(fragment in e for e in vo.check_record(rec)), vo.check_record(rec)
+
+
+def test_features_full_must_have_exactly_the_73_names_in_order():
+    rec = good_record(RAWS[0])
+    rec["features_full"].pop("page_rank")
+    assert any("wrong keys or order" in e for e in vo.check_record(rec))
+    rec = good_record(RAWS[0])
+    rec["features_full"] = dict(reversed(list(rec["features_full"].items())))
+    assert any("wrong keys or order" in e for e in vo.check_record(rec))
+    rec = good_record(RAWS[0])
+    rec["features_full"] = "nope"
+    assert any("wrong keys or order" in e for e in vo.check_record(rec))
+
+
+def test_page_columns_must_be_unknown_when_no_page_was_read():
+    rec = good_record(RAWS[0], html_available=0, page_fetched=0, fetch_ok=0, fail_reason="http_4xx")
+    rec["features_full"]["safe_anchor"] = 50.0
+    assert any("page columns present" in e for e in vo.check_record(rec))
+
+
+def test_the_clean_step_writes_the_full_feature_table(tmp_path):
+    recs = [good_record(r) for r in RAWS]
+    path = str(tmp_path / "b001.jsonl.gz")
+    write_gz(path, [jl(r) for r in recs])
+    records, problems = vo.validate(path)
+    assert problems == []
+    csv_path = str(tmp_path / "b001.csv")
+    vo.write_clean(records, str(tmp_path / "clean"), "b001", csv_path)
+    with open(str(tmp_path / "b001.full_features.csv"), encoding="utf-8") as fh:
+        rows = list(csv.reader(fh))
+    assert rows[0] == ["url_id", "batch_id", "url", "page_fetched", "fail_reason"] + schema.FULL_FEATURES
+    assert len(rows) == 1 + len(RAWS) and all(len(r) == 5 + 73 for r in rows)

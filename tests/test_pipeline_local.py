@@ -531,3 +531,58 @@ def test_stored_rows_are_sanitized(tmp_path):
         assert "\x1b" not in row["final_url"] and "‮" not in row["final_url"]
     finally:
         store.close()
+
+
+# ---------------------------------------------------------------------------------------
+# The exported public-set columns (`features_full`, 73 of the set's 87)
+# ---------------------------------------------------------------------------------------
+EXTRA_FEATS = {"popup_window": 0, "safe_anchor": 40.0, "onmouseover": 0, "right_clic": 1}
+
+
+def full_of(insp):
+    return schema.export_record(insp.row)["features_full"]
+
+
+def test_a_rejected_link_still_gets_its_url_columns_and_no_page_columns():
+    insp, _, _ = one("http://10.0.0.1/admin/login.php?x=1")
+    full = full_of(insp)
+    assert list(full) == schema.FULL_FEATURES
+    assert full["length_url"] == len("http://10.0.0.1/admin/login.php?x=1") and full["ip"] == 1 and full["nb_qm"] == 1
+    assert full["phish_hints"] >= 2                                    # admin, login
+    for name in ("nb_redirection", "nb_external_redirection", "nb_hyperlinks", "safe_anchor", "page_rank",
+                 "domain_age"):
+        assert full[name] == -1, name
+
+
+def test_a_fetched_page_fills_the_content_columns_and_the_redirect_counts():
+    async def fn(norm):
+        r = ok_result("https://www.real-bank.com/login", redirects=2)
+        r.hops = [Hop(0, 302, "short.example.com", "x", 5), Hop(1, 301, "other.org", "y", 5), Hop(2, 200, "www.real-bank.com", "", 5)]
+        r.analysis["features_extra"] = dict(EXTRA_FEATS)
+        return r
+    res = FakeResolver({**resolves("short.example.com", "www.real-bank.com")})
+    insp, _, _ = one("https://short.example.com/go", http=FakeHttp(fn), resolver=res)
+    full = full_of(insp)
+    assert insp.row["html_available"] == 1
+    # the 12 original page features and the 4 external ones appear under the public set's names
+    assert full["nb_hyperlinks"] == 7 and full["ratio_intHyperlinks"] == 0.5 and full["login_form"] == 1
+    assert full["whois_registered_domain"] == insp.row["whois_registered_domain"] >= 0
+    # the extra content columns come from the parse pool; the nine dropped columns are not exported at all
+    assert full["safe_anchor"] == 40.0 and full["right_clic"] == 1 and full["popup_window"] == 0
+    assert not set(full) & set(schema.DROPPED_FROM_FULL)
+    # two redirects, one of which left the original domain name (example)
+    assert full["nb_redirection"] == 2 and full["nb_external_redirection"] == 1
+    # the third-party column is filled on the host, never on the VM
+    assert full["page_rank"] == -1
+
+
+def test_the_31_model_inputs_do_not_change_when_the_full_columns_are_added():
+    async def fn(norm):
+        r = ok_result(norm.normalized_url)
+        r.analysis["features_extra"] = dict(EXTRA_FEATS)
+        return r
+    res = FakeResolver({**resolves("start.example.com")})
+    insp, _, _ = one("https://start.example.com/a/b", http=FakeHttp(fn), resolver=res)
+    rec = schema.export_record(insp.row)
+    assert list(rec["features"]) == schema.VM_FEATURES and len(rec["features"]) == 30
+    assert rec["features"]["nb_hyperlinks"] == 7 and rec["features"]["url_length"] == len("https://start.example.com/a/b")
