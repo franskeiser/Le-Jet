@@ -1,0 +1,2 @@
+group,held_out_balanced_accuracy_mean,held_out_balanced_accuracy_std,baseline_balanced_accuracy_mean,baseline_balanced_accuracy_std
+cnn_gate_forest,0.9478688415506015,0.004138001557693189,0.5,0.0

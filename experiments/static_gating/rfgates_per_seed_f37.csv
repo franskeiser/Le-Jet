@@ -1,0 +1,4 @@
+seed,stage,features,group,n_gate_rows,n_negative_importance
+42,rfgates,37,rf_gate_slice,1010,17
+123,rfgates,37,rf_gate_slice,1010,22
+2024,rfgates,37,rf_gate_slice,1010,13

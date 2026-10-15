@@ -1,0 +1,30 @@
+[seed 42] text side: 13932 train / 1649 val / 1651 test, 64 features
+[seed 42] link side: 7569 train / 1336 val / 1515 test, 37 contributions + P, u
+[seed 123] text side: 13931 train / 1652 val / 1651 test, 64 features
+[seed 123] link side: 7569 train / 1336 val / 1515 test, 37 contributions + P, u
+[seed 2024] text side: 13930 train / 1649 val / 1651 test, 64 features
+[seed 2024] link side: 7569 train / 1336 val / 1515 test, 37 contributions + P, u
+side       mode                group  accuracy_mean  accuracy_std  precision_mean  precision_std  recall_mean  recall_std  f1_mean  f1_std
+link    contrib          gated_first         0.9186        0.0069          0.8884         0.0088       0.9444      0.0070   0.9155  0.0071
+link    contrib            gated_fix         0.9162        0.0110          0.8893         0.0217       0.9378      0.0126   0.9127  0.0108
+link    contrib shuffled (mean of 5)         0.9160        0.0158          0.8896         0.0222       0.9369      0.0094   0.9125  0.0158
+link    contrib              ungated         0.9230        0.0040          0.8995         0.0027       0.9402      0.0087   0.9194  0.0046
+link contrib_pu          gated_first         0.9206        0.0030          0.8913         0.0046       0.9454      0.0129   0.9175  0.0039
+link contrib_pu            gated_fix         0.9186        0.0153          0.8910         0.0223       0.9411      0.0114   0.9153  0.0153
+link contrib_pu shuffled (mean of 5)         0.9156        0.0152          0.8868         0.0186       0.9395      0.0119   0.9123  0.0154
+link contrib_pu              ungated         0.9173        0.0130          0.8864         0.0149       0.9439      0.0122   0.9142  0.0134
+text      cnn64                gated         0.9515        0.0058          0.9537         0.0083       0.9551      0.0037   0.9544  0.0054
+text      cnn64 shuffled (mean of 5)         0.9509        0.0042          0.9546         0.0097       0.9528      0.0034   0.9537  0.0037
+text      cnn64              ungated         0.9507        0.0049          0.9540         0.0089       0.9532      0.0023   0.9536  0.0045
+
+F1 difference from ungated, per seed:
+seed                                    42      123     2024
+side mode       group                                       
+link contrib    gated_first          -0.0071 -0.0019 -0.0026
+                gated_fix            -0.0128 -0.0004 -0.0067
+                shuffled (mean of 5) -0.0202  0.0011 -0.0014
+     contrib_pu gated_first           0.0143 -0.0025 -0.0022
+                gated_fix            -0.0008  0.0042 -0.0002
+                shuffled (mean of 5) -0.0044 -0.0019  0.0005
+text cnn64      gated                 0.0018  0.0006  0.0000
+                shuffled (mean of 5) -0.0008  0.0005  0.0007

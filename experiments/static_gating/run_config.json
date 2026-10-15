@@ -1,0 +1,11 @@
+{
+  "args": {
+    "stages": "['cnn', 'gates']",
+    "seeds": "[42, 123, 2024]",
+    "epochs": "30",
+    "patience": "3",
+    "lr": "0.001",
+    "batch_size": "64",
+    "gate_repeats": "30"
+  }
+}

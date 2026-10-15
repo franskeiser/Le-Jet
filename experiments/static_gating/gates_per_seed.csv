@@ -1,0 +1,4 @@
+seed,stage,group,held_out_balanced_accuracy,baseline_balanced_accuracy,used_gini_fallback,n_fit,n_score,n_rf_gate_rows
+42,gates,cnn_gate_forest,0.9504561105762169,0.5,False,1155,496,1010
+123,gates,cnn_gate_forest,0.9500540841746428,0.5,False,1154,495,1010
+2024,gates,cnn_gate_forest,0.9430963299009449,0.5,False,1157,496,1010

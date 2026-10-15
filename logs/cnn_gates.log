@@ -1,0 +1,37 @@
+epoch 0: val_acc=0.9521 val_bal_acc=0.9520 val_precision=0.9564 val_recall=0.9531 val_f1=0.9548
+epoch 1: val_acc=0.9588 val_bal_acc=0.9584 val_precision=0.9580 val_recall=0.9646 val_f1=0.9613
+epoch 2: val_acc=0.9497 val_bal_acc=0.9503 val_precision=0.9648 val_recall=0.9394 val_f1=0.9519
+epoch 3: val_acc=0.9442 val_bal_acc=0.9450 val_precision=0.9622 val_recall=0.9314 val_f1=0.9466
+epoch 4: val_acc=0.9503 val_bal_acc=0.9508 val_precision=0.9627 val_recall=0.9429 val_f1=0.9527
+Early stopping at epoch 4 (no improvement for 3 epochs)
+[seed 42] cnn: train 13932, val 1649, test 1651
+epoch 0: val_acc=0.9419 val_bal_acc=0.9424 val_precision=0.9557 val_recall=0.9339 val_f1=0.9446
+epoch 1: val_acc=0.9528 val_bal_acc=0.9526 val_precision=0.9555 val_recall=0.9555 val_f1=0.9555
+epoch 2: val_acc=0.9413 val_bal_acc=0.9421 val_precision=0.9588 val_recall=0.9293 val_f1=0.9438
+epoch 3: val_acc=0.9449 val_bal_acc=0.9453 val_precision=0.9570 val_recall=0.9384 val_f1=0.9476
+epoch 4: val_acc=0.9407 val_bal_acc=0.9417 val_precision=0.9620 val_recall=0.9247 val_f1=0.9430
+Early stopping at epoch 4 (no improvement for 3 epochs)
+[seed 123] cnn: train 13931, val 1652, test 1651
+epoch 0: val_acc=0.9321 val_bal_acc=0.9323 val_precision=0.9431 val_recall=0.9280 val_f1=0.9355
+epoch 1: val_acc=0.9424 val_bal_acc=0.9425 val_precision=0.9503 val_recall=0.9406 val_f1=0.9454
+epoch 2: val_acc=0.9436 val_bal_acc=0.9434 val_precision=0.9474 val_recall=0.9463 val_f1=0.9468
+epoch 3: val_acc=0.9442 val_bal_acc=0.9433 val_precision=0.9384 val_recall=0.9577 val_f1=0.9480
+epoch 4: val_acc=0.9388 val_bal_acc=0.9392 val_precision=0.9510 val_recall=0.9326 val_f1=0.9417
+epoch 5: val_acc=0.9406 val_bal_acc=0.9406 val_precision=0.9481 val_recall=0.9394 val_f1=0.9437
+Early stopping at epoch 5 (no improvement for 3 epochs)
+[seed 2024] cnn: train 13930, val 1649, test 1651
+
+== cnn
+                   n_mean   n_std  accuracy_mean  accuracy_std  precision_mean  precision_std  recall_mean  recall_std  f1_mean  f1_std
+group                                                                                                                                  
+v2_test            1651.0  0.0000         0.9517        0.0052          0.9503         0.0046       0.9593      0.0087   0.9547  0.0050
+v2_test_no_link    1375.0  7.5498         0.9491        0.0088          0.9376         0.0090       0.9558      0.0122   0.9466  0.0096
+v2_test_with_link   276.0  7.5498         0.9649        0.0210          0.9878         0.0073       0.9689      0.0194   0.9782  0.0132
+[seed 42] gates: RF 31 (range 0.10-3.00), CNN 64 (range 0.10-3.00, held-out 0.950 vs baseline 0.500, gini fallback False)
+[seed 123] gates: RF 31 (range 0.10-3.00), CNN 64 (range 0.10-3.00, held-out 0.950 vs baseline 0.500, gini fallback False)
+[seed 2024] gates: RF 31 (range 0.10-3.00), CNN 64 (range 0.10-3.00, held-out 0.943 vs baseline 0.500, gini fallback False)
+
+== gates
+                 held_out_balanced_accuracy_mean  held_out_balanced_accuracy_std  baseline_balanced_accuracy_mean  baseline_balanced_accuracy_std
+group                                                                                                                                            
+cnn_gate_forest                           0.9479                          0.0041                              0.5                             0.0

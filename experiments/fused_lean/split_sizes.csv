@@ -1,0 +1,4 @@
+seed,capped_rows,dev,head_train,head_val,test,test_smishing_share,test_domains,dev_domains,test_oov_token_share
+42,1272,891,763,128,381,0.504,276,633,0.051
+123,1272,890,763,127,382,0.505,280,629,0.0525
+2024,1272,890,762,128,382,0.505,277,632,0.0563
