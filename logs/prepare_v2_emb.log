@@ -1,0 +1,18 @@
+dropped 2 messages that were only a link
+D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\data\processed\v2_text.csv: 18883 messages, {'smishing': 10954, 'legitimate': 7929}
+messages still containing 'http' after stripping: 15
+ seed  part  rows  share  smishing_share  link_rows
+   42  test  1651  0.087           0.531        268
+   42  gate  1651  0.087           0.531        252
+   42   val  1649  0.087           0.531        266
+   42 train 13932  0.738           0.598       4058
+  123  test  1651  0.087           0.531        277
+  123  gate  1649  0.087           0.531        252
+  123   val  1652  0.087           0.531        255
+  123 train 13931  0.738           0.598       4060
+ 2024  test  1651  0.087           0.531        283
+ 2024  gate  1653  0.088           0.531        246
+ 2024   val  1649  0.087           0.531        292
+ 2024 train 13930  0.738           0.598       4023
+18883 messages, vocabulary of 22880 tokens
+saved D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_v2\embedding_matrix.npy (22880, 300)

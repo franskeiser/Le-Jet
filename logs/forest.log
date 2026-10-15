@@ -1,0 +1,13 @@
+[seed 42] forest: params {'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'n_estimators': 500}, train rows 17810 (complete + blanked), test 1515
+[seed 123] forest: params {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'n_estimators': 200}, train rows 17810 (complete + blanked), test 1515
+[seed 2024] forest: params {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'n_estimators': 500}, train rows 17810 (complete + blanked), test 1515
+
+== forest
+                               n_mean  n_std  accuracy_mean  accuracy_std  precision_mean  precision_std  recall_mean  recall_std  f1_mean  f1_std  ece_mean  ece_std  brier_mean  brier_std
+group             calibration                                                                                                                                                               
+web_test_blanked  isotonic     1515.0    0.0         0.8015        0.0030          0.7888         0.0140       0.7861      0.0239   0.7872  0.0057    0.0538   0.0161      0.1384     0.0063
+                  platt        1515.0    0.0         0.7996        0.0020          0.7766         0.0077       0.8017      0.0188   0.7888  0.0053    0.0485   0.0149      0.1372     0.0062
+                  raw          1515.0    0.0         0.8011        0.0036          0.8031         0.0121       0.7612      0.0204   0.7814  0.0063    0.0445   0.0077      0.1357     0.0048
+web_test_complete isotonic     1515.0    0.0         0.9140        0.0066          0.9184         0.0048       0.8954      0.0160   0.9067  0.0081    0.0352   0.0123      0.0665     0.0047
+                  platt        1515.0    0.0         0.9109        0.0037          0.9041         0.0038       0.9053      0.0100   0.9047  0.0045    0.0457   0.0198      0.0679     0.0037
+                  raw          1515.0    0.0         0.9171        0.0063          0.9374         0.0073       0.8813      0.0087   0.9085  0.0071    0.0588   0.0025      0.0691     0.0047

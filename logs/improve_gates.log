@@ -1,0 +1,28 @@
+[seed 42] fold 1/5 done
+[seed 42] fold 2/5 done
+[seed 42] fold 3/5 done
+[seed 42] fold 4/5 done
+[seed 42] fold 5/5 done
+[seed 123] fold 1/5 done
+[seed 123] fold 2/5 done
+[seed 123] fold 3/5 done
+[seed 123] fold 4/5 done
+[seed 123] fold 5/5 done
+[seed 2024] fold 1/5 done
+[seed 2024] fold 2/5 done
+[seed 2024] fold 3/5 done
+[seed 2024] fold 4/5 done
+[seed 2024] fold 5/5 done
+          set transform  spearman  pearson  mean_abs_gate_diff  top5_overlap  not_clearly_positive  top_gate_share_above_1
+     slice_f1    minmax     0.486    0.972               0.079         4.333                29.333                   0.045
+     slice_f1      rank     0.486    0.486               0.637         4.333                29.333                   0.685
+     slice_f1 rankfloor     0.636    0.742               0.320         4.333                29.333                   0.162
+slice_logloss    minmax     0.959    0.993               0.034         5.000                 6.333                   0.081
+slice_logloss      rank     0.959    0.959               0.158         5.000                 6.333                   0.676
+slice_logloss rankfloor     0.942    0.934               0.203         5.000                 6.333                   0.649
+       oof_f1    minmax     0.893    0.996               0.045         5.000                26.000                   0.081
+       oof_f1      rank     0.893    0.893               0.277         5.000                26.000                   0.676
+       oof_f1 rankfloor     0.796    0.908               0.151         5.000                26.000                   0.225
+  oof_logloss    minmax     0.992    0.999               0.020         5.000                 4.333                   0.081
+  oof_logloss      rank     0.992    0.992               0.067         5.000                 4.333                   0.676
+  oof_logloss rankfloor     0.995    0.994               0.065         5.000                 4.333                   0.694

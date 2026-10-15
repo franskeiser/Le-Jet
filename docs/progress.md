@@ -19,7 +19,7 @@ Title constraint: *A Random Forest-Guided Static Gating Framework for Financial-
 2. **Link path:** the link and its page (up to 87 features) → **one** Random Forest, trained on complete and blanked pages → calibrated `P_cal`, `u`, and one contribution per feature → static gates on the contributions.
 3. **Static gates:** permutation importance from a forest on rows held out from the model it scores, rescaled to 0.1–3.0 with `gate = 0.1 + (importance − min) / (max − min) × 2.9`, saved as fixed numbers.
 4. **Head:** gated text features, gated contributions, and `P_cal`, `u`, `page_missing`, `has_url` ungated → dense layer → verdict.
-5. **Baselines (only these two):** **CNN** (text only, no gates) and **UNGATED** (same inputs as the proposed model, every gate 1.0). Both are scored on the same `fresh_test`.
+5. **Baselines:** **CNN** (text only, no gates), **CNN_CONCAT** (CNN text features + the 37 raw link/page features, no forest, no gates; added 2026-10-15) and **UNGATED** (same inputs as the proposed model, every gate 1.0). All are scored on the same `fresh_test`.
 
 Dropped from the design: the learned per-message reliability gate (it is dynamic, so it conflicts with "static"). It can be future work.
 
@@ -141,11 +141,16 @@ Test = about 381 messages per seed from about 278 domains (1 row sharing an exac
 | Model | Accuracy | Precision | Recall | F1 |
 |---|---|---|---|---|
 | CNN (text only) | 0.861 ± 0.005 | 0.892 ± 0.012 | 0.825 ± 0.024 | 0.857 ± 0.008 |
+| CNN + raw link features (CNN_CONCAT) | 0.941 ± 0.009 | 0.969 ± 0.018 | 0.913 ± 0.018 | 0.940 ± 0.010 |
 | UNGATED | 0.960 ± 0.012 | 0.965 ± 0.016 | 0.955 ± 0.016 | 0.960 ± 0.012 |
 | GATED (static) | 0.965 ± 0.011 | 0.974 ± 0.015 | 0.957 ± 0.006 | 0.965 ± 0.010 |
 | *frozen v2 CNN's own classifier* | 0.752 ± 0.037 | 0.715 ± 0.012 | 0.844 ± 0.090 | 0.773 ± 0.046 |
 
 Pages blanked (page not reached): UNGATED F1 0.935 ± 0.002, GATED 0.943 ± 0.018 (the CNN is unchanged). With one branch zeroed at test time: GATED link zeroed F1 0.861, text zeroed 0.938; UNGATED 0.850 and 0.927.
+
+**Added baseline, CNN_CONCAT (2026-10-15):** the frozen CNN's 64 text features concatenated with the 37 *raw* link/page features (signed log1p, then z-score), plus `page_missing` and `has_url` (103 inputs). No forest, no gates, same head, same recipe, same modality dropout and random draws. A blanked page has its 17 page columns set to the training mean. Pages blanked: F1 0.924 ± 0.019. Per-seed F1 CNN_CONCAT / UNGATED / GATED: 0.930 / 0.971 / 0.976 (seed 42), 0.949 / 0.948 / 0.963 (123), 0.942 / 0.961 / 0.956 (2024).
+- CNN_CONCAT beats text-only by about 8.3 F1 points (McNemar p <= 0.0006 in every seed), so most of the gain comes from simply giving the head the link features.
+- The forest adds a smaller amount on top: UNGATED is 2.0 F1 points above CNN_CONCAT, GATED 2.5. McNemar GATED vs CNN_CONCAT: p = 0.0005 (seed 42), 0.38 (123), 0.36 (2024); UNGATED vs CNN_CONCAT: p = 0.0026, 1.00, 0.19. Significant in one seed of three, so **the forest's benefit over raw concatenation is suggestive, not shown**. The forest's own input here is the web-trained model, so part of any edge may be the 9K extra training pages it saw, not the contributions.
 
 **Reading (honest):**
 - Fusing the link evidence beats text alone by about 10 F1 points; McNemar is significant in every seed (p < 0.001, about 45 messages fixed against 6 broken). This shows the pipeline works and that the head reads the link branch.

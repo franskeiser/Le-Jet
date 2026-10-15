@@ -16,6 +16,9 @@ Per seed (42, 123, 2024):
   5. Head (all three models share it and the recipe): Dense 64, ReLU, Dropout 0.5, 2 outputs; class weights, label
      smoothing, Adam 1e-3, 30 epochs, patience 3 on head-val balanced accuracy.
        CNN       the 64 text features only (no gates)
+       CNN_CONCAT the 64 text features + the 37 RAW link/page features (signed log1p, z-score) + page_missing, has_url.
+                 No forest, no gates: the plain "concatenate the features" baseline. A blanked page has its 17 page
+                 columns set to the training mean (0 after z-score) and page_missing=1.
        UNGATED   64 text + 37 contributions + [P_cal, u, page_missing, has_url]; every gate 1.0
        GATED     the same inputs with the static gates on the 64 text features and 37 contributions
                  (P_cal, u, page_missing, has_url are never gated)
@@ -24,6 +27,7 @@ Per seed (42, 123, 2024):
   6. fresh_test is scored once: complete pages (headline) and pages blanked. Predictions are saved with message_id
      and the three models are asserted to hold identical ids. Paired McNemar (exact) per seed on complete pages.
 
+CNN_CONCAT trains with the same modality dropout and the same random draws as UNGATED and GATED.
 Also reported for reference: the frozen v2 CNN's own classifier, and GATED/UNGATED with the link or the text zeroed.
 
 Writes experiments/fused_lean/ (per_seed.csv, summary.csv, mcnemar.csv, predictions.csv, split_sizes.csv,
@@ -136,6 +140,27 @@ class Fused:
                                 tail]).astype(np.float32)
 
 
+class RawBlock:
+    """The 37 raw link/page features for the concat baseline: signed log1p, z-score, blanked page columns -> 0."""
+
+    def __init__(self, df_train: pd.DataFrame):
+        x = self._log(df_train)
+        self.m, self.s = x.mean(0), x.std(0) + 1e-8
+        self.page_idx = [FEATURES.index(c) for c in PAGE]
+
+    @staticmethod
+    def _log(df: pd.DataFrame) -> np.ndarray:
+        x = df[FEATURES].to_numpy(dtype=np.float64)
+        return np.sign(x) * np.log1p(np.abs(x))
+
+    def __call__(self, df: pd.DataFrame, text: np.ndarray, blank: bool) -> np.ndarray:
+        z = (self._log(df) - self.m) / self.s
+        if blank:
+            z[:, self.page_idx] = 0.0
+        n = len(df)
+        return np.column_stack([text, z, np.full(n, float(blank)), np.ones(n)]).astype(np.float32)
+
+
 # ------------------------------------------------------------------ head
 def fit_head(Xc, Xb, y, Xv, yv, seed: int, text_cols: int, epochs: int = 30, patience: int = 3, lr: float = 1e-3) -> Head:
     """Xc: complete-page inputs, Xb: the same rows with blanked pages (None for the text-only CNN model)."""
@@ -241,6 +266,13 @@ def run_seed(seed: int, data: pd.DataFrame, web_urls: set) -> tuple[list, list, 
     for cond in ("complete", "blanked"):
         preds[("CNN", cond)] = predict(cnn_head, z(text["te"]))      # the text path does not read the page
 
+    # CNN_CONCAT baseline: z-scored text features + raw link features, no forest and no gates
+    raw = RawBlock(tr)
+    cc = lambda name, part, blank: raw(part, z(text[name]), blank)
+    concat_head = fit_head(cc("tr", tr, False), cc("tr", tr, True), y_tr, cc("va", va, False), y_va, seed, text_cols=N_TEXT)
+    preds[("CNN_CONCAT", "complete")] = predict(concat_head, cc("te", test, False))
+    preds[("CNN_CONCAT", "blanked")] = predict(concat_head, cc("te", test, True))
+
     for name, fused in variants.items():
         head = fit_head(inputs(fused, "tr", False), inputs(fused, "tr", True), y_tr,
                         inputs(fused, "va", False), y_va, seed, text_cols=N_TEXT)
@@ -268,7 +300,8 @@ def run_seed(seed: int, data: pd.DataFrame, web_urls: set) -> tuple[list, list, 
         rows.append({"seed": seed, "model": model, "condition": cond, **score_group(y_te, p)})
         pred_rows.append(pd.DataFrame({"seed": seed, "message_id": test["message_id"], "condition": cond, "model": model,
                                        "label": y_te, "pred": p}))
-    for a, b in (("GATED", "UNGATED"), ("GATED", "CNN"), ("UNGATED", "CNN")):
+    for a, b in (("GATED", "UNGATED"), ("GATED", "CNN"), ("UNGATED", "CNN"), ("CNN_CONCAT", "CNN"),
+                 ("GATED", "CNN_CONCAT"), ("UNGATED", "CNN_CONCAT")):
         tests.append({"seed": seed, "model_a": a, "model_b": b, "condition": "complete",
                       **mcnemar(y_te, preds[(a, "complete")], preds[(b, "complete")])})
 
