@@ -59,10 +59,10 @@ ssh lejet-an 'if [ -f /run/lejet-preflight-ok ]; then echo token-age $(( $(date 
 
 ```powershell
 cd D:\Le-Jet
-.\.venv\Scripts\python.exe -m src.serving.api --fusion-dir models\fusion\rf_vec_live
+.\.venv\Scripts\python.exe -m src.serving.api
 ```
 
-It prints `Le-Jet API at http://127.0.0.1:5000 ...` and then stays quiet. **Leave this window open.**
+It uses the live-trained model (`models\fusion\rf_vec_live`) by itself when that folder is there, and prints `Model folder: ...` so you can see which one it loaded (`/health` shows it too). To force another one, add `--fusion-dir models\fusion\rf_vec`. It then prints `Le-Jet API at http://127.0.0.1:5000 ...` and stays quiet. **Leave this window open.**
 
 Check it (in another PowerShell window):
 

@@ -51,7 +51,7 @@ MOBILE_VIEWPORT = {"width": 412, "height": 915}
 GOTO_TIMEOUT_MS = 20_000
 SETTLE_MS = 3_000                   # extra time for the page to go quiet after "load"
 SHOT_TIMEOUT_MS = 20_000            # heavy pages (video, ads) can need a while to settle for the shot
-PAGE_DEADLINE_S = 70.0              # hard limit for one page, browser start-up excluded
+PAGE_DEADLINE_S = 25.0              # hard limit for one page, browser start-up excluded (was 70: a stuck page made a live check wait over a minute)
 RETRY_ERRORS = frozenset({"screenshot_error", "internal_error", "browser_crash"})   # one more try for these
 CHROMIUM_ARGS = [
     "--disable-extensions", "--disable-background-networking", "--disable-sync", "--no-first-run",

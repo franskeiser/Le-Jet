@@ -72,6 +72,7 @@ def make_handler(service: LejetService, inspector: LiveInspector):
             path = self.path.split("?")[0]
             if path == "/health":
                 return self._json(200, {"status": "ok", "seed": service.seed, "models": list(MODEL_IDS),
+                                        "fusion_dir": getattr(service, "fusion_dir_name", ""),
                                         "inspected_links": len(service.store), "live_lab": inspector.status()})
             job_match = JOB_RE.match(path)
             if job_match:
@@ -127,25 +128,37 @@ def make_handler(service: LejetService, inspector: LiveInspector):
     return Handler
 
 
+def default_fusion_dir(seed: int) -> Path:
+    """The live-trained head when it is complete for this seed, else the committed one (models/fusion/rf_vec)."""
+    fusion = Path(__file__).resolve().parents[2] / "models" / "fusion"
+    live = fusion / "rf_vec_live"
+    needed = (f"gates_seed{seed}.csv", f"phase_a_seed{seed}.pt", f"phase_c_seed{seed}.pt")
+    return live if all((live / n).exists() for n in needed) else fusion / "rf_vec"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--fusion-dir", type=Path, default=None,
-                        help="folder of the trained head (default models/fusion/rf_vec; the live-trained one is models/fusion/rf_vec_live)")
+                        help="folder of the trained head. Default: models/fusion/rf_vec_live (the live-trained one) when it "
+                             "is there, otherwise models/fusion/rf_vec. The folder in use is printed at start and shown in /health")
     parser.add_argument("--live", type=Path, default=None, help="live_links.csv, the store of inspected links")
     parser.add_argument("--reuse-stored", action="store_true",
                         help="answer a link that is already in the store without opening it again (default: every link is inspected)")
     parser.add_argument("--no-lab", action="store_true", help="never hand links to the lab (answers come from the store only)")
     args = parser.parse_args()
+    fusion_dir = args.fusion_dir or default_fusion_dir(args.seed)
     store = LinkStore(*([args.live] if args.live else []), on_demand_csv=ON_DEMAND_CSV)
-    service = LejetService(seed=args.seed, fusion_dir=args.fusion_dir, store=store)
+    service = LejetService(seed=args.seed, fusion_dir=fusion_dir, store=store)
+    service.fusion_dir_name = Path(fusion_dir).name
     inspector = LiveInspector(service.store, enabled=not args.no_lab, reuse_stored=args.reuse_stored)
     try:
         server = Server(("127.0.0.1", args.port), make_handler(service, inspector))
     except OSError as err:
         raise SystemExit(f"port {args.port} is already in use ({err.strerror}). Another Le-Jet API is probably running: "
                          "stop it first, or use --port.")
+    print(f"Model folder: {fusion_dir}")
     print(f"Le-Jet API at http://127.0.0.1:{args.port}  ({len(service.store)} inspected links in the store; "
           f"live lab: {inspector.status()['note']})  Ctrl+C to stop")
     server.serve_forever()
