@@ -46,6 +46,15 @@ DATASET_PATH = "data/processed/sms_v2_balanced.csv"
 LINK_FEATURES_PATH = "data/processed/sms_link_features.csv"  # src/data/build_sms_link_features.py
 SPLITS_DIR = "data/splits"  # src/data/split_dataset.py (grouped by domain / template)
 
+# C-prune study (docs/c_prune_architecture.md). Kept apart from the paths above so the current
+# model keeps working. The pilot is SYNTHETIC text: a pipeline test only, never study results.
+CROWD_DATASET_PATH = "data/processed/crowd_smishing_v1.csv"   # src/data/build_crowd_dataset.py
+CROWD_PILOT_PATH = "data/processed/crowd_pilot_synthetic.csv"  # ... --pilot
+CROWD_SPLITS_DIR = "data/splits_crowd"                         # src/data/split_crowd.py
+CROWD_EMBEDDINGS_DIR = "models/embeddings_crowd"               # src/features/build_crowd_embeddings.py
+CROWD_N_FOLDS = 5
+CROWD_VAL_FRACTION = 0.15  # of each training part, grouped like the folds, for early stopping
+
 # Optional but recommended alongside this:
 DATA_PATH = "data/processed/smishing_dataset.csv"
 LABEL_COLUMN = "subcategory"

@@ -34,6 +34,12 @@ def test_feature_list_matches_extractor():
     ("see you tomorrow.call me", []),          # prose joined by a period
     ("ok.so what now", []),
     ("k.then", []),                            # not a real domain ending
+    # The whole host is a public suffix: a link only when clearly marked as one.
+    ("Apply at https://www.gov.ph/ today", ["gov.ph"]),
+    ("Details: www.gov.uk", ["gov.uk"]),
+    ("See https://withgoogle.com/", ["withgoogle.com"]),
+    ("Ayuda: gov.ph/aid", ["gov.ph"]),
+    ("I work for gov.ph", []),                 # bare suffix: prose
 ])
 def test_extract_links(text, expected):
     assert [link["domain"] for link in lf.extract_links(text)] == expected

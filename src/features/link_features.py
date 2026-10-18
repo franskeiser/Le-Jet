@@ -78,9 +78,19 @@ def extract_links(text: str) -> list[dict]:
             continue  # the domain of an email address, not a link
         host = re.sub(r"\[\.\]|\(\.\)", ".", m.group("host")).lower()
         parts = _EXTRACT_PRIVATE(host)
-        if not parts.suffix or not parts.domain:
-            continue  # not a real domain ending (e.g. "k.then")
         explicit = m.group("scheme") or m.group("www") or m.group("path")
+        if not parts.suffix:
+            continue  # not a real domain ending (e.g. "k.then")
+        if not parts.domain:
+            # The whole host is itself a public suffix ("www.gov.ph", "https://withgoogle.com/").
+            # Real sites live there, so keep it when the text clearly marks it as a link.
+            if not explicit:
+                continue
+            links.append({
+                "raw": m.group(0), "host": host, "domain": parts.suffix,
+                "start": m.start(), "end": m.start() + len(m.group(0).rstrip(_TRAILING_JUNK)),
+            })
+            continue
         # Very short bare names are mostly prose ("6.House", "W.PLUS"), except under a
         # two-part ending like edu.ph or com.ph ("up.edu.ph"), which prose rarely produces.
         too_short = len(parts.domain) < 3 and "." not in parts.suffix

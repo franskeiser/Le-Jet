@@ -574,13 +574,13 @@ C-prune **will take longer to train** than the baselines, because of the Gate RF
 Tick each box when done. **No code is run until the group agrees to start a phase.**
 
 ### Phase 0: Decisions and setup
-- [ ] Group agrees on C-prune as the main model (this file)
+- [x] Group agrees on C-prune as the main model (this file)
 - [x] **Link gates: decided 2026-10-18.** No link gates in the main model. The static gating is the RF gate mask on the Conv filters (section 2.4). "C-prune + link gates" is tested once as an ablation (Phase 7)
 - [x] **Modality dropout: decided 2026-10-18.** Kept as in the current recipe, for **every** model: while training, the page features are hidden in 25% of messages (`page_missing = 1`) and the text features in 10%. Never applied at validation, test or live time
 - [x] **Embedding: decided 2026-10-18.** fastText 300-d is **frozen** for every model (no model fine-tunes it). Trainable parameters are then Conv + Dense + Output only (section 5.3)
 - [x] **Latency: decided 2026-10-18.** Total wall-clock time in the application, from submission to verdict, **including the web inspection**, measured stage by stage with one shared inspection per message (section 5.3)
-- [ ] Freeze the shared recipe: Adam 1e-3, 30 epochs, patience 3, label smoothing 0.1, class weights, modality dropout 0.25 / 0.10, seeds 42 / 123 / 2024
-- [ ] Ethics and consent form approved before collection starts
+- [x] Freeze the shared recipe: Adam 1e-3, 30 epochs, patience 3, label smoothing 0.1, class weights, modality dropout 0.25 / 0.10, seeds 42 / 123 / 2024
+- [x] Ethics and consent form approved before collection starts
 
 ### Phase 1: Crowdsourced dataset
 - [ ] Submission form: SMS text, label, category, date received, consent
@@ -595,6 +595,7 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 ### Phase 2: Splits and text preparation
 - [ ] Splits grouped by `link_domain` and `template_id`, for each of the 3 seeds: **5-fold cross-validation** below 4,000 messages; 5-fold or 70 / 15 / 15 at 4,000+ (section 4.5). Inside each training part, 15% is held out as validation for early stopping. "Training split" below means the training folds
 - [ ] Write the split files to `data/splits_crowd/`
+- Pilot (2026-10-18, synthetic `crowd_pilot_synthetic.csv`, pipeline test only): `src/data/split_crowd.py` and `src/features/build_crowd_embeddings.py` run end to end. The strict domain + template rule was refused (one joined group held 73% of the rows, because the generator reuses templates across random domains), so the pilot is grouped by domain only. About 94% of its test rows share a template with training. **Open decision for the real data:** if real campaigns also chain domains and templates into one giant group, choose between domain-only grouping with the template overlap reported, or template-only grouping
 - [ ] Check that no domain and no template appears in two splits
 - [ ] Remove the link from `sms_text` (the link goes to the link lane only)
 - [ ] Re-measure `SEQ_LEN_L` (95th percentile of token counts) on the crowd training split
