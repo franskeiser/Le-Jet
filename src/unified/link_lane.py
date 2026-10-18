@@ -17,14 +17,21 @@ it or its group. Per row:
     u     spread of the trees' probabilities
     c_<feature>   the 37 Saabas contributions (rf_feature_extractor), with P = bias + sum of c_
 
+Step 3, final: one forest (step 1 settings) fit on ALL train rows scores the val and test rows, which it
+never saw. The forest is saved for the later phases and the live app. Only val is summarised: the test
+scores are written but not evaluated here (Phase 7 reads the test once, after everything is fixed).
+
 Writes, per seed and fold, to experiments/c_prune/<dataset>/link_lane/:
     params_seed<S>_fold<F>.json   the chosen settings                     (tune)
     grid_seed<S>_fold<F>.csv      every candidate's mean F1 and log loss  (tune)
     oof_seed<S>_fold<F>.csv       message_id, P, u, 37 c_                 (oof)
+    final_seed<S>_fold<F>.csv     message_id, part (val/test), P, u, 37 c_  (final)
+and models/c_prune/<dataset>/link_rf_seed<S>_fold<F>.joblib               (final)
 
 Usage:
     python -m src.unified.link_lane --pilot tune
     python -m src.unified.link_lane --pilot oof
+    python -m src.unified.link_lane --pilot final
 """
 from __future__ import annotations
 
@@ -33,6 +40,7 @@ import json
 from pathlib import Path
 from typing import List, Tuple
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, log_loss
@@ -105,6 +113,19 @@ def oof_outputs(train: pd.DataFrame, rule: str, seed: int, params: dict,
     return out
 
 
+def final_outputs(parts: dict, seed: int, params: dict) -> tuple:
+    """(forest fit on all of parts["train"], its P, u, c_ for the val and test rows with a `part` column)."""
+    train = parts["train"]
+    rf = fit_rf(train[FEATURES_37], labels(train), seed, **params)
+    scored = []
+    for name in ("val", "test"):
+        out = score(rf, parts[name])
+        out.insert(0, "part", name)
+        out.insert(0, "message_id", parts[name]["message_id"])
+        scored.append(out)
+    return rf, pd.concat(scored, ignore_index=True)
+
+
 def load_params(dataset: Path, seed: int, fold: int) -> dict:
     return json.loads((out_dir(dataset) / f"params_seed{seed}_fold{fold}.json").read_text(encoding="utf-8"))
 
@@ -156,12 +177,40 @@ def run_oof(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS)
     return summary
 
 
+def model_dir(dataset: Path) -> Path:
+    return ARTIFACTS_ROOT / "models" / "c_prune" / dataset.stem
+
+
+def run_final(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    dataset = ROOT / (CROWD_PILOT_PATH if pilot else CROWD_DATASET_PATH)
+    out, models = out_dir(dataset), model_dir(dataset)
+    models.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            parts = load_fold(seed, fold, pilot=pilot)
+            params = load_params(dataset, seed, fold)
+            rf, scored = final_outputs(parts, seed, params)
+            joblib.dump({"model": rf, "features": list(FEATURES_37), "params": params},
+                        models / f"link_rf_seed{seed}_fold{fold}.joblib")
+            scored.to_csv(out / f"final_seed{seed}_fold{fold}.csv", index=False)
+            val = scored[scored["part"] == "val"]
+            y = labels(parts["val"])
+            rows.append({"seed": seed, "fold": fold, "val_rows": len(val), "test_rows_scored": int((scored["part"] == "test").sum()),
+                         "val_f1": round(f1_score(y, val["P"] >= 0.5), 4),
+                         "val_log_loss": round(log_loss(y, val["P"].clip(1e-6, 1 - 1e-6), labels=[0, 1]), 4)})
+            print(f"seed {seed} fold {fold}: val F1 {rows[-1]['val_f1']}")
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out / "final_summary.csv", index=False)
+    return summary
+
+
 def main(argv: List[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (pipeline test only)")
-    ap.add_argument("step", choices=["tune", "oof"])
+    ap.add_argument("step", choices=["tune", "oof", "final"])
     a = ap.parse_args(argv)
-    summary = run_tune(a.pilot) if a.step == "tune" else run_oof(a.pilot)
+    summary = {"tune": run_tune, "oof": run_oof, "final": run_final}[a.step](a.pilot)
     pd.set_option("display.width", 200)
     print(summary.to_string(index=False))
 

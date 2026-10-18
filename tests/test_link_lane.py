@@ -75,6 +75,21 @@ def test_oof_never_scores_a_row_with_a_forest_that_saw_its_domain():
     assert ((oof >= 0.5) == y).mean() < 0.75
 
 
+def test_final_fits_on_train_and_scores_only_val_and_test():
+    df = _train(n_domains=30)
+    df["message_id"] = [f"pilot_{i:06d}" for i in range(len(df))]
+    domain = df["link_domain"].str.extract(r"d(\d+)")[0].astype(int)
+    parts = {"train": df[domain < 20], "val": df[(domain >= 20) & (domain < 25)], "test": df[domain >= 25]}
+    rf, scored = ll.final_outputs(parts, seed=42, params=PARAMS)
+    assert rf.n_features_in_ == 37 and len(rf.estimators_) == PARAMS["n_estimators"]
+    assert list(scored.columns) == ["message_id", "part"] + ll.OUTPUTS
+    assert scored.groupby("part").size().to_dict() == {"test": len(parts["test"]), "val": len(parts["val"])}
+    assert not set(scored["message_id"]) & set(parts["train"]["message_id"])
+    # Same forest as scoring the rows directly.
+    np.testing.assert_allclose(scored.loc[scored["part"] == "val", "P"].to_numpy(),
+                               ll.score(rf, parts["val"])["P"].to_numpy())
+
+
 def test_tune_is_repeatable():
     a, grid_a = ll.tune(_train(), "domain", seed=7)
     b, grid_b = ll.tune(_train(), "domain", seed=7)
