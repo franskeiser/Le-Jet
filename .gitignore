@@ -13,6 +13,11 @@ models/*
 /data/*
 # Except the crowdsourced submissions contributors fill in (private repo only: it has personal data).
 !/data/crowd/
+# ... and the crowd draft table built from them (+ its .set_aside.csv and .summary.json), so
+# contributors can see the features. Everything else in data/processed stays ignored.
+!/data/processed/
+/data/processed/*
+!/data/processed/crowd_smishing_draft.*
 # Excel's lock file while a workbook is open
 ~$*
 *.vdi

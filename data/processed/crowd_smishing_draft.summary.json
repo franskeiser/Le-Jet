@@ -1,0 +1,36 @@
+{
+  "category": {
+    "bank": 2,
+    "bill_payment": 4,
+    "other_financial": 1
+  },
+  "domains": 7,
+  "inspected_over_24h": 0,
+  "label": {
+    "smishing": 7
+  },
+  "language": {
+    "en": 6,
+    "taglish": 1
+  },
+  "legitimate_share": 0.0,
+  "link_shortened": 2,
+  "max_rows_per_domain_per_class": 1,
+  "page_fetched": {
+    "0": 6,
+    "1": 1
+  },
+  "row_rules": {
+    "dropped_exact_duplicate": 0,
+    "dropped_no_link": 0,
+    "input_rows": 7,
+    "left_out_example_row": 0,
+    "left_out_no_consent": 0,
+    "left_out_not_inspected": 0,
+    "left_out_not_verified": 0,
+    "set_aside_domain_cap": 0
+  },
+  "rows": 7,
+  "source": "CROWD DRAFT from 1 submission file(s); ids may still shift",
+  "templates": 7
+}

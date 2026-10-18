@@ -28,9 +28,18 @@ HOW TO USE
 3. Save normally (it stays .xlsx). No need to save as CSV any more.
 4. Make the inspector's link list (PowerShell, from the repo folder; give
    everyone's files of that day at once):
-     .venv\Scripts\python.exe scripts\crowd_to_urls.py data\crowd\raw\submissions_2026-11-03_r02.xlsx data\crowd\raw\submissions_2026-11-03_r03.xlsx --out D:\LeJetData\input\urls.txt
-   then follow docs\inspector_runbook.md from step 4. Do it the same day
-   (within 6 hours if possible). The output goes in D:\LeJetData\clean\
+     .venv\Scripts\python.exe scripts\crowd_to_urls.py data\crowd\raw\submissions_2026-11-03_r02.xlsx data\crowd\raw\submissions_2026-11-03_r03.xlsx --out D:\LeJetData\input\crowd20261103_urls.txt
+   Do steps 5-7 the same day (within 6 hours if possible): smishing pages die fast.
+5. Run the lab (VMs on, key loaded with ssh-add; the batch name MUST start
+   with "crowd"):
+     powershell -ExecutionPolicy Bypass -File .\scripts\run_batch.ps1 -UrlFile D:\LeJetData\input\crowd20261103_urls.txt -Batch crowd20261103
+6. Look up page_rank (host; key from D:\LeJetData\secrets\.env, never printed):
+     .venv\Scripts\python.exe -I scripts\lookup_page_rank.py D:\LeJetData\clean\crowd20261103.clean.jsonl --out D:\LeJetData\clean\crowd20261103.model_input.csv --env-file D:\LeJetData\secrets\.env --cache D:\LeJetData\clean\page_rank_cache.json
+7. Rebuild the table of messages + 37 features (all days, all files):
+     .venv\Scripts\python.exe -m src.data.build_crowd_dataset --crowd
+   -> data\processed\crowd_smishing_draft.csv (+ .summary.json). Rows whose
+   label_verified_by is empty, or whose link was not run in the lab yet,
+   are left out until they are.
 
 COLUMNS (fill all 13; * = dropdown)
 -----------------------------------

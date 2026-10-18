@@ -236,6 +236,7 @@ Collection rules:
 | `submissions_<YYYY-MM-DD>_<code>.xlsx` (one per contributor per day) | the raw submissions, **before** personal details are removed; a copy of `_template_submissions.xlsx` (made by `scripts/make_crowd_template.py`) with dropdowns, including the form's own `submitter_view`, `org_type` and `concern` answers. These 3 columns are raw-file only for now: not in the 57 columns of section 4.3 | `data/crowd/raw/` (in the repo, so contributors can add files) | yes, **private repo only** (it has personal data) |
 | `urls.txt` | the first link of each message, made by `scripts/crowd_to_urls.py`; the inspector's input | `D:\LeJetData\input\` | no (real phishing links) |
 | `<batch>.clean.jsonl` | the web inspector's output for that day's links (written by `pull_results.ps1`) | `D:\LeJetData\clean\` | no |
+| `crowd_smishing_draft.csv` (+ `.set_aside.csv`, `.summary.json`) | the same 57 columns, rebuilt from all raw files by `build_crowd_dataset.py --crowd` after each lab run; message ids may still shift | `data/processed/` | yes, **private repo only** (so contributors can see the features) |
 | **`crowd_smishing_v1.csv`** | **the study dataset**: one row per message, the columns of section 4.3 | `data/processed/` | yes, once frozen |
 | `crowd_smishing_v1.summary.json` | counts per class, category, domain, `page_fetched`, written by the builder | `data/processed/` | yes |
 | `seed<S>_fold<F>.csv` or `seed<S>_{train,val,test}.csv` | the message ids of each split | `data/splits_crowd/` | yes |
