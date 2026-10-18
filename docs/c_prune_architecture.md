@@ -609,7 +609,7 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 - [x] *(pilot)* Check: P = bias + sum of contributions (existing test). Also checked on the written outputs: `python -m src.unified.link_lane --pilot check` (max gap 2e-15 over all 15 seed-folds)
 
 ### Phase 4: Text CNN (Phase A)
-- [ ] Train the full 64-filter CNN on the training split with early stopping on validation, **embedding frozen** (`requires_grad = False`)
+- [x] *(pilot)* Train the full 64-filter CNN on the training split with early stopping on validation, **embedding frozen** (`requires_grad = False`). `python -m src.unified.text_cnn --pilot train`: shared recipe, per-fold vocabulary and `SEQ_LEN_L`, 57,794 trainable parameters (Conv + temporary head). Pilot: val F1 0.85–0.92
 - [ ] Save the checkpoint per seed
 
 ### Phase 5: Gate RF and pruning
