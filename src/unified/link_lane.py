@@ -4,18 +4,27 @@ Reuses the forest code of the current model (rf_extractor.fit_rf / PARAM_GRID); 
 the 20 URL + 17 page/domain features of the crowd dataset (prepare_web_37.FEATURES_37). Missing values
 stay -1, as in the dataset (section 4.3).
 
-Step 1 (this file so far): tune the forest per seed and fold, on the fold's TRAIN part only, by grouped
+Step 1, tune: the forest settings per seed and fold, on the fold's TRAIN part only, by grouped
 cross-validation. The groups follow the rule the splits were made with (split_report.json), so one
 domain is never on both sides of a tuning fold either. Val and test are never read here.
 Choice: highest mean F1, ties broken by lower log loss (P is used as a probability later), the same
 rule as src/unified/unified_rf.tune.
 
+Step 2, oof: out-of-fold outputs for every TRAIN row. The train part is cut into 5 grouped folds; each
+row is scored by a forest (step 1 settings) fit on the other 4, so no row is scored by a forest that saw
+it or its group. Per row:
+    P     mean smishing probability over the trees
+    u     spread of the trees' probabilities
+    c_<feature>   the 37 Saabas contributions (rf_feature_extractor), with P = bias + sum of c_
+
 Writes, per seed and fold, to experiments/c_prune/<dataset>/link_lane/:
-    params_seed<S>_fold<F>.json   the chosen settings
-    grid_seed<S>_fold<F>.csv      every candidate's mean F1 and log loss
+    params_seed<S>_fold<F>.json   the chosen settings                     (tune)
+    grid_seed<S>_fold<F>.csv      every candidate's mean F1 and log loss  (tune)
+    oof_seed<S>_fold<F>.csv       message_id, P, u, 37 c_                 (oof)
 
 Usage:
     python -m src.unified.link_lane --pilot tune
+    python -m src.unified.link_lane --pilot oof
 """
 from __future__ import annotations
 
@@ -31,11 +40,15 @@ from sklearn.model_selection import ParameterGrid, StratifiedGroupKFold
 
 from src.config import ARTIFACTS_ROOT, CROWD_DATASET_PATH, CROWD_N_FOLDS, CROWD_PILOT_PATH, CROWD_SPLITS_DIR, SEEDS
 from src.data.split_crowd import load_fold, make_groups
-from src.features.model.rf_extractor import PARAM_GRID, fit_rf
+from src.features.model.rf_extractor import PARAM_GRID, fit_rf, p_and_u
+from src.features.model.rf_feature_extractor import path_contributions
 from src.unified.prepare_web_37 import FEATURES_37
 
 ROOT = Path(__file__).resolve().parents[2]
 TUNE_SPLITS = 3
+OOF_SPLITS = 5
+CONTRIBUTIONS = [f"c_{f}" for f in FEATURES_37]
+OUTPUTS = ["P", "u"] + CONTRIBUTIONS
 
 
 def labels(df: pd.DataFrame) -> np.ndarray:
@@ -67,6 +80,35 @@ def tune(train: pd.DataFrame, rule: str, seed: int, n_splits: int = TUNE_SPLITS)
     return candidates[best], grid
 
 
+def score(rf, rows: pd.DataFrame) -> pd.DataFrame:
+    """P, u and the 37 contributions of `rows` (same index) from one fitted forest."""
+    X = rows[FEATURES_37]
+    p, u = p_and_u(rf, X)
+    contribution, _ = path_contributions(rf, X.to_numpy(dtype=np.float32))
+    out = pd.DataFrame(contribution, index=rows.index, columns=CONTRIBUTIONS)
+    out.insert(0, "u", u)
+    out.insert(0, "P", p)
+    return out
+
+
+def oof_outputs(train: pd.DataFrame, rule: str, seed: int, params: dict,
+                n_splits: int = OOF_SPLITS) -> pd.DataFrame:
+    """Out-of-fold P, u, c_ for every row of `train`: each row is scored by a forest that never saw its group."""
+    y = labels(train)
+    groups = make_groups(train, rule, n_splits).to_numpy()
+    parts = []
+    for fit_idx, held_idx in StratifiedGroupKFold(n_splits, shuffle=True, random_state=seed).split(train, y, groups):
+        rf = fit_rf(train.iloc[fit_idx][FEATURES_37], y[fit_idx], seed, **params)
+        parts.append(score(rf, train.iloc[held_idx]))
+    out = pd.concat(parts).loc[train.index]          # back in row order; fails if a row was missed
+    assert out.index.is_unique and len(out) == len(train), "a row was scored twice or not at all"
+    return out
+
+
+def load_params(dataset: Path, seed: int, fold: int) -> dict:
+    return json.loads((out_dir(dataset) / f"params_seed{seed}_fold{fold}.json").read_text(encoding="utf-8"))
+
+
 def out_dir(dataset: Path) -> Path:
     return ARTIFACTS_ROOT / "experiments" / "c_prune" / dataset.stem / "link_lane"
 
@@ -92,12 +134,34 @@ def run_tune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS
     return summary
 
 
+def run_oof(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    dataset = ROOT / (CROWD_PILOT_PATH if pilot else CROWD_DATASET_PATH)
+    rule = group_rule(dataset)
+    out = out_dir(dataset)
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            train = load_fold(seed, fold, pilot=pilot)["train"]
+            oof = oof_outputs(train, rule, seed, load_params(dataset, seed, fold))
+            oof.insert(0, "message_id", train["message_id"])
+            oof.to_csv(out / f"oof_seed{seed}_fold{fold}.csv", index=False)
+            y = labels(train)
+            rows.append({"seed": seed, "fold": fold, "train_rows": len(train),
+                         "oof_f1": round(f1_score(y, oof["P"] >= 0.5), 4),
+                         "oof_log_loss": round(log_loss(y, oof["P"].clip(1e-6, 1 - 1e-6), labels=[0, 1]), 4),
+                         "mean_u": round(float(oof["u"].mean()), 4)})
+            print(f"seed {seed} fold {fold}: oof F1 {rows[-1]['oof_f1']}")
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out / "oof_summary.csv", index=False)
+    return summary
+
+
 def main(argv: List[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (pipeline test only)")
-    ap.add_argument("step", choices=["tune"])
+    ap.add_argument("step", choices=["tune", "oof"])
     a = ap.parse_args(argv)
-    summary = run_tune(a.pilot)
+    summary = run_tune(a.pilot) if a.step == "tune" else run_oof(a.pilot)
     pd.set_option("display.width", 200)
     print(summary.to_string(index=False))
 
