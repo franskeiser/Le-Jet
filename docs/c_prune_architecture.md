@@ -610,7 +610,7 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 
 ### Phase 4: Text CNN (Phase A)
 - [x] *(pilot)* Train the full 64-filter CNN on the training split with early stopping on validation, **embedding frozen** (`requires_grad = False`). `python -m src.unified.text_cnn --pilot train`: shared recipe, per-fold vocabulary and `SEQ_LEN_L`, 57,794 trainable parameters (Conv + temporary head). Pilot: val F1 0.85–0.92
-- [ ] Save the checkpoint per seed
+- [x] *(pilot)* Save the checkpoint per seed (and fold): `phase_a_seed<S>_fold<F>.pt` + a `.json` sidecar (filters, kernel, `SEQ_LEN_L`, embedding folder, sha256 of the vocabulary, matrix and weights, val metrics). `python -m src.unified.text_cnn --pilot check` rebuilds every CNN from its sidecar alone and repeats its val metrics exactly
 
 ### Phase 5: Gate RF and pruning
 - [ ] Record the 64 pooled filter scores for the training messages (eval mode)
