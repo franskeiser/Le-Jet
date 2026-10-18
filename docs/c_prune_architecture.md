@@ -593,16 +593,16 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 - [ ] Reach at least the minimum (2,000), aim for 4,000
 
 ### Phase 2: Splits and text preparation
-- [ ] Splits grouped by `link_domain` and `template_id`, for each of the 3 seeds: **5-fold cross-validation** below 4,000 messages; 5-fold or 70 / 15 / 15 at 4,000+ (section 4.5). Inside each training part, 15% is held out as validation for early stopping. "Training split" below means the training folds
-- [ ] Write the split files to `data/splits_crowd/`
+- [x] *(pilot, grouped by domain only)* Splits grouped by `link_domain` and `template_id`, for each of the 3 seeds: **5-fold cross-validation** below 4,000 messages; 5-fold or 70 / 15 / 15 at 4,000+ (section 4.5). Inside each training part, 15% is held out as validation for early stopping. "Training split" below means the training folds
+- [x] *(pilot)* Write the split files to `data/splits_crowd/`
 - Pilot (2026-10-18, synthetic `crowd_pilot_synthetic.csv`, pipeline test only): `src/data/split_crowd.py` and `src/features/build_crowd_embeddings.py` run end to end. The strict domain + template rule was refused (one joined group held 73% of the rows, because the generator reuses templates across random domains), so the pilot is grouped by domain only. About 94% of its test rows share a template with training. **Open decision for the real data:** if real campaigns also chain domains and templates into one giant group, choose between domain-only grouping with the template overlap reported, or template-only grouping
-- [ ] Check that no domain and no template appears in two splits
-- [ ] Remove the link from `sms_text` (the link goes to the link lane only)
-- [ ] Re-measure `SEQ_LEN_L` (95th percentile of token counts) on the crowd training split
-- [ ] Build the vocabulary from the **training split only**. Same fastText 300-d embeddings as now
+- [ ] Check that no domain and no template appears in two splits *(pilot: domains checked, 0 overlap; templates overlap, see the note above)*
+- [x] *(pilot)* Remove the link from `sms_text` (the link goes to the link lane only). Done at encoding time: the link becomes the `<URL>` token, as in the live app
+- [x] *(pilot: 18)* Re-measure `SEQ_LEN_L` (95th percentile of token counts) on the crowd training split. Per fold, in `split_report.json`
+- [x] *(pilot)* Build the vocabulary from the **training split only**. Same fastText 300-d embeddings as now
 
 ### Phase 3: Link lane
-- [ ] Link RF (200 trees) tuned with grouped cross-validation on the training split
+- [x] *(pilot)* Link RF (200 trees) tuned with grouped cross-validation on the training split. `python -m src.unified.link_lane --pilot tune`: the 16-setting grid of `rf_extractor.PARAM_GRID` (200 or 500 trees), 3 grouped folds of the train part only, highest F1 then lowest log loss. Pilot: CV F1 0.88–0.94
 - [ ] Out-of-fold P, u and 37 contributions for every training row (no row is scored by a forest that saw it)
 - [ ] One final Link RF on all training rows scores validation and test
 - [ ] Add `page_missing` → 40 numbers. `has_url` removed
