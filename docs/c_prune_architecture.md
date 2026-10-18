@@ -1,0 +1,703 @@
+# Le-Jet: C-prune architecture plan
+
+**Branch:** `feat/prune-architecture` · **Written:** 2026-10-18 · **Status:** plan only, no code changed yet
+
+**Thesis title (unchanged):** A Random Forest-Guided Static Gating Framework for Financial-Related Smishing Classification Using SMS Text
+
+**Source of the design:** the "C-prune: RF-pruned Conv layer" card of the architecture comparison page (`lejet_all_architectures.html`, version 20). This file turns that card into a build plan.
+
+---
+
+## 1. The idea in plain words
+
+The CNN has 64 **filters**. Each filter is a phrase detector, for example one that fires on "will be locked". Not every filter is useful. Some fire on words that appear in every kind of message, such as "today".
+
+In C-prune a **Random Forest decides which filters the CNN keeps**:
+
+1. Train the text CNN normally (64 filters).
+2. Give a **Gate RF** the 64 filter scores of every training message and let it learn smishing vs legitimate.
+3. Ask the Gate RF how much each filter helps. Shuffle one filter's scores and measure how much worse the RF gets (**permutation importance**).
+4. **Keep the top k filters and delete the rest**. For example, keep 32 of the 64.
+5. **Fine-tune** the smaller CNN.
+6. **Throw the Gate RF away.** It is not part of the final model.
+
+The result is a normal, smaller CNN whose filters were **chosen by a Random Forest**. Every filter gets a fixed gate: 1 = kept, 0 = deleted. The gate is the same for every message, so it is **static gating**, and it is **RF-guided**.
+
+How it meets each requirement:
+
+| Who | Requirement | How C-prune meets it |
+|---|---|---|
+| Panel | RF inside or replacing a CNN layer | The Gate RF decides which filters exist in the Conv layer |
+| Group leader | RF must not be the classifier | The CNN's Dense + Output layers decide; no RF votes on the verdict |
+| Adviser | No extra layer when an existing one can carry it | No new layer. The Conv layer just gets smaller |
+
+---
+
+## 2. The architecture
+
+### 2.1 The final model (what runs for every message)
+
+```
+SMS arrives: "Your GCash account will be locked today. Verify here: https://gcash-verify-ph.xyz"
+        │
+        ▼
+Link splitter ─────────────────────────────┬───────────────────────────────────────┐
+        │ text without link                 │ URL                                   │
+        ▼                                   ▼                                       │
+Tokenise + pad (50 words)            Web inspector (at submission time):           │
+        │                            redirects, page HTML, WHOIS/RDAP, page rank   │
+        ▼                                   │                                       │
+Embedding: fastText 300-d, FROZEN           ▼                                       │
+        │  50 × 300                  Feature extractor: 20 URL + 17 page/domain    │
+        ▼                                   │  37                                   │
+Pruned Conv1D, width 3                      ▼                                       │
+k filters kept by the Gate RF        Link Random Forest (200 trees)                │
+        │  48 × k                    → P, u, 37 contributions                      │
+        ▼                                   │  39                                   │
+ReLU                                        ▼                                       │
+        │                            + page_missing flag → 40 numbers              │
+        ▼                                   │                                       │
+Global max-pool + dropout 0.2               │                                       │
+        │  k                                │  40                                   │
+        └──────────────┬────────────────────┘                                       │
+                       ▼                                                            │
+              Concatenate (k + 40)                                                  │
+                       ▼                                                            │
+              Dense 64 + weight decay · ReLU · dropout 0.5                          │
+                       ▼                                                            │
+              Output: 2 neurons + softmax (legitimate / smishing)                   │
+                       ▼                                                            │
+              Verdict + reasons (P(smishing) ≥ 0.5 → smishing) ◄────────────────────┘
+```
+
+`k` is the number of kept filters. Three sizes are tested: **48, 32 and 16** (75%, 50% and 25% of 64). The final `k` is chosen on the **validation** split, never on test.
+
+The two RFs at a glance:
+
+| | Link RF | Gate RF |
+|---|---|---|
+| Reads | the 37 link features of a message | the 64 pooled filter scores of the trained CNN |
+| Job | turns the link into 40 numbers for the head | ranks the 64 filters so the weak ones can be deleted |
+| When it runs | for **every message**, training and live | **once**, while building the model |
+| In the final model? | yes | **no**, discarded after step 5 |
+
+### 2.2 How the kept filters are chosen (done once, while building)
+
+```
+1 · Train the text CNN as usual (all 64 filters)
+        │ trained CNN
+        ▼
+2 · Record the 64 pooled filter scores (eval mode, no dropout)
+        │ table: training messages × 64
+        ▼
+3 · Train the Gate Random Forest (5 folds, grouped by domain)
+        │ input: the 64 filter scores · target: smishing or legitimate
+        ▼
+4 · Permutation importance for each filter, on each held-out fold
+        │ shuffle one filter's column → how much worse is the log-loss?
+        │ average over the 5 folds (this is the existing "oof_logloss" setting)
+        ▼
+5 · Rank the 64 filters and keep the top k
+        │ kept: g = 1 · removed: g = 0
+        ▼
+6 · Delete the removed filters, then fine-tune
+        │ their rows leave the Conv weights, their columns leave Dense 64
+        ▼
+Result: a normal, smaller CNN with k filters. The Gate RF is discarded.
+```
+
+### 2.3 What "delete a filter" means in the weights
+
+| Layer | Shape before | Shape after | What is removed |
+|---|---|---|---|
+| Conv1D weight | 64 × 300 × 3 | **k** × 300 × 3 | the rows of the removed filters |
+| Conv1D bias | 64 | **k** | the same positions |
+| Dense 64 weight | 64 × (64 + 40) | 64 × (**k** + 40) | the columns that read the removed filters |
+
+Before fine-tuning, the pruned model gives **exactly** the same output as the full model with the removed filters' gates set to 0, because a deleted filter would only ever have sent a 0. A unit test checks this (section 6, Phase 5).
+
+### 2.4 Where the static gating is: the RF gate mask
+
+Without link gates, the static gating lives **inside the Conv layer**. The pruning **is** the gating.
+
+A gate is a number that controls how much of a signal gets through. The Gate RF gives every one of the 64 filters a gate, and together those 64 gates form the **gate mask**:
+
+```
+Filter   What it learned to spot (example)     Gate-RF rank   Gate g
+#17      "will be locked", "account suspended"      1          1   open: kept
+#40      "verify your details"                      5          1   open: kept
+#29      "click here"                              30          1   open: kept (if k ≥ 30)
+#51      "thank you"                               52          0   closed: deleted
+#58      "today" (in every kind of message)        64          0   closed: deleted
+
+Gate mask m = [g₁, g₂, …, g₆₄], with exactly k ones
+```
+
+- **g = 1:** the filter's signal passes through.
+- **g = 0:** the filter's signal is blocked for good. Because a closed filter would only ever send 0, it is deleted from the weights (section 2.3). The pruned CNN is the mask made permanent.
+
+Applied to the Conv layer, the mask does this:
+
+```
+Conv output of filter j = m_j × ReLU(W_j · x + b_j)      m_j ∈ {0, 1}, fixed
+
+m_j = 0  →  row j is removed from the Conv weights and column j from Dense 64
+m_j = 1  →  filter j is kept as it is
+```
+
+How each word of the title maps to this mask:
+
+| Title word | Where it is in C-prune |
+|---|---|
+| Random Forest-Guided | the Gate RF's permutation importance decides which gates are 1 and which are 0 |
+| Static | the mask is set once, while building, and is **the same for every message**. Filter #58 is closed for a GCash scam and for a real bank notice alike. The opposite, dynamic gating, changes the gates per message (as FiLM does) |
+| Gating | every filter has a gate, open (1) or closed (0), inside the Conv layer |
+
+**Current model vs C-prune:** the current model gates in two separate steps **after** the CNN (`× cnn_gates`, `× rf_gates`). C-prune gates **once, inside the CNN**, which is what the panel asked for.
+
+**How to show it in the thesis:** draw the 64 filters with a 1 or 0 next to each, then show the 0s removed. Name it the **"RF-guided static gate mask on the Conv filters"**. Save the mask per seed (`gate_mask_seed*.json`, the same content as `keep_idx`), so it can be printed in the results.
+
+**If the panel says "deleting is not gating":** variant **C** uses the same Gate RF, but its gates are graded (0 = off, 0.5–3.0 = weaker or stronger), merged into the Conv weights as W ← g·W, b ← g·b. Phases 4–5 already produce the importance ranking it needs, so C can be reported as a variant without rebuilding anything.
+
+### 2.5 Why it should work (short version; studies on the comparison page)
+
+- Trained networks have spare filters, and deleting the least important ones after training, then fine-tuning, keeps or improves accuracy: HRank [S9], CHIP [S10, main study], Li et al. 2017 [F6].
+- Importance-based removal beats random removal: Li et al. 2017 [F6], Molchanov et al. 2019 [F3].
+- Some text-CNN filters are nearly unused: Jacovi et al. 2018 [F1].
+- **Your contribution:** no study ranks text-CNN filters with an RF's permutation importance. The tests in Phase 7 are what prove it helped.
+
+---
+
+## 3. What changes from the current model
+
+### 3.1 Architecture
+
+| Part | Current model (`docs/final_model.md`, `run_fused_lean.py`) | C-prune |
+|---|---|---|
+| Conv filters | 64, all kept | **k** (48, 32 or 16), chosen by the Gate RF |
+| Text gate | separate `× cnn_gates` (64 numbers, 0.1–3.0) after pooling | **removed**. The gating now happens inside the Conv layer (kept or deleted) |
+| Link gate | separate `× rf_gates` (0.1–3.0) on the contributions | **removed** (decided 2026-10-18). Tested once as an ablation (Phase 7) |
+| Modality dropout | page hidden 25%, text hidden 10% while training | **unchanged**, same for every model (decided 2026-10-18) |
+| Link lane | `has_url`, P, u, contributions, page_missing | **P, u, 37 contributions, page_missing = 40**. `has_url` is dropped because every message has a link |
+| Dense 64 | no weight decay | **weight decay** (start at 1e-4, tune on validation) |
+| Gate RF | kept its 64 gate numbers in the model | used once, then **discarded** |
+| Embedding | fastText 300-d, fine-tuned (6,582,000 trainable parameters) | fastText 300-d, **frozen** for every model (decided 2026-10-18), so pruning shows in the parameter count |
+| Model size | 64,514 trainable parameters (Conv + Dense + Output, embedding frozen) | 49,074 / 33,634 / 18,194 for k = 48 / 32 / 16 |
+
+### 3.2 Data
+
+| | Current | C-prune study |
+|---|---|---|
+| Datasets | v2 SMS + public web-phishing pages + fresh_lean (+ synthetic parts) | **one dataset only: crowdsourced SMS messages with a URL, plus that URL's features** |
+| Link features | from a different public dataset, matched by URL | measured **live by the web inspector** when the message is submitted |
+| Messages without a link | handled with sentinels | **none**. Every message has a link |
+| Synthetic text | used in some sets | **none** |
+
+The old files stay on disk (they are not deleted). They are simply not used for training, gating, tuning or testing in this study.
+
+### 3.3 Code (planned, not done yet)
+
+| File | Change |
+|---|---|
+| `src/config.py` | point `DATASET_PATH` to `data/processed/crowd_smishing_v1.csv` and `SPLITS_DIR` to `data/splits_crowd`; add `PRUNE_KEEP = [48, 32, 16]`, `DENSE_WEIGHT_DECAY`; re-measure `SEQ_LEN_L` on the crowd data |
+| `src/data/build_crowd_dataset.py` (**new**) | crowd submissions + lab inspection output → `data/processed/crowd_smishing_v1.csv` + `.summary.json` (sections 4.2–4.4) |
+| `src/data/split_dataset.py` | reuse: 5-fold cross-validation (or 70/15/15 at 4,000+) **grouped by link domain and template**, seeds 42, 123, 2024, written to `data/splits_crowd/` |
+| `src/features/model/cnn_encoder.py` | add `prune_encoder(encoder, keep_idx)`, which copies the kept Conv rows into a new k-filter `TextEncoder` |
+| `src/features/model/rf_gating_module.py` | reuse the importance code; add `select_top_k(importance, k)` next to `gate_transform` |
+| `src/features/model/fusion_classifier.py` | add a `PrunedFusionClassifier` (no gate buffers; `cnn_dim = k`, `url_dim = 40`), or reuse `UngatedFusionClassifier` with `cnn_dim = k`; `load_model` reads `k` and `keep_idx` from a sidecar file instead of `NUM_FILTERS` |
+| `src/features/model/train.py` | `train_phase_c` takes `weight_decay` for Dense 64 |
+| `src/unified/unified_rf.py` | reuse: Link RF with out-of-fold P, u, contributions; drop `has_url` |
+| `src/unified/run_prune.py` (**new**) | the full study runner: link lane → Phase A CNN → Gate RF → prune → fine-tune → controls → test |
+| `src/serving/lejet_service.py`, `predict.py`, `explain_text.py` | build the model with `k` filters; map kept filters back to their original ids for the explanations |
+| `tests/test_prune.py` (**new**) | pruning exactness, shapes, sidecar round-trip |
+
+---
+
+## 4. The dataset (crowdsourcing only)
+
+### 4.1 What one row is
+
+**One crowdsourced SMS message that contains a URL, plus that URL's features measured by the web inspector at submission time.** Nothing else: no public datasets, no synthetic messages.
+
+Collection rules:
+
+1. **Scope:** financial-related messages only (banks, e-wallets such as GCash and Maya, loans, payments, deliveries asking for payment), to match the title. Both classes must be financial-related, so the model can't learn "finance words = smishing".
+2. **Both classes:** smishing **and** legitimate financial messages with links (real bank, e-wallet and payment notices). Legitimate messages with links are the hardest to collect, so plan for them from day one.
+3. **Inspect fast:** smishing pages die within hours or days. The web inspector must run **at submission time**, or within a few hours. Record `inspected_at`.
+4. **Labels:** the submitter gives a label, and **a second person checks it** (two-person rule). Record `label_verified_by`. Never relabel a message because its page was dead or looked clean.
+5. **Privacy and consent:** consent checkbox on the form; names, numbers and account details are removed from `sms_text` before storage (same rule as `docs/fresh_set_spec.md`).
+6. **Duplicates:** near-identical templates (same text, different link) are marked with a `template_id`, so they stay on one side of the split.
+7. **One link per message:** if a message has several links, use the first one (same rule as before).
+
+### 4.2 Files and names
+
+| File | What it holds | Where | Committed? |
+|---|---|---|---|
+| `submissions_<YYYY-MM-DD>.csv` | the raw form export, **before** personal details are removed | `D:\LeJetData\crowd\raw\` (outside the repo) | **never** (it has personal data) |
+| `<batch>.clean.jsonl` | the web inspector's output for that day's links | `D:\LeJetData\crowd\lab\` | no |
+| **`crowd_smishing_v1.csv`** | **the study dataset**: one row per message, the columns of section 4.3 | `data/processed/` | yes, once frozen |
+| `crowd_smishing_v1.summary.json` | counts per class, category, domain, `page_fetched`, written by the builder | `data/processed/` | yes |
+| `seed<S>_fold<F>.csv` or `seed<S>_{train,val,test}.csv` | the message ids of each split | `data/splits_crowd/` | yes |
+
+File rules for `crowd_smishing_v1.csv`:
+- UTF-8, comma-separated, one header row, columns in the exact order of section 4.3.
+- **Written once and never edited.** More data makes a new version (`crowd_smishing_v2.csv`). The thesis names the version it used.
+- Built only by `src/data/build_crowd_dataset.py`, never by hand, so it can be rebuilt from the raw files.
+
+### 4.3 Columns (in this order)
+
+**Message (12)**
+
+| Column | Type | Allowed values / format | Example |
+|---|---|---|---|
+| `message_id` | text | unique, prefix `crowd_` + 6 digits | `crowd_000127` |
+| `sms_text` | text | the message with the link **kept**; personal details replaced by `<NAME>`, `<NUM>`, `<ACCT>` | `Your GCash account will be locked today. Verify here: https://gcash-verify-ph.xyz` |
+| `label` | text | `smishing` or `legitimate` | `smishing` |
+| `category` | text | `bank`, `e-wallet`, `credit_card`, `loan`, `bill_payment`, `delivery_fee`, `government_aid`, `investment`, `other_financial` | `e-wallet` |
+| `language` | text | `en`, `tl`, `taglish` | `en` |
+| `sender_type` | text | `number` (11-digit mobile), `shortcode`, `alphanumeric` (e.g. "GCash"), `unknown` | `number` |
+| `date_received` | date | `YYYY-MM-DD` (when the person got the SMS) | `2026-11-03` |
+| `date_submitted` | datetime | `YYYY-MM-DD HH:MM` local time (UTC+8) | `2026-11-03 14:20` |
+| `submitter_id` | text | anonymous code, never a name or number | `s0042` |
+| `label_source` | text | `submitter`, `bank_confirmed`, `reviewer` | `submitter` |
+| `label_verified_by` | text | reviewer code (the second person) | `r02` |
+| `consent` | 0/1 | must be 1, rows with 0 are dropped | `1` |
+
+**Link (5)**
+
+| Column | Type | Allowed values / format | Example |
+|---|---|---|---|
+| `link` | text | the first link exactly as it appears in the SMS | `https://gcash-verify-ph.xyz` |
+| `final_url` | text | the URL after redirects; `-1` if not reached | `https://gcash-verify-ph.xyz/login` |
+| `link_domain` | text | registrable domain of `final_url` (or of `link` if not reached); the **split group** | `gcash-verify-ph.xyz` |
+| `template_id` | text | same id for near-identical texts (`deduplicate_labeled_templates.py`) | `t0311` |
+| `link_shortened` | 0/1 | 1 if `link` is a shortener (bit.ly, tinyurl, …) | `0` |
+
+**Inspection (4)**
+
+| Column | Type | Allowed values / format | Example |
+|---|---|---|---|
+| `inspected_at` | datetime | `YYYY-MM-DD HH:MM` local time | `2026-11-03 14:31` |
+| `hours_to_inspect` | number | `inspected_at − date_submitted`, in hours | `0.18` |
+| `page_fetched` | 0/1 | 1 only if the page HTML was retrieved and parsed. `page_missing = 1 − page_fetched` is computed in code | `1` |
+| `fetch_status` | text | `live`, `redirected`, `dead`, `blocked`, `timeout` | `live` |
+
+**20 URL features** (computed from `link` by the lab code; never reimplemented)
+
+`length_url`, `length_hostname`, `nb_dots`, `nb_slash`, `nb_www`, `https_token`, `ratio_digits_url`, `ratio_digits_host`, `prefix_suffix`, `shortening_service`, `nb_redirection`, `length_words_raw`, `char_repeat`, `shortest_word_host`, `shortest_word_path`, `longest_words_raw`, `longest_word_host`, `avg_word_host`, `phish_hints`, `domain_in_brand`
+
+**17 page/domain features** (13 from the page, 4 from outside services)
+
+`nb_hyperlinks`, `ratio_intHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `ratio_intMedia`, `ratio_extMedia`, `iframe`, `safe_anchor`, `empty_title`, `domain_in_title`, `domain_with_copyright`, `whois_registered_domain`, `domain_registration_length`, `domain_age`, `page_rank`
+
+That is **58 columns** in total (12 + 5 + 4 + 37). Units are the same as the lab's current output: ratios in percent, ages and lengths in days.
+
+**Missing values are always `-1`, never blank, NaN or 0.**
+- Page not fetched: the 13 page columns are `-1`. The 4 outside columns are still filled if their lookups worked.
+- A lookup failed (WHOIS/RDAP, Open PageRank): that column is `-1`.
+
+The lab also exports a wider 73-column table (`features_full`). The study uses these 37, so it matches the design. The wider table is kept for the thesis appendix.
+
+### 4.4 Row rules (the builder drops or flags rows that break them)
+
+| Rule | Action |
+|---|---|
+| no link in `sms_text` | drop (this dataset is URL messages only) |
+| `consent` ≠ 1 | drop |
+| `label` not verified by a second person | keep out until verified |
+| not financial-related | drop |
+| exact duplicate (same `sms_text` and same `link`) | keep the first, drop the rest |
+| `hours_to_inspect` > 24 | keep, but flag it in the summary. Aim for under 6 hours: phishing domains often survive "less than 24 hours before being blocked" (Pritom et al. 2026) |
+| more than 20 rows of one `link_domain` in one class | keep the first 20 by `date_submitted`, set the rest aside |
+| personal details still in `sms_text` | send back for cleaning |
+
+### 4.5 How much data is needed
+
+| Level | Total messages (smishing / legitimate) | How to evaluate | What it lets you claim |
+|---|---|---|---|
+| **Minimum** | **2,000** (1,000 / 1,000) | **5-fold grouped cross-validation**: every message is tested once, by a model that never saw it, so all 2,000 are test predictions | the model works, and comparisons between models can be tested (paired McNemar on 2,000 predictions) |
+| **Recommended** | **4,000** (2,000 / 2,000) | 5-fold grouped cross-validation, or one 70 / 15 / 15 split (about 600 test messages) | stronger comparisons. With a single split, about 600 test messages can show a gap of about **3 points** between two models |
+
+Below 4,000, always use cross-validation. One 15% test split of 2,000 would be only 300 messages.
+
+**The basis for these numbers:**
+
+| Basis | What it says | What it means for Le-Jet |
+|---|---|---|
+| Other smishing datasets (Pritom et al. 2026 review; Mishra & Soni 2021, 2022; Goel et al. 2024) | most have **362–638 smishing messages**. The largest labelled smishing set has only **223 messages with a URL**. The review: *"existing smishing datasets are often limited in scale, diversity, and temporal coverage"* | **2,000 URL messages is already larger** than the URL portion of any public smishing dataset found |
+| The only crowdsourced smishing dataset (Timko & Rahman, CODASPY 2024, SmishTank) | **1,062** user-submitted smishing messages, with **no legitimate ones**. The review says smishing-only data *"prevents the training of robust binary classifiers"* | crowdsourcing is slow. Collect legitimate messages on purpose. 2,000 is a realistic floor; 4,000 is a stretch goal |
+| Text CNN (Kim 2014) | TextCNN with pretrained word vectors worked on datasets of **3,775** (CR) and **5,952** (TREC) sentences. Pretrained vectors help *"in the absence of a large supervised training set"* | **4,000 is inside the proven range** for TextCNN with pretrained vectors (Le-Jet uses fastText). 2,000 is below it, which is why it is only the minimum |
+| Testing one classifier (Beleites et al. 2013) | *"75 – 100 samples will usually be needed to test a good but not perfect classifier"* | either level has far more than that |
+| Comparing two classifiers (Beleites et al. 2013) | *"often requires hundreds of statistically independent test samples"* | the C-prune claim **is** a comparison (RF-ranked vs random removal), so the evaluation needs hundreds of test predictions: cross-validation at 2,000, or about 600+ in a single test split at 4,000 |
+| Own calculation | 95% margin = 1.96 × √(p(1−p)/n). At p ≈ 0.95: ±2.5 points for n = 300, ±1.7 for 600, ±1.0 for 2,000. Paired McNemar, models disagreeing on about 5–6% of messages: about **520** test predictions for a 3-point gap, about **980** for a 2-point gap | 2,000 cross-validated predictions can detect a gap of about 2 points |
+
+**Composition targets (as important as the total):**
+- **Balance:** aim for 50 / 50. Never go below 40% legitimate.
+- **Domain variety:** at most **20 messages per `link_domain` per class**. Aim for **at least 100 different legitimate domains**, or the CNN learns domain names instead of smishing.
+- **Categories:** no single `category` above 40% of the data, and each category should have both classes where possible.
+- **Fetched pages:** at least **70%** of rows with `page_fetched = 1`. Otherwise the page features are mostly `-1`.
+- **Learning-curve check** (Phase 7): train on 25%, 50%, 75% and 100% of the training data. If accuracy is still climbing at 100%, collect more.
+
+### 4.6 Example row (shortened)
+
+```
+message_id,sms_text,label,category,language,sender_type,date_received,date_submitted,submitter_id,label_source,label_verified_by,consent,link,final_url,link_domain,template_id,link_shortened,inspected_at,hours_to_inspect,page_fetched,fetch_status,length_url,...,domain_age,page_rank
+crowd_000127,"Your GCash account will be locked today. Verify here: https://gcash-verify-ph.xyz",smishing,e-wallet,en,number,2026-11-03,2026-11-03 14:20,s0042,submitter,r02,1,https://gcash-verify-ph.xyz,https://gcash-verify-ph.xyz/login,gcash-verify-ph.xyz,t0311,0,2026-11-03 14:31,0.18,1,live,27,...,2,0
+```
+
+---
+
+## 5. Research questions and how each is measured
+
+### 5.1 The questions and the models compared
+
+| # | Research question (statement of the problem) | Measured by | Phase |
+|---|---|---|---|
+| RQ1 | Classification performance of the proposed RF-guided static gating framework and the baselines: **accuracy, precision, recall, F1** | section 5.2: confusion matrix of the test predictions, smishing = positive class, mean ± std over seeds 42 / 123 / 2024 | 7 |
+| RQ2 | Computational efficiency: **number of trainable parameters, inference latency per message, training time** | sections 5.2 and 5.3 | 7 |
+| RQ3 | Is there a significant difference between the classification outcomes of the proposed framework and the baselines? **McNemar's test** | section 5.4 | 7 |
+
+In RQ1–RQ3, **"features"** in "static feature gating" means the CNN's filter features: each filter gives one feature after max-pooling, and the gate mask keeps or removes it (section 2.4). State this in Chapter 3.
+
+**Models in every comparison:**
+
+| Role | Model |
+|---|---|
+| Proposed | **C-prune** (final k chosen on validation; k = 48, 32, 16 all reported) |
+| Baseline | Plain CNN (text only) |
+| Baseline | CNN_CONCAT (64 text features + raw link features, no RF, no gates) |
+| Baseline | UNGATED (64 text features + 40 Link RF numbers, no gates) |
+| Baseline | Current GATED model (separate gates after the CNN) |
+| Control | Random removal at the same k |
+| Control | k-filter CNN trained from scratch |
+| Variant / ablation | C (graded gates), C-prune + link gates |
+
+All of them use the same data, splits, seeds, recipe and **frozen embedding**.
+
+### 5.2 Where each measurement is taken in the architecture
+
+Every measurement has a **fixed place** in the architecture. The diagram below is the final model of section 2.1, drawn in the order the application runs it, with the measuring points marked:
+
+- **⏱ t0 … t4**: timestamps taken with `time.perf_counter()`. The latency is computed from them.
+- **[P]**: trainable layer. Its parameters are counted for RQ2.
+- **[F]**: frozen. Its numbers are reported but not counted as trainable.
+- **[RF]**: a Random Forest. It has no trainable parameters; reported as trees and nodes.
+- **★**: the point where the verdict is compared with the true label, for RQ1 and RQ3.
+
+```
+                        ⏱ t0   message submitted to the application
+                               │
+                               ▼
+              ┌─────────────────────────────────────────┐
+  stage 1     │ Web inspector                           │   network: redirects, page HTML,
+              │ (lab pipeline: duration_ms, stage_ms_*) │   WHOIS/RDAP, Open PageRank
+              └─────────────────────────────────────────┘
+                        ⏱ t1   inspection finished                 inspection time = t1 − t0
+                               │
+                               ▼
+              ┌─────────────────────────────────────────┐
+  stage 2     │ Feature extractor: 20 URL + 17 page     │
+              └─────────────────────────────────────────┘
+                        ⏱ t2   37 features ready                   feature time   = t2 − t1
+                               │
+                               ▼
+              ┌─────────────────────────────────────────┐
+  stage 3     │ [RF] Link Random Forest, 200 trees      │
+              │ → P, u, 37 contributions + page_missing │
+              └─────────────────────────────────────────┘
+                        ⏱ t3   40 link numbers ready               Link RF time   = t3 − t2
+                               │
+                               ▼
+              ┌─────────────────────────────────────────┐
+  stage 4     │ Tokenise SMS text (link removed)        │
+              │ [F] Embedding, fastText 300-d (frozen)  │
+              │ [P] Pruned Conv1D, k filters            │   ← the RF gate mask (section 2.4)
+              │     ReLU → global max-pool              │
+              │     Concatenate (k + 40)                │
+              │ [P] Dense 64                            │
+              │ [P] Output, 2 neurons + softmax         │
+              └─────────────────────────────────────────┘
+                        ⏱ t4   verdict shown                       text model time = t4 − t3
+                               │
+                               ▼
+                        ★  verdict vs true label → confusion matrix (RQ1) and McNemar pairs (RQ3)
+
+  inference latency per message = t4 − t0
+```
+
+The building steps (done once, before any test message) are timed the same way, for **training time**:
+
+```
+⏱ s0 ─ Link RF training + out-of-fold outputs ─ ⏱ s1 ─ Phase A: text CNN ─ ⏱ s2
+     ─ Gate RF + permutation importance ─ ⏱ s3 ─ pruning ─ ⏱ s4 ─ fine-tuning (Phase C) ─ ⏱ s5
+
+training time = s5 − s0   (each step reported too: s1 − s0, s2 − s1, …)
+```
+
+**Definition of every metric:**
+
+| Metric | RQ | Definition | Formula | Unit | Taken at |
+|---|---|---|---|---|---|
+| Accuracy | 1 | share of test messages classified correctly | (TP + TN) / (TP + TN + FP + FN) | % | ★ |
+| Precision | 1 | of the messages flagged smishing, the share that really are | TP / (TP + FP) | % | ★ |
+| Recall | 1 | of the real smishing messages, the share that were caught | TP / (TP + FN) | % | ★ |
+| F1-score | 1 | balance of precision and recall | 2 × Precision × Recall / (Precision + Recall) | % | ★ |
+| Trainable parameters | 2 | count of the numbers the optimiser updates | Σ size of every [P] layer (formulas in section 5.3) | count | [P] layers |
+| Inference latency | 2 | wall-clock time from submission to verdict, for one message | t4 − t0 (and each stage separately) | ms | t0 … t4 |
+| Training time | 2 | wall-clock time to build the model from the training data | s5 − s0 (and each step separately) | s | s0 … s5 |
+| McNemar's test | 3 | do two models make **different** mistakes on the same messages more than chance? | b, c = messages only one model got right; exact p = 2 × Σ(i = 0 … min(b, c)) C(b + c, i) × 0.5^(b + c) | p-value | ★, paired |
+
+TP, TN, FP, FN come from the confusion matrix at ★, with **smishing as the positive class**:
+
+| | Predicted smishing | Predicted legitimate |
+|---|---|---|
+| **Truly smishing** | TP (caught) | FN (missed) |
+| **Truly legitimate** | FP (false alarm) | TN (correctly passed) |
+
+**Measurement procedure, step by step:**
+
+1. Build every model on the training folds (timers s0 … s5 → training time).
+2. Count each model's trainable parameters in code (`requires_grad = True`) and check them against section 5.3.
+3. Inspect every test link once with the web inspector, and save its stage 1 time and features.
+4. For each model, run every test message one at a time (after 50 warm-up messages) and save t0 … t4.
+5. Save each verdict next to the true label (★).
+6. From the saved verdicts: the confusion matrix → accuracy, precision, recall, F1.
+7. From the saved timings: median, 95th percentile and mean of t4 − t0 and of each stage.
+8. From the paired verdicts: b and c for each pair of models → exact McNemar, Holm-corrected.
+9. Repeat for seeds 42, 123 and 2024, and report mean ± std.
+
+**Result tables for Chapter 4** (filled in after Phase 7):
+
+| Model | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|
+| C-prune (k = …) | | | | |
+| Plain CNN | | | | |
+| CNN_CONCAT | | | | |
+| UNGATED | | | | |
+| Current GATED | | | | |
+| Random removal (same k) | | | | |
+
+| Model | Trainable parameters | Latency median (ms) | Latency 95th pct (ms) | Text model median (ms) | Training time (s) |
+|---|---|---|---|---|---|
+| C-prune (k = …) | | | | | |
+| Plain CNN | | | | | |
+| CNN_CONCAT | | | | | |
+| UNGATED | | | | | |
+| Current GATED | | | | | |
+
+| Comparison | Seed | b | c | p (exact) | p (Holm) | Significant? |
+|---|---|---|---|---|---|---|
+| C-prune vs Plain CNN | 42 | | | | | |
+| C-prune vs Random removal | 42 | | | | | |
+| … | | | | | | |
+
+### 5.3 Computational efficiency (RQ2)
+
+**Number of trainable parameters.** The fastText embedding (6,582,000 numbers) is **frozen for every model**, so it is not trainable and is reported separately as "frozen parameters". With it frozen, the text model's trainable parameters are:
+
+| Part | Formula | 64 filters | k = 48 | k = 32 | k = 16 |
+|---|---|---|---|---|---|
+| Conv1D | 300 × 3 × k + k | 57,664 | 43,248 | 28,832 | 14,416 |
+| Dense 64 | (k + 40) × 64 + 64 | 6,720 | 5,696 | 4,672 | 3,648 |
+| Output | 64 × 2 + 2 | 130 | 130 | 130 | 130 |
+| **Total trainable** | | **64,514** | **49,074** | **33,634** | **18,194** |
+| Reduction vs 64 filters | | — | 24% | 48% | 72% |
+
+- Count in code with `sum(p.numel() for p in model.parameters() if p.requires_grad)` and check it against this table.
+- The Link RF has no trainable parameters in the neural-network sense. Report it separately: 200 trees, total number of nodes, file size.
+- The Gate RF is discarded, so it adds nothing to the final model. It only adds training time.
+- Baselines without the link lane have different Dense sizes (e.g. plain CNN: 64 × 64 + 64). Each model's count is taken from its own code.
+
+**Inference latency per message.** It is the **total wall-clock time in the application**, from the moment a message is submitted to the moment the verdict is shown, **including the web inspection**. It is wall-clock time, not CPU time: most of the inspection is waiting for the network (the website, DNS, WHOIS, Open PageRank), and CPU time would hide that waiting.
+
+```
+submit ─┬─ [1] web inspection      lab pipeline: duration_ms, stage_ms_*        network, seconds
+        ├─ [2] feature extraction  the 37 link features                         CPU, milliseconds
+        ├─ [3] Link RF             200 trees → 40 numbers                       CPU, milliseconds
+        ├─ [4] text model          tokenise → embedding → Conv → Dense → Output  CPU, milliseconds
+        └─ verdict
+total latency = [1] + [2] + [3] + [4]
+```
+
+Each stage is timed with `time.perf_counter()` (already used in `src/serving/predict.py` and `lejet_service.py`; the lab already records `duration_ms` and `stage_ms_*` in `src/lejet/pipeline.py`).
+
+The fairness problem: the same link can take 2 seconds now and 8 seconds later, because websites slow down or time out. If every model inspected live on its own, the differences would come from the internet, not the models. So **each test link is inspected once, and every model shares that inspection**:
+
+1. Inspect each test link once. Record its stage [1] time and its features.
+2. Run every model on the same messages and features, and time only its own stages.
+3. **Total for each model = the shared [1] + its own [2] + [3] + [4].**
+
+| Model | Uses the web inspection? | Total latency |
+|---|---|---|
+| Plain CNN | no | [4] |
+| CNN_CONCAT | yes | [1] + [2] + [4] |
+| UNGATED, current GATED, C-prune, controls | yes | [1] + [2] + [3] + [4] |
+
+The plain CNN will be much faster because it skips the inspection. That is a real trade-off (faster, but blind to the link) and is reported as such.
+
+Measurement rules (written in Chapter 3):
+- **One machine for all models.** Record the CPU model, RAM and OS. **CPU only**, no GPU, because that is how the application runs.
+- **Batch size 1:** one message at a time, as in the application.
+- **Warm-up:** run about 50 messages first and do not count them.
+- **Fixed threads:** `torch.set_num_threads(1)` and Link RF `n_jobs = 1`, stated in the paper.
+- **Report median, 95th percentile and mean**, per stage and in total. The median is the headline: one slow website pulls the mean up.
+- No other heavy programs running during the benchmark.
+- Save the per-message times (`latency_seed<S>.csv`: `message_id`, model, `ms_inspect`, `ms_features`, `ms_link_rf`, `ms_text_model`, `ms_total`).
+
+Expected result: the total is dominated by stage [1] (seconds against milliseconds). Pruning mainly speeds up stage [4]. Report the total, which answers RQ2 honestly, **and** the stage breakdown, which shows where pruning helps.
+
+**Training time.** Wall-clock time per step, on the same machine, with the same rules:
+
+| Step | Which models have it |
+|---|---|
+| Link RF training (incl. out-of-fold outputs) | every model with the link lane |
+| Phase A: text CNN | every model |
+| Gate RF + permutation importance (5 folds × 30 repeats) | C-prune, C |
+| Pruning | C-prune, random removal |
+| Fine-tuning / Phase C | every model |
+| **Total** | every model |
+
+C-prune **will take longer to train** than the baselines, because of the Gate RF and the permutation importance. Report this honestly as a **one-time building cost**, exchanged for a smaller model at prediction time.
+
+### 5.4 McNemar's test (RQ3)
+
+- **Paired:** both models predict **the same test messages**. With cross-validation, every message is a test case once, by models that never saw it. Assert the message ids are identical before testing (as `run_fused_lean.py` already does).
+- **Exact McNemar** on the disagreements: b = messages C-prune got right and the baseline got wrong, c = the reverse. The test asks whether b and c differ by more than chance. Existing code: `src/features/model/mcnemar.py`.
+- **Per seed:** run it for each of the 3 seeds and report all three (b, c, p-value).
+- **Several comparisons:** C-prune is compared with several baselines, so the p-values are corrected with **Holm's method**, otherwise some "significant" results may appear by luck.
+- **Significance level:** α = 0.05 after correction.
+
+---
+
+## 6. Phases and checklists
+
+Tick each box when done. **No code is run until the group agrees to start a phase.**
+
+### Phase 0: Decisions and setup
+- [ ] Group agrees on C-prune as the main model (this file)
+- [x] **Link gates: decided 2026-10-18.** No link gates in the main model. The static gating is the RF gate mask on the Conv filters (section 2.4). "C-prune + link gates" is tested once as an ablation (Phase 7)
+- [x] **Modality dropout: decided 2026-10-18.** Kept as in the current recipe, for **every** model: while training, the page features are hidden in 25% of messages (`page_missing = 1`) and the text features in 10%. Never applied at validation, test or live time
+- [x] **Embedding: decided 2026-10-18.** fastText 300-d is **frozen** for every model (no model fine-tunes it). Trainable parameters are then Conv + Dense + Output only (section 5.3)
+- [x] **Latency: decided 2026-10-18.** Total wall-clock time in the application, from submission to verdict, **including the web inspection**, measured stage by stage with one shared inspection per message (section 5.3)
+- [ ] Freeze the shared recipe: Adam 1e-3, 30 epochs, patience 3, label smoothing 0.1, class weights, modality dropout 0.25 / 0.10, seeds 42 / 123 / 2024
+- [ ] Ethics and consent form approved before collection starts
+
+### Phase 1: Crowdsourced dataset
+- [ ] Submission form: SMS text, label, category, date received, consent
+- [ ] Web inspector runs at submission time and records `inspected_at`, `page_fetched`, `fetch_status`
+- [ ] Personal details removed from `sms_text`
+- [ ] Second person verifies every label
+- [ ] `template_id` assigned to near-duplicates (`deduplicate_labeled_templates.py`)
+- [ ] `build_crowd_dataset.py` writes `data/processed/crowd_smishing_v1.csv` (58 columns, section 4.3) and `crowd_smishing_v1.summary.json`, applying the row rules of section 4.4
+- [ ] Data check: balance ≥ 40% legitimate, ≤ 20 per domain per class, ≥ 70% pages fetched, every row has a link, `-1` for missing values
+- [ ] Reach at least the minimum (2,000), aim for 4,000
+
+### Phase 2: Splits and text preparation
+- [ ] Splits grouped by `link_domain` and `template_id`, for each of the 3 seeds: **5-fold cross-validation** below 4,000 messages; 5-fold or 70 / 15 / 15 at 4,000+ (section 4.5). Inside each training part, 15% is held out as validation for early stopping. "Training split" below means the training folds
+- [ ] Write the split files to `data/splits_crowd/`
+- [ ] Check that no domain and no template appears in two splits
+- [ ] Remove the link from `sms_text` (the link goes to the link lane only)
+- [ ] Re-measure `SEQ_LEN_L` (95th percentile of token counts) on the crowd training split
+- [ ] Build the vocabulary from the **training split only**. Same fastText 300-d embeddings as now
+
+### Phase 3: Link lane
+- [ ] Link RF (200 trees) tuned with grouped cross-validation on the training split
+- [ ] Out-of-fold P, u and 37 contributions for every training row (no row is scored by a forest that saw it)
+- [ ] One final Link RF on all training rows scores validation and test
+- [ ] Add `page_missing` → 40 numbers. `has_url` removed
+- [ ] Check: P = bias + sum of contributions (existing test)
+
+### Phase 4: Text CNN (Phase A)
+- [ ] Train the full 64-filter CNN on the training split with early stopping on validation, **embedding frozen** (`requires_grad = False`)
+- [ ] Save the checkpoint per seed
+
+### Phase 5: Gate RF and pruning
+- [ ] Record the 64 pooled filter scores for the training messages (eval mode)
+- [ ] Gate RF with 5 folds grouped by domain. Permutation importance scored by log-loss on each held-out fold, 30 repeats, averaged (`oof_logloss`)
+- [ ] Optional: shuffle highly correlated filters together, so similar filters don't split their importance
+- [ ] Save the ranking per seed (`filter_importance_seed*.csv`)
+- [ ] `select_top_k` gives `keep_idx` for k = 48, 32, 16
+- [ ] `prune_encoder` builds the k-filter CNN. Dense 64 drops the matching columns
+- [ ] **Unit test:** before fine-tuning, the pruned model's output equals the full model's output with the removed filters set to 0
+- [ ] **Unit test:** with k = 64 (keep all), the output is unchanged
+- [ ] Save `keep_idx` (the gate mask, `gate_mask_seed*.json`) in a sidecar JSON next to the checkpoint
+
+### Phase 6: Fusion and fine-tuning (Phase C)
+- [ ] Pruned CNN + 40 link numbers → Concatenate → Dense 64 (weight decay) → 2 + softmax
+- [ ] Fine-tune everything except the Link RF with the shared recipe
+- [ ] Choose the final k on validation
+- [ ] Save checkpoint, `keep_idx` sidecar and Link RF per seed
+
+### Phase 7: Controls and tests
+Every model uses the same data, splits, seeds, recipe and frozen embedding. The research questions and how each one is measured are in section 5.
+
+- [ ] **Baselines:** plain CNN (text only) · CNN_CONCAT (64 text + raw link features) · UNGATED (64 text + 40 link numbers, no gates) · current GATED (separate gates)
+- [ ] **C-prune** at k = 48, 32, 16
+- [ ] **Random removal** at the same k, with the same fine-tuning. The RF ranking must beat this [S11]
+- [ ] **From scratch:** a k-filter CNN trained from the start on the same schedule. The RF choice must beat simply training a smaller CNN [S13]
+- [ ] **Reverse ranking** (keep the k least important). It should do worst, which shows the ranking means something
+- [ ] **Ablation:** C-prune + link gates (`rf_gates`, 0.1–3.0 on the 37 contributions) put back. Shows whether link-side gating adds anything
+- [ ] **Variant C:** graded gates (0 or 0.5–3.0) merged into the Conv weights, from the same Gate RF ranking
+- [ ] Print the gate mask (which filters are 1 and 0, and what each filter fires on) for the final model
+- [ ] RQ1: accuracy, precision, recall, F1 (smishing = positive) for every model, mean ± std over the 3 seeds
+- [ ] RQ2: trainable parameters for every model and every k (counted in code, checked against section 5.3)
+- [ ] RQ2: latency benchmark (section 5.3): inspect each test link once, then time every model on the same messages; median, 95th percentile and mean per stage and in total
+- [ ] RQ2: training time per step (Phase A, Link RF, Gate RF + permutation importance, pruning, fine-tuning) and in total
+- [ ] RQ3: exact McNemar per seed, C-prune vs each baseline, Holm-corrected; message ids asserted identical
+- [ ] Learning curve: 25 / 50 / 75 / 100% of the training split
+- [ ] Test folds (or the test split) read **once**, after everything above is fixed
+
+### Phase 8: Serving and demo
+- [ ] `lejet_service.py` and `predict.py` load the pruned model (k from the sidecar)
+- [ ] `explain_text.py` maps kept filters to their original ids, so the explanations still name the right phrases
+- [ ] Remove `has_url` from the live feature vector
+- [ ] Run the existing serving tests and the demo
+
+### Phase 9: Writing
+- [ ] Methodology: dataset, collection rules, the architecture diagrams of section 2
+- [ ] Results: the tables of Phase 7
+- [ ] Discussion: whether RF-ranked pruning beat random removal and from-scratch training, and what the deleted filters had been detecting
+- [ ] Limitations: crowdsourced data size, legitimate-link scarcity, no prior text-CNN study with RF-ranked pruning
+
+---
+
+## 7. Risks to watch
+
+| Risk | Why it matters | What to do |
+|---|---|---|
+| Too few legitimate messages with links | the model learns "has a link = smishing" style shortcuts | start legitimate collection first; keep ≥ 40% |
+| Domain memorisation | test scores look better than real life | ≤ 20 per domain per class; split grouped by domain |
+| Dead pages | page features become `-1` | inspect at submission time; `page_missing` flag |
+| RF ranking ≈ random | the RF's role can't be shown | that is a valid finding; report it honestly. The Phase 7 controls make it visible |
+| Small test set | real differences don't reach significance | aim for 4,000 messages; report confidence intervals |
+| Link RF too strong | the CNN is ignored and the model just copies P | compare with UNGATED and plain CNN; report the text-only and link-only scores |
+
+---
+
+## 8. References
+
+Full notes on every study (what was read, advantages, limitations) are on the architecture comparison page: https://claude.ai/artifact/VKVWvsVYyhZciNH9UmwayQ (C-prune card).
+
+**Architecture (pruning)**
+- [S9] Lin et al. (2020). HRank: Filter Pruning using High-Rank Feature Map. CVPR. arxiv.org/abs/2002.10179
+- [S10] Sui et al. (2021). CHIP: CHannel Independence-based Pruning for Compact Neural Networks. NeurIPS. arxiv.org/abs/2110.13981 (**main study**)
+- [S11] Blalock, Gonzalez Ortiz, Frankle & Guttag (2020). What is the State of Neural Network Pruning? MLSys. arxiv.org/abs/2003.03033
+- [S12] He & Xiao (2023). Structured Pruning for Deep Convolutional Neural Networks: A Survey. IEEE TPAMI. arxiv.org/abs/2303.00566
+- [S13] Wang et al. (2023). Why is the State of Neural Network Pruning so Confusing? arxiv.org/abs/2301.05219
+- [S14] Singh & Plumbley (2022). A Passive Similarity based CNN Filter Pruning for Efficient Acoustic Scene Classification. arxiv.org/abs/2203.15751
+- [S15] Harshit & Mounvik (2025). Accuracy-Constrained CNN Pruning for Efficient and Reliable EEG-Based Seizure Detection. Preprint. arxiv.org/abs/2509.05190
+- [S16] Frankle, Dziugaite, Roy & Carbin (2020). Linear Mode Connectivity and the Lottery Ticket Hypothesis. ICML. arxiv.org/abs/1912.05671
+- [S17] Frankle, Dziugaite, Roy & Carbin (2021). Pruning Neural Networks at Initialization: Why are We Missing the Mark? ICLR. arxiv.org/abs/2009.08576
+- [S18] Wang, Qin, Zhang & Fu (2021). Neural Pruning via Growing Regularization. ICLR. arxiv.org/abs/2012.09243
+- [F1] Jacovi, Sar Shalom & Goldberg (2018). Understanding Convolutional Neural Networks for Text Classification. BlackboxNLP @ EMNLP. arxiv.org/abs/1809.08037
+- [F2] Liu et al. (2017). Learning Efficient Convolutional Networks through Network Slimming. ICCV. arxiv.org/abs/1708.06519
+- [F3] Molchanov, Mallya, Tyree, Frosio & Kautz (2019). Importance Estimation for Neural Network Pruning. CVPR. arxiv.org/abs/1906.10771
+- [F6] Li, Kadav, Durdanovic, Samet & Graf (2017). Pruning Filters for Efficient ConvNets. ICLR. arxiv.org/abs/1608.08710
+
+**Dataset size and evaluation**
+- Timko & Rahman (2024). Smishing Dataset I: Phishing SMS Dataset from Smishtank.com. CODASPY '24. doi.org/10.1145/3626232.3653282 · arxiv.org/abs/2402.18430
+- Pritom et al. (2026). Short Message Service (SMS) Phishing Attacks and Defenses: A Systematic Review. Preprint. arxiv.org/abs/2604.11429
+- Mishra & Soni (2021). DSmishSMS - A System to Detect Smishing SMS. Neural Computing and Applications. doi.org/10.1007/s00521-021-06305-y
+- Goel, Ahmad, Jain & Goel (2024). Machine Learning Driven Smishing Detection Framework for Mobile Security. Preprint. arxiv.org/abs/2412.09641
+- Kim (2014). Convolutional Neural Networks for Sentence Classification. EMNLP. arxiv.org/abs/1408.5882
+- Beleites, Neugebauer, Bocklitz, Krafft & Popp (2013). Sample Size Planning for Classification Models. Analytica Chimica Acta 760, 25–33. doi.org/10.1016/j.aca.2012.11.007 (abstract and first part read in full; later sections from a summary — check before quoting)
