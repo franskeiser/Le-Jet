@@ -20,7 +20,9 @@ import crowd_to_urls as ctu                                  # noqa: E402
 
 
 def _row(text, consent="1"):
-    return {"date_submitted": "2026-11-03 14:20", "sms_text": text, "label": "smishing",
+    return {"date_submitted": "2026-11-03 14:20", "sms_text": text,
+            "submitter_view": "Suspicious or potentially fraudulent", "org_type": "Bank",
+            "concern": "Account verification", "label": "smishing",
             "category": "e-wallet", "language": "en", "sender_type": "number",
             "date_received": "2026-11-03", "label_source": "submitter",
             "label_verified_by": "r02", "consent": consent}
@@ -69,3 +71,34 @@ def test_missing_column_is_an_error(tmp_path):
     src.write_text("date_submitted,sms_text\n2026-11-03 14:20,https://a.xyz\n", encoding="utf-8")
     with pytest.raises(ValueError, match="missing column"):
         ctu.read_rows(str(src))
+
+
+def test_main_reads_xlsx_template_copy(tmp_path):
+    import datetime
+
+    import make_crowd_template as mct
+    wb = mct.build()
+    ws = wb[ctu.SHEET]
+    # Row 2 is the example; row 3 a real message with Excel-typed dates and a number for consent.
+    ws.cell(row=3, column=1, value=datetime.datetime(2026, 10, 18, 22, 45))
+    for name, value in [("sms_text", "Pay toll: https://toll-ph.xyz/pay"), ("label", "smishing"),
+                        ("date_received", datetime.datetime(2026, 10, 18)), ("consent", 1)]:
+        ws.cell(row=3, column=ctu.COLUMNS.index(name) + 1, value=value)
+    src = tmp_path / "submissions_2026-10-18.xlsx"
+    wb.save(src)
+    rows = ctu.read_rows(str(src))
+    assert len(rows) == 2                     # the formatted empty rows below are not read
+    assert rows[1]["date_submitted"] == "2026-10-18 22:45" and rows[1]["date_received"] == "2026-10-18"
+    assert rows[1]["consent"] == "1"
+    out = tmp_path / "urls.txt"
+    assert ctu.main([str(src), "--out", str(out)]) == 0
+    assert out.read_text(encoding="utf-8") == "https://toll-ph.xyz/pay\n"
+
+
+def test_template_has_a_dropdown_per_choice_column():
+    import make_crowd_template as mct
+    wb = mct.build()
+    formulas = {dv.formula1 for dv in wb[ctu.SHEET].data_validations.dataValidation}
+    assert formulas == {f"=list_{n}" for n in mct.CHOICES}
+    assert set(mct.CHOICES) <= set(ctu.COLUMNS) and set(mct.HELP) == set(ctu.COLUMNS)
+    assert len(mct.CHOICES["concern"]) == 18 and len(mct.CHOICES["org_type"]) == 11

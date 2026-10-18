@@ -4,9 +4,10 @@ crowd_to_urls.py -- pull the first link out of each crowdsourced SMS and write t
 inspector takes (docs/c_prune_architecture.md section 4.2, docs/inspector_runbook.md step 4).
 Run on the HOST:
 
-    python scripts/crowd_to_urls.py D:\\LeJetData\\crowd\\raw\\submissions_2026-11-03.csv --out D:\\LeJetData\\input\\urls.txt
+    python scripts/crowd_to_urls.py data\\crowd\\raw\\submissions_2026-11-03_r02.xlsx --out D:\\LeJetData\\input\\urls.txt
 
-Several submission files may be given at once. The link is found with the same finder and
+Several submission files may be given at once, as .xlsx (the dropdown template made by
+make_crowd_template.py) or .csv. The link is found with the same finder and
 normalised the same way as the app (src.features.link_features), so the inspector visits exactly
 the URL the model later looks up. Only the FIRST link of a message is used (collection rule 7).
 
@@ -27,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import json
 import os
 import sys
@@ -38,8 +40,11 @@ sys.path.insert(0, ROOT)
 
 from src.features.link_features import extract_links, normalize_link   # noqa: E402
 
-COLUMNS = ["date_submitted", "sms_text", "label", "category", "language", "sender_type",
-           "date_received", "label_source", "label_verified_by", "consent"]
+# The order the template shows them in. submitter_view, org_type and concern are the form's own
+# questions, in its own wording; label is the checked smishing/legitimate decision.
+COLUMNS = ["date_submitted", "sms_text", "submitter_view", "org_type", "concern", "label", "category",
+           "language", "sender_type", "date_received", "label_source", "label_verified_by", "consent"]
+SHEET = "submissions"
 EXAMPLE_TEXT = "Your GCash account will be locked today. Verify here: https://gcash-verify-ph.xyz"
 
 
@@ -48,14 +53,48 @@ def first_link(text: str) -> Optional[str]:
     return normalize_link(links[0]["raw"]) if links else None
 
 
+def _cell_text(value: object) -> str:
+    """An Excel cell as the text a CSV would hold: dates as YYYY-MM-DD[ HH:MM], 1.0 as 1."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime.datetime):
+        return value.strftime("%Y-%m-%d") if value.time() == datetime.time() else value.strftime("%Y-%m-%d %H:%M")
+    if isinstance(value, datetime.date):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _read_xlsx(path: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    import openpyxl
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[SHEET] if SHEET in wb.sheetnames else wb.worksheets[0]
+    rows = [[_cell_text(v) for v in r] for r in ws.iter_rows(values_only=True)]
+    wb.close()
+    if not rows:
+        return [], []
+    header = [h.strip() for h in rows[0]]
+    # The template formats many empty rows ahead; only the trailing empty ones are dropped, so the
+    # row numbers in the report stay the ones Excel shows.
+    body = rows[1:]
+    while body and not any(v.strip() for v in body[-1]):
+        body.pop()
+    return header, [dict(zip(header, r)) for r in body]
+
+
 def read_rows(path: str) -> List[Dict[str, str]]:
-    # utf-8-sig: Excel's "CSV UTF-8" puts a byte-order mark before the first header.
-    with open(path, "r", encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        missing = [c for c in COLUMNS if c not in (reader.fieldnames or [])]
-        if missing:
-            raise ValueError(f"{path}: missing column(s) {', '.join(missing)}")
-        return list(reader)
+    if path.lower().endswith(".xlsx"):
+        fieldnames, rows = _read_xlsx(path)
+    else:
+        # utf-8-sig: Excel's "CSV UTF-8" puts a byte-order mark before the first header.
+        with open(path, "r", encoding="utf-8-sig", newline="") as fh:
+            reader = csv.DictReader(fh)
+            fieldnames, rows = list(reader.fieldnames or []), list(reader)
+    missing = [c for c in COLUMNS if c not in fieldnames]
+    if missing:
+        raise ValueError(f"{path}: missing column(s) {', '.join(missing)}")
+    return rows
 
 
 def build(files: List[Tuple[str, List[Dict[str, str]]]]) -> Tuple[List[str], Dict[str, object]]:
@@ -90,7 +129,7 @@ def build(files: List[Tuple[str, List[Dict[str, str]]]]) -> Tuple[List[str], Dic
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("inputs", nargs="+", help="one or more submissions_<date>.csv files")
+    ap.add_argument("inputs", nargs="+", help="one or more submissions_<date>.xlsx or .csv files")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     files = [(p, read_rows(p)) for p in a.inputs]

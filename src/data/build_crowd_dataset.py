@@ -6,7 +6,7 @@ Two sources, one output layout:
               -> data/processed/crowd_pilot_synthetic.csv (+ .summary.json)
               A PIPELINE TEST ONLY: it lets Phases 2-7 be built and run before crowd data exists.
               Its scores are never study results (section 3.2: "Synthetic text: none").
-    (crowd)   submissions_<date>.csv + the lab's <batch>.clean.jsonl -> crowd_smishing_v1.csv.
+    (crowd)   submissions_<date>.xlsx + the lab's <batch>.clean.jsonl -> crowd_smishing_v1.csv.
               Not built yet: it needs the first real inspected batch to fix the join.
 
 Both apply the row rules of section 4.4 that the source can be checked against:

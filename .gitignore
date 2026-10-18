@@ -10,7 +10,11 @@ models/*
 !models/embeddings/
 
 # ── Data and VM artifacts (never belong in git) ────────────────────────
-/data/
+/data/*
+# Except the crowdsourced submissions contributors fill in (private repo only: it has personal data).
+!/data/crowd/
+# Excel's lock file while a workbook is open
+~$*
 *.vdi
 *.vmdk
 *.vhd

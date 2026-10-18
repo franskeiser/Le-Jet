@@ -233,7 +233,7 @@ Collection rules:
 
 | File | What it holds | Where | Committed? |
 |---|---|---|---|
-| `submissions_<YYYY-MM-DD>.csv` | the raw form export, **before** personal details are removed | `D:\LeJetData\crowd\raw\` (outside the repo) | **never** (it has personal data) |
+| `submissions_<YYYY-MM-DD>_<code>.xlsx` (one per contributor per day) | the raw submissions, **before** personal details are removed; a copy of `_template_submissions.xlsx` (made by `scripts/make_crowd_template.py`) with dropdowns, including the form's own `submitter_view`, `org_type` and `concern` answers. These 3 columns are raw-file only for now: not in the 57 columns of section 4.3 | `data/crowd/raw/` (in the repo, so contributors can add files) | yes, **private repo only** (it has personal data) |
 | `urls.txt` | the first link of each message, made by `scripts/crowd_to_urls.py`; the inspector's input | `D:\LeJetData\input\` | no (real phishing links) |
 | `<batch>.clean.jsonl` | the web inspector's output for that day's links (written by `pull_results.ps1`) | `D:\LeJetData\clean\` | no |
 | **`crowd_smishing_v1.csv`** | **the study dataset**: one row per message, the columns of section 4.3 | `data/processed/` | yes, once frozen |
