@@ -606,7 +606,7 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 - [x] *(pilot)* Out-of-fold P, u and 37 contributions for every training row (no row is scored by a forest that saw it). `python -m src.unified.link_lane --pilot oof`: 5 grouped folds inside the train part, step 1 settings. Pilot: out-of-fold F1 0.89–0.93
 - [x] *(pilot)* One final Link RF on all training rows scores validation and test. `python -m src.unified.link_lane --pilot final`; forests saved to `models/c_prune/<dataset>/`. Only val is summarised (pilot val F1 0.87–0.98); the test scores are written but not read until Phase 7
 - [x] *(pilot)* Add `page_missing` → 40 numbers. `has_url` removed. Every row is also scored with its page hidden (13 page columns -1, the 4 outside columns kept, same forest), for modality dropout in Phase 6. `link_lane.load_lane(seed, fold)` returns both versions. Pilot: hiding the page lowers val F1 by about 0.02
-- [ ] Check: P = bias + sum of contributions (existing test)
+- [x] *(pilot)* Check: P = bias + sum of contributions (existing test). Also checked on the written outputs: `python -m src.unified.link_lane --pilot check` (max gap 2e-15 over all 15 seed-folds)
 
 ### Phase 4: Text CNN (Phase A)
 - [ ] Train the full 64-filter CNN on the training split with early stopping on validation, **embedding frozen** (`requires_grad = False`)

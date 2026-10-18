@@ -29,6 +29,10 @@ has_url is gone: every message has a link. Steps 2 and 3 write every row twice, 
 Modality dropout (Phase 6) swaps a training row's full numbers for its blank ones, so a hidden page
 never carries the full page's P and contributions.
 
+Step 5, check: P = bias + sum of the 37 c_ on the written files (the unit test checks it on toy data).
+    final  P - sum(c_) equals the saved forest's bias on every val and test row, both versions;
+    oof    P - sum(c_) takes at most 5 values (one bias per inner forest, which is not saved).
+
 Writes, per seed and fold, to experiments/c_prune/<dataset>/link_lane/:
     params_seed<S>_fold<F>.json   the chosen settings                     (tune)
     grid_seed<S>_fold<F>.csv      every candidate's mean F1 and log loss  (tune)
@@ -42,6 +46,7 @@ Usage:
     python -m src.unified.link_lane --pilot tune
     python -m src.unified.link_lane --pilot oof
     python -m src.unified.link_lane --pilot final      (run oof and final again after a change to step 4)
+    python -m src.unified.link_lane --pilot check
 """
 from __future__ import annotations
 
@@ -258,12 +263,38 @@ def run_final(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
     return summary
 
 
+def forest_bias(rf) -> float:
+    """The phishing fraction at the roots, averaged over the trees (the `bias` of P = bias + sum c_)."""
+    roots = [t.tree_.value[0, 0, :] for t in rf.estimators_]
+    return float(np.mean([r[1] / r.sum() for r in roots]))
+
+
+def run_check(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS, atol: float = 1e-5) -> pd.DataFrame:
+    dataset = ROOT / (CROWD_PILOT_PATH if pilot else CROWD_DATASET_PATH)
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            lane = load_lane(seed, fold, pilot=pilot)
+            bias = forest_bias(joblib.load(model_dir(dataset) / f"link_rf_seed{seed}_fold{fold}.joblib")["model"])
+            final_gap = max(float((f["P"] - f[CONTRIBUTIONS].sum(axis=1) - bias).abs().max())
+                            for part in ("val", "test") for f in lane[part])
+            oof_biases = max(int((f["P"] - f[CONTRIBUTIONS].sum(axis=1)).round(5).nunique()) for f in lane["train"])
+            assert final_gap < atol, f"seed {seed} fold {fold}: P != bias + sum c_ (gap {final_gap})"
+            assert oof_biases <= OOF_SPLITS, f"seed {seed} fold {fold}: {oof_biases} different oof biases"
+            rows.append({"seed": seed, "fold": fold, "bias": round(bias, 4),
+                         "final_max_gap": final_gap, "oof_distinct_biases": oof_biases})
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out_dir(dataset) / "check_summary.csv", index=False)
+    print(f"P = bias + sum c_ holds on all {len(rows)} seed-folds (max gap {summary['final_max_gap'].max():.1e})")
+    return summary
+
+
 def main(argv: List[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (pipeline test only)")
-    ap.add_argument("step", choices=["tune", "oof", "final"])
+    ap.add_argument("step", choices=["tune", "oof", "final", "check"])
     a = ap.parse_args(argv)
-    summary = {"tune": run_tune, "oof": run_oof, "final": run_final}[a.step](a.pilot)
+    summary = {"tune": run_tune, "oof": run_oof, "final": run_final, "check": run_check}[a.step](a.pilot)
     pd.set_option("display.width", 200)
     print(summary.to_string(index=False))
 

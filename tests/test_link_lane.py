@@ -7,6 +7,7 @@ Run with:  python -m pytest tests/test_link_lane.py
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from src.features.model.rf_extractor import PARAM_GRID
@@ -52,6 +53,15 @@ def test_score_layout_and_contributions_add_up():
     assert list(out.columns) == ll.OUTPUTS and len(ll.OUTPUTS) == 39
     _, bias = ll.path_contributions(rf, train[FEATURES_37].to_numpy(np.float32))
     np.testing.assert_allclose(bias + out[ll.CONTRIBUTIONS].sum(axis=1), out["P"], atol=1e-5)
+
+
+def test_forest_bias_matches_path_contributions():
+    train = _train()
+    rf = ll.fit_rf(train[FEATURES_37], ll.labels(train), 42, **PARAMS)
+    _, bias = ll.path_contributions(rf, train[FEATURES_37].to_numpy(np.float32))
+    assert ll.forest_bias(rf) == pytest.approx(bias)
+    out = ll.score(rf, train)
+    np.testing.assert_allclose(out["P"] - out[ll.CONTRIBUTIONS].sum(axis=1), ll.forest_bias(rf), atol=1e-5)
 
 
 def test_oof_scores_every_row_once_in_order():
