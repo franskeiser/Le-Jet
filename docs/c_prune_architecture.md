@@ -234,7 +234,8 @@ Collection rules:
 | File | What it holds | Where | Committed? |
 |---|---|---|---|
 | `submissions_<YYYY-MM-DD>.csv` | the raw form export, **before** personal details are removed | `D:\LeJetData\crowd\raw\` (outside the repo) | **never** (it has personal data) |
-| `<batch>.clean.jsonl` | the web inspector's output for that day's links | `D:\LeJetData\crowd\lab\` | no |
+| `urls.txt` | the first link of each message, made by `scripts/crowd_to_urls.py`; the inspector's input | `D:\LeJetData\input\` | no (real phishing links) |
+| `<batch>.clean.jsonl` | the web inspector's output for that day's links (written by `pull_results.ps1`) | `D:\LeJetData\clean\` | no |
 | **`crowd_smishing_v1.csv`** | **the study dataset**: one row per message, the columns of section 4.3 | `data/processed/` | yes, once frozen |
 | `crowd_smishing_v1.summary.json` | counts per class, category, domain, `page_fetched`, written by the builder | `data/processed/` | yes |
 | `seed<S>_fold<F>.csv` or `seed<S>_{train,val,test}.csv` | the message ids of each split | `data/splits_crowd/` | yes |
@@ -246,7 +247,7 @@ File rules for `crowd_smishing_v1.csv`:
 
 ### 4.3 Columns (in this order)
 
-**Message (12)**
+**Message (11)**
 
 | Column | Type | Allowed values / format | Example |
 |---|---|---|---|
@@ -258,7 +259,6 @@ File rules for `crowd_smishing_v1.csv`:
 | `sender_type` | text | `number` (11-digit mobile), `shortcode`, `alphanumeric` (e.g. "GCash"), `unknown` | `number` |
 | `date_received` | date | `YYYY-MM-DD` (when the person got the SMS) | `2026-11-03` |
 | `date_submitted` | datetime | `YYYY-MM-DD HH:MM` local time (UTC+8) | `2026-11-03 14:20` |
-| `submitter_id` | text | anonymous code, never a name or number | `s0042` |
 | `label_source` | text | `submitter`, `bank_confirmed`, `reviewer` | `submitter` |
 | `label_verified_by` | text | reviewer code (the second person) | `r02` |
 | `consent` | 0/1 | must be 1, rows with 0 are dropped | `1` |
@@ -290,7 +290,7 @@ File rules for `crowd_smishing_v1.csv`:
 
 `nb_hyperlinks`, `ratio_intHyperlinks`, `nb_extCSS`, `login_form`, `external_favicon`, `links_in_tags`, `ratio_intMedia`, `ratio_extMedia`, `iframe`, `safe_anchor`, `empty_title`, `domain_in_title`, `domain_with_copyright`, `whois_registered_domain`, `domain_registration_length`, `domain_age`, `page_rank`
 
-That is **58 columns** in total (12 + 5 + 4 + 37). Units are the same as the lab's current output: ratios in percent, ages and lengths in days.
+That is **57 columns** in total (11 + 5 + 4 + 37). Units are the same as the lab's current output: ratios in percent, ages and lengths in days.
 
 **Missing values are always `-1`, never blank, NaN or 0.**
 - Page not fetched: the 13 page columns are `-1`. The 4 outside columns are still filled if their lookups worked.
@@ -341,8 +341,8 @@ Below 4,000, always use cross-validation. One 15% test split of 2,000 would be o
 ### 4.6 Example row (shortened)
 
 ```
-message_id,sms_text,label,category,language,sender_type,date_received,date_submitted,submitter_id,label_source,label_verified_by,consent,link,final_url,link_domain,template_id,link_shortened,inspected_at,hours_to_inspect,page_fetched,fetch_status,length_url,...,domain_age,page_rank
-crowd_000127,"Your GCash account will be locked today. Verify here: https://gcash-verify-ph.xyz",smishing,e-wallet,en,number,2026-11-03,2026-11-03 14:20,s0042,submitter,r02,1,https://gcash-verify-ph.xyz,https://gcash-verify-ph.xyz/login,gcash-verify-ph.xyz,t0311,0,2026-11-03 14:31,0.18,1,live,27,...,2,0
+message_id,sms_text,label,category,language,sender_type,date_received,date_submitted,label_source,label_verified_by,consent,link,final_url,link_domain,template_id,link_shortened,inspected_at,hours_to_inspect,page_fetched,fetch_status,length_url,...,domain_age,page_rank
+crowd_000127,"Your GCash account will be locked today. Verify here: https://gcash-verify-ph.xyz",smishing,e-wallet,en,number,2026-11-03,2026-11-03 14:20,submitter,r02,1,https://gcash-verify-ph.xyz,https://gcash-verify-ph.xyz/login,gcash-verify-ph.xyz,t0311,0,2026-11-03 14:31,0.18,1,live,27,...,2,0
 ```
 
 ---
@@ -588,7 +588,7 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 - [ ] Personal details removed from `sms_text`
 - [ ] Second person verifies every label
 - [ ] `template_id` assigned to near-duplicates (`deduplicate_labeled_templates.py`)
-- [ ] `build_crowd_dataset.py` writes `data/processed/crowd_smishing_v1.csv` (58 columns, section 4.3) and `crowd_smishing_v1.summary.json`, applying the row rules of section 4.4
+- [ ] `build_crowd_dataset.py` writes `data/processed/crowd_smishing_v1.csv` (57 columns, section 4.3) and `crowd_smishing_v1.summary.json`, applying the row rules of section 4.4
 - [ ] Data check: balance ≥ 40% legitimate, ≤ 20 per domain per class, ≥ 70% pages fetched, every row has a link, `-1` for missing values
 - [ ] Reach at least the minimum (2,000), aim for 4,000
 
