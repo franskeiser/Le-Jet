@@ -147,6 +147,32 @@ class UngatedFusionClassifier(nn.Module):
             self.train(was_training)
 
 
+class PrunedFusionClassifier(UngatedFusionClassifier):
+    # C-prune (docs/c_prune_architecture.md 2.1, Phase 6): the k-filter CNN from cnn_encoder.prune_encoder +
+    # the 40 link numbers -> Concatenate (k + 40) -> Dense 64 (weight decay) -> ReLU -> dropout 0.5 -> 2.
+    # The gating is static and already done: the removed filters no longer exist, so there are no gate
+    # buffers, and the forward pass is UngatedFusionClassifier's. What it adds:
+    #   * keep_idx, a buffer (saved with the weights): kept position i is original filter keep_idx[i], for
+    #     the explanations (Phase 8) and to refuse a checkpoint of another k on load;
+    #   * the Phase A temporary head is dropped from the encoder (set to None, so the encoder passed in loses
+    #     it): the fused model never calls it, and it must not count as a trainable parameter (section 5.3);
+    #   * parameter_groups: weight decay on Dense 64's weights only.
+    def __init__(self, encoder: TextEncoder, keep_idx, url_dim: int, dense_units: int = DENSE_UNITS):
+        keep = torch.as_tensor(np.asarray(keep_idx), dtype=torch.long)
+        if len(keep) != encoder.conv.out_channels:
+            raise ValueError(f"keep_idx has {len(keep)} filters, the encoder {encoder.conv.out_channels}")
+        super().__init__(encoder, cnn_dim=len(keep), url_dim=url_dim, dense_units=dense_units)
+        self.encoder.temp_head = None
+        self.register_buffer('keep_idx', keep)
+
+    def parameter_groups(self, weight_decay: float) -> list[dict]:
+        # For torch.optim.Adam(groups, lr=...): Adam's weight_decay is L2 added to the gradient. Only the
+        # trainable parameters are listed (the frozen embedding is left out).
+        decayed = [self.dense1.weight]
+        rest = [p for p in self.parameters() if p.requires_grad and all(p is not d for d in decayed)]
+        return [{"params": decayed, "weight_decay": weight_decay}, {"params": rest, "weight_decay": 0.0}]
+
+
 def build_url_feature_tensor(url_feature_dicts: list[dict], expected_columns: list[str]) -> torch.Tensor:
     # expected_columns is an explicit contract, not inferred -- must be the SAME column
     # order Task 2.3's build_url_feature_matrix produced when the loaded gates were fit,

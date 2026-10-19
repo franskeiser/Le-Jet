@@ -31,6 +31,9 @@ KERNEL_SIZE = 3  # one conv branch (Le-Jet decision), so the pooled CNN output i
 DENSE_UNITS = 64
 # C-prune (docs/c_prune_architecture.md): the numbers of Conv filters kept, 75% / 50% / 25% of NUM_FILTERS.
 PRUNE_KEEP = [48, 32, 16]
+# C-prune's Dense 64: L2 weight decay on its weights only (docs/c_prune_architecture.md 2.5: start at 1e-4,
+# tune on validation).
+DENSE_WEIGHT_DECAY = 1e-4
 
 # Label smoothing for every training loss (Phase A, Phase C, ungated baseline). With 2
 # classes, 0.1 trains toward 0.95/0.05 targets instead of hard 1/0, so the model can't
