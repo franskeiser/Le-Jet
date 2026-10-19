@@ -614,8 +614,8 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 - [x] *(pilot)* Save the checkpoint per seed (and fold): `phase_a_seed<S>_fold<F>.pt` + a `.json` sidecar (filters, kernel, `SEQ_LEN_L`, embedding folder, sha256 of the vocabulary, matrix and weights, val metrics). `python -m src.unified.text_cnn --pilot check` rebuilds every CNN from its sidecar alone and repeats its val metrics exactly
 
 ### Phase 5: Gate RF and pruning
-- [ ] Record the 64 pooled filter scores for the training messages (eval mode)
-- [ ] Gate RF with 5 folds grouped by domain. Permutation importance scored by log-loss on each held-out fold, 30 repeats, averaged (`oof_logloss`)
+- [x] *(pilot)* Record the 64 pooled filter scores for the training messages (eval mode). `python -m src.unified.gate_rf --pilot scores`: each fold's Phase A CNN rebuilt from its sidecar, dropout off, train part only (val and test unseen); `filter_scores_seed<S>_fold<F>.csv` = `message_id`, `label`, `filter_00`–`filter_63` (original filter ids). Pilot: 872–873 rows per fold, 0 dead filters
+- [x] *(pilot)* Gate RF with 5 folds grouped by domain. Permutation importance scored by log-loss on each held-out fold, 30 repeats, averaged (`oof_logloss`). `python -m src.unified.gate_rf --pilot importance`: 200 trees, sklearn defaults; `importance_seed<S>_fold<F>.csv` = `filter`, `importance` (mean rise in log-loss), `spread` (standard error over the 5 folds), one column per fold. Pilot (12 min for 15 seed-folds): the Gate RF learns (out-of-fold log-loss 0.23–0.43 against 0.69 for the prior, F1 0.84–0.89), but single filters barely matter: only 0–10 of 64 are clearly above zero, and in 2 seed-folds (42/0, 123/3) none is above zero. The filters overlap, so shuffling one is covered by the others. This makes the next step (shuffle correlated filters together) worth doing before ranking
 - [ ] Optional: shuffle highly correlated filters together, so similar filters don't split their importance
 - [ ] Save the ranking per seed (`filter_importance_seed*.csv`)
 - [ ] `select_top_k` gives `keep_idx` for k = 48, 32, 16
