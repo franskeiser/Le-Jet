@@ -100,6 +100,18 @@ def gate_transform(importance_group: np.ndarray) -> np.ndarray:
     return 0.1 + (importance_group - lo) / (hi - lo) * (3.0 - 0.1)
 
 
+def select_top_k(ranking, k: int) -> np.ndarray:
+    # C-prune (docs/c_prune_architecture.md Phase 5): `ranking` lists every filter id once, best first
+    # (src/unified/gate_rf.py, step 4). keep_idx = the first k, returned in ascending id order, so the
+    # pruned Conv keeps the filters in their original order and kept position i maps back to keep_idx[i].
+    ranking = np.asarray(ranking, dtype=int)
+    if sorted(ranking.tolist()) != list(range(len(ranking))):
+        raise ValueError("ranking must list every filter id 0..n-1 exactly once")
+    if not 1 <= k <= len(ranking):
+        raise ValueError(f"k must be between 1 and {len(ranking)}, got {k}")
+    return np.sort(ranking[:k])
+
+
 # Maps a permutation_importance `scoring` string to the plain (y_true, y_pred) function
 # used for the group's own in-sample/held-out/baseline scores below -- keeps both
 # measurements on the same metric instead of silently mixing f1 and balanced_accuracy.

@@ -55,6 +55,11 @@ it scores, by val log-loss (and F1):
 Fine-tuning (Phase 6) can repair some of the damage, so this compares the orders, not the final models;
 the Phase 7 controls stay the real test.
 
+Step 5, keep: keep_idx for k = 48, 32, 16 (config.PRUNE_KEEP), by rf_gating_module.select_top_k: the top k of
+the step 4 ranking, in ascending id order (kept position i of the pruned CNN is original filter keep_idx[i]).
+Checked: each kept set lies inside the larger ones (the same ranking cut shorter). load_keep_idx gives one
+set to the later phases.
+
 Writes, per seed and fold, to experiments/c_prune/<dataset>/gate_rf/:
     filter_scores_seed<S>_fold<F>.csv     message_id, label (1 = smishing), filter_00 .. filter_63    (scores)
     importance_seed<S>_fold<F>.csv        filter, importance, spread, importance_fold0 .. 4           (importance)
@@ -66,7 +71,8 @@ can only be removed, whatever the ranking says); importance_summary.csv: the Gat
 log-loss against the prior, and how many filters are clearly above zero; group_summary.csv: the number of
 groups, the largest, and how many groups (and the filters in them) are clearly above zero;
 ranking_compare.csv (every seed, fold, k and order) and ranking_compare_summary.csv (per k and order: mean
-val log-loss and F1, and in how many seed-folds group_turns has the lower log-loss).
+val log-loss and F1, and in how many seed-folds group_turns has the lower log-loss); keep_summary.csv (per
+seed, fold and k: keep_idx, and how many of the groups and dead filters it holds).
 
 Usage:
     python -m src.unified.gate_rf --pilot scores
@@ -74,6 +80,7 @@ Usage:
     python -m src.unified.gate_rf --pilot groups
     python -m src.unified.gate_rf --pilot rank
     python -m src.unified.gate_rf --pilot compare
+    python -m src.unified.gate_rf --pilot keep
 """
 from __future__ import annotations
 
@@ -96,6 +103,7 @@ from src.config import ARTIFACTS_ROOT, CROWD_N_FOLDS, PRUNE_KEEP, SEEDS
 from src.data.split_crowd import load_fold, make_groups
 from src.features.model.cnn_encoder import TextEncoder
 from src.features.model.rf_extractor import fit_rf
+from src.features.model.rf_gating_module import select_top_k
 from src.unified.text_cnn import dataset_path, load_phase_a, model_dir, tensors
 
 BATCH_SIZE = 512
@@ -434,8 +442,35 @@ def compare_summary(detail: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
+def load_keep_idx(seed: int, fold: int, k: int, pilot: bool = False) -> np.ndarray:
+    """keep_idx of one seed and fold: the top k of its step 4 ranking, ascending ids. For Phases 5-7."""
+    ranking = pd.read_csv(out_dir(dataset_path(pilot)) / f"filter_importance_seed{seed}_fold{fold}.csv")
+    return select_top_k(ranking.sort_values("rank")["filter"], k)
+
+
+def run_keep(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    out = out_dir(dataset_path(pilot))
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            ranking = pd.read_csv(out / f"filter_importance_seed{seed}_fold{fold}.csv").set_index("filter")
+            kept = {k: load_keep_idx(seed, fold, k, pilot) for k in sorted(PRUNE_KEEP, reverse=True)}
+            sizes = sorted(kept)
+            # The same ranking cut shorter: a smaller kept set lies inside every larger one.
+            assert all(set(kept[a]) <= set(kept[b]) for a, b in zip(sizes, sizes[1:])), "kept sets not nested"
+            for k, keep in kept.items():
+                rows.append({"seed": seed, "fold": fold, "k": k, "kept": len(keep),
+                             "groups_kept": ranking.loc[keep, "group"].nunique(),
+                             "groups_total": ranking["group"].nunique(),
+                             "dead_kept": int(ranking.loc[keep, "dead"].sum()),
+                             "keep_idx": " ".join(map(str, keep))})
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out / "keep_summary.csv", index=False)
+    return summary
+
+
 STEPS = {"scores": run_scores, "importance": run_importance, "groups": run_groups, "rank": run_rank,
-         "compare": run_compare}
+         "compare": run_compare, "keep": run_keep}
 
 
 def main(argv: List[str] | None = None) -> None:
