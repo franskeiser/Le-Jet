@@ -70,6 +70,8 @@ Step 7 check, in the same run: on each fold's val messages, the pruned CNN again
 mask applied (gated_copy: W <- g * W, b <- g * b, g = 0 for removed filters). The removed filters must send
 exactly 0, the kept scores must be equal bit for bit, and the output equal up to float rounding (< 1e-5: the
 head sums k terms instead of 64 with zeros). The unit tests in tests/test_prune.py check the same on toy models.
+Step 8 check, in the same run: pruned with all 64 filters kept, every Phase A CNN gives exactly the same scores
+and output on its val messages, bit for bit (same sizes, same weights, same order: nothing to round).
 
 Writes, per seed and fold, to experiments/c_prune/<dataset>/gate_rf/:
     filter_scores_seed<S>_fold<F>.csv     message_id, label (1 = smishing), filter_00 .. filter_63    (scores)
@@ -514,14 +516,22 @@ def pruning_gaps(cnn: TextEncoder, pruned: TextEncoder, keep, ids: torch.Tensor)
     return score_gap, output_gap
 
 
+def keep_all_unchanged(cnn: TextEncoder, ids: torch.Tensor) -> bool:
+    """Step 8: pruned with every filter kept, the CNN gives exactly the same output, bit for bit."""
+    same = prune_encoder(cnn, list(range(cnn.conv.out_channels)))
+    with torch.no_grad():
+        return torch.equal(same.encode(ids), cnn.encode(ids)) and torch.equal(same(ids), cnn(ids))
+
+
 def run_prune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
     rows = []
     for seed in seeds:
         for fold in range(n_folds):
+            cnn, word_to_idx, sidecar = load_phase_a(model_dir(dataset_path(pilot)) / f"phase_a_seed{seed}_fold{fold}.pt")
+            ids, _ = tensors(load_fold(seed, fold, pilot=pilot)["val"], word_to_idx, sidecar["seq_len_l"])
+            assert keep_all_unchanged(cnn, ids), f"seed {seed} fold {fold}: keeping all 64 filters changed the output"
             for k in PRUNE_KEEP:
-                pruned, keep, word_to_idx, sidecar = pruned_phase_a(seed, fold, k, pilot)
-                cnn, _, _ = load_phase_a(model_dir(dataset_path(pilot)) / f"phase_a_seed{seed}_fold{fold}.pt")
-                ids, _ = tensors(load_fold(seed, fold, pilot=pilot)["val"], word_to_idx, sidecar["seq_len_l"])
+                pruned, keep, _, _ = pruned_phase_a(seed, fold, k, pilot)
                 score_gap, output_gap = pruning_gaps(cnn, pruned, keep, ids)
                 assert score_gap == 0.0 and output_gap < 1e-5, f"seed {seed} fold {fold} k {k}: pruning not exact"
                 dim = pruned.embedding.embedding_dim

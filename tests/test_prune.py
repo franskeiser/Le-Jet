@@ -148,3 +148,26 @@ def test_pruned_fusion_output_equals_full_with_removed_filters_gated_to_zero():
     with torch.no_grad():
         expected = dense(torch.cat([gated.encode(ids), link], dim=1))
         assert torch.allclose(pruned_dense(torch.cat([pruned.encode(ids), link], dim=1)), expected, atol=1e-6, rtol=0)
+
+
+def test_keeping_all_64_filters_changes_nothing():
+    full = _encoder()
+    full.eval()
+    # The whole chain: a shuffled ranking -> select_top_k(64) -> prune_encoder.
+    ranking = np.random.default_rng(3).permutation(64)
+    pruned = prune_encoder(full, select_top_k(ranking, 64))
+    assert pruned.state_dict().keys() == full.state_dict().keys()
+    assert all(torch.equal(full.state_dict()[k], v) for k, v in pruned.state_dict().items())
+    ids = _ids()
+    with torch.no_grad():
+        assert torch.equal(pruned.encode(ids), full.encode(ids))
+        assert torch.equal(pruned(ids), full(ids))   # bit for bit: same sizes, same weights, same order
+
+
+def test_keeping_all_columns_leaves_a_fusion_dense_unchanged():
+    dense = nn.Linear(64 + 40, 64)
+    same = prune_input_columns(dense, list(range(64)), cnn_dim=64)
+    assert torch.equal(same.weight, dense.weight) and torch.equal(same.bias, dense.bias)
+    x = torch.randn(5, 104)
+    with torch.no_grad():
+        assert torch.equal(same(x), dense(x))
