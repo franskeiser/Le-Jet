@@ -66,6 +66,10 @@ the temporary head, in Phase 6 any Dense that reads [filters | 40 link numbers])
 Phase 6. Checked for every seed, fold and k: the shapes, the embedding still frozen, and the trainable
 parameters equal section 5.3 (Conv 300 x 3 x k + k, temporary head 2k + 2). Nothing is saved here: the pruned
 CNN is saved after fine-tuning (Phase 6).
+Step 7 check, in the same run: on each fold's val messages, the pruned CNN against the full CNN with its gate
+mask applied (gated_copy: W <- g * W, b <- g * b, g = 0 for removed filters). The removed filters must send
+exactly 0, the kept scores must be equal bit for bit, and the output equal up to float rounding (< 1e-5: the
+head sums k terms instead of 64 with zeros). The unit tests in tests/test_prune.py check the same on toy models.
 
 Writes, per seed and fold, to experiments/c_prune/<dataset>/gate_rf/:
     filter_scores_seed<S>_fold<F>.csv     message_id, label (1 = smishing), filter_00 .. filter_63    (scores)
@@ -80,7 +84,7 @@ groups, the largest, and how many groups (and the filters in them) are clearly a
 ranking_compare.csv (every seed, fold, k and order) and ranking_compare_summary.csv (per k and order: mean
 val log-loss and F1, and in how many seed-folds group_turns has the lower log-loss); keep_summary.csv (per
 seed, fold and k: keep_idx, and how many of the groups and dead filters it holds); prune_summary.csv (per
-seed, fold and k: the pruned CNN's trainable parameters against the full one's).
+seed, fold and k: the pruned CNN's trainable parameters against the full one's, and the step 7 gaps).
 
 Usage:
     python -m src.unified.gate_rf --pilot scores
@@ -94,6 +98,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 from pathlib import Path
 from typing import List
 
@@ -486,12 +491,39 @@ def pruned_phase_a(seed: int, fold: int, k: int, pilot: bool = False) -> tuple:
     return prune_encoder(cnn, keep), keep, word_to_idx, sidecar
 
 
+def gated_copy(cnn: TextEncoder, keep) -> TextEncoder:
+    """The full CNN with its gate mask applied to the Conv weights: W <- g * W, b <- g * b (g = 1 kept, 0 removed)."""
+    gated = copy.deepcopy(cnn)
+    g = torch.zeros(cnn.conv.out_channels)
+    g[torch.as_tensor(keep)] = 1.0
+    with torch.no_grad():
+        gated.conv.weight.mul_(g[:, None, None])
+        gated.conv.bias.mul_(g)
+    return gated
+
+
+def pruning_gaps(cnn: TextEncoder, pruned: TextEncoder, keep, ids: torch.Tensor) -> tuple:
+    """(largest score gap, largest output gap) between the pruned CNN and the gated full CNN, eval mode."""
+    gated = gated_copy(cnn, keep)
+    with torch.no_grad():
+        scores = gated.encode(ids)
+        score_gap = (pruned.encode(ids) - scores[:, torch.as_tensor(keep)]).abs().max().item()
+        removed = [i for i in range(cnn.conv.out_channels) if i not in set(np.asarray(keep).tolist())]
+        assert not removed or scores[:, removed].abs().max().item() == 0.0, "a gated filter must send exactly 0"
+        output_gap = (pruned(ids) - gated(ids)).abs().max().item()
+    return score_gap, output_gap
+
+
 def run_prune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
     rows = []
     for seed in seeds:
         for fold in range(n_folds):
             for k in PRUNE_KEEP:
-                pruned, keep, _, sidecar = pruned_phase_a(seed, fold, k, pilot)
+                pruned, keep, word_to_idx, sidecar = pruned_phase_a(seed, fold, k, pilot)
+                cnn, _, _ = load_phase_a(model_dir(dataset_path(pilot)) / f"phase_a_seed{seed}_fold{fold}.pt")
+                ids, _ = tensors(load_fold(seed, fold, pilot=pilot)["val"], word_to_idx, sidecar["seq_len_l"])
+                score_gap, output_gap = pruning_gaps(cnn, pruned, keep, ids)
+                assert score_gap == 0.0 and output_gap < 1e-5, f"seed {seed} fold {fold} k {k}: pruning not exact"
                 dim = pruned.embedding.embedding_dim
                 conv, head = dim * sidecar["kernel_size"] * k + k, k * 2 + 2   # section 5.3
                 assert pruned.conv.weight.shape == (k, dim, sidecar["kernel_size"]) and pruned.temp_head.in_features == k
@@ -499,7 +531,8 @@ def run_prune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
                 assert trainable_parameters(pruned) == conv + head, "trainable parameters differ from section 5.3"
                 rows.append({"seed": seed, "fold": fold, "k": k, "conv_parameters": conv, "head_parameters": head,
                              "trainable_parameters": trainable_parameters(pruned),
-                             "full_trainable_parameters": sidecar["trainable_parameters"]})
+                             "full_trainable_parameters": sidecar["trainable_parameters"],
+                             "val_score_gap": score_gap, "val_output_gap": output_gap})
     summary = pd.DataFrame(rows)
     summary.to_csv(out_dir(dataset_path(pilot)) / "prune_summary.csv", index=False)
     return summary

@@ -6,6 +6,8 @@ Run with:  python -m pytest tests/test_prune.py
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -102,3 +104,47 @@ def test_prune_input_columns_drops_filter_columns_and_keeps_the_rest():
 def test_prune_refuses_a_bad_keep_idx(keep):
     with pytest.raises(ValueError, match="ascending, unique ids in 0..63"):
         prune_encoder(_encoder(), keep)
+
+
+def _gated(full: TextEncoder, keep) -> TextEncoder:
+    """The full model with its gate mask applied: W <- g * W, b <- g * b, g = 1 kept, 0 removed (section 2.4)."""
+    gated = copy.deepcopy(full)
+    g = torch.zeros(full.conv.out_channels)
+    g[keep] = 1.0
+    with torch.no_grad():
+        gated.conv.weight.mul_(g[:, None, None])
+        gated.conv.bias.mul_(g)
+    return gated
+
+
+def _ids(n=12, seq_len=10):
+    torch.manual_seed(1)
+    return torch.randint(0, 6, (n, seq_len))
+
+
+@pytest.mark.parametrize("keep", [KEEP, list(range(0, 64, 2)), [7]])
+def test_pruned_output_equals_full_output_with_removed_filters_gated_to_zero(keep):
+    full = _encoder()
+    full.eval()
+    pruned, gated, ids = prune_encoder(full, keep), _gated(full, keep), _ids()
+    with torch.no_grad():
+        scores = gated.encode(ids)
+        removed = [i for i in range(64) if i not in keep]
+        assert torch.equal(scores[:, removed], torch.zeros(len(ids), len(removed)))   # a gated filter sends 0
+        assert torch.equal(pruned.encode(ids), scores[:, keep])                       # the kept scores: bit for bit
+        # The output: the same up to float rounding (the head sums k terms instead of 64 with zeros).
+        assert torch.allclose(pruned(ids), gated(ids), atol=1e-6, rtol=0)
+
+
+def test_pruned_fusion_output_equals_full_with_removed_filters_gated_to_zero():
+    # Phase 6's head: Dense 64 reads [filter scores | 40 link numbers]; the pruned one drops the removed columns.
+    full = _encoder()
+    full.eval()
+    gated, pruned = _gated(full, KEEP), prune_encoder(full, KEEP)
+    torch.manual_seed(2)
+    dense, link = nn.Linear(64 + 40, 64), torch.randn(12, 40)
+    pruned_dense = prune_input_columns(dense, KEEP, cnn_dim=64)
+    ids = _ids()
+    with torch.no_grad():
+        expected = dense(torch.cat([gated.encode(ids), link], dim=1))
+        assert torch.allclose(pruned_dense(torch.cat([pruned.encode(ids), link], dim=1)), expected, atol=1e-6, rtol=0)
