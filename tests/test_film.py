@@ -29,7 +29,8 @@ def batch(n=8, seed=1, length=50):
 
 
 def trainable(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    """Trainable parameters excluding the embedding: the plan's 70,658 and 66,306 do not include it (D6)."""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad and p is not model.embedding.weight)
 
 
 def randomize_generator(model, std=1.0, seed=0):
@@ -110,17 +111,54 @@ def test_b_gamma_only_has_66306_and_half_the_generator():
     assert sum(p.numel() for p in model.generator.parameters()) == 4352
 
 
-def test_b_the_embedding_is_frozen_and_not_counted():
+def test_b_the_embedding_is_trainable_by_default_and_counted_apart():
+    """D6, changed 2026-10-20: the embedding is fine-tuned, as in the diagram."""
+    model = FiLMTextCNN(embedding())
+    assert model.freeze_embedding is False and model.embedding.weight.requires_grad
+    all_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    assert all_trainable == 70658 + FRESH * 300 and trainable(model) == 70658      # the vocabulary x 300 comes on top
+
+
+def test_b_freeze_embedding_keeps_it_at_its_fasttext_values():
     emb = embedding()
-    model = FiLMTextCNN(emb)
-    assert not model.embedding.weight.requires_grad and not emb.weight.requires_grad
-    assert sum(p.numel() for p in model.parameters()) == 70658 + FRESH * 300
+    model = FiLMTextCNN(emb, freeze_embedding=True)
+    assert model.freeze_embedding and not model.embedding.weight.requires_grad and not emb.weight.requires_grad
+    assert sum(p.numel() for p in model.parameters() if p.requires_grad) == 70658          # the original count, exactly
     before = model.embedding.weight.clone()
     ids, link = batch()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
     F.cross_entropy(model(ids, link), torch.zeros(8, dtype=torch.long)).backward()
     optimizer.step()
     assert torch.equal(model.embedding.weight, before)
+
+
+def test_b_a_trainable_embedding_moves_after_one_step_and_the_padding_row_does_not():
+    emb = embedding()
+    with torch.no_grad():
+        emb.weight[0].zero_()                                          # the padding row starts at zero, as in the real matrix
+    model = FiLMTextCNN(emb)
+    before = model.embedding.weight.clone()
+    ids, link = batch()
+    ids[:, 40:] = 0                                                    # some padding in every message
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+    F.cross_entropy(model(ids, link), torch.tensor([0, 1] * 4)).backward()
+    assert model.embedding.weight.grad is not None and model.embedding.weight.grad.abs().sum() > 0
+    optimizer.step()
+    used = torch.unique(ids[ids != 0])
+    assert not torch.equal(model.embedding.weight[used], before[used])        # the words in the batch moved
+    assert torch.equal(model.embedding.weight[0], before[0])                  # padding stays where it was
+    unused = torch.tensor(sorted(set(range(1, FRESH)) - set(used.tolist())))
+    if len(unused):
+        assert torch.equal(model.embedding.weight[unused], before[unused])    # words not in the batch did not move
+
+
+def test_b_the_embedding_trains_through_the_film_path_too():
+    """The embedding gets its gradient through the generator's text summary as well, once the generator is non-zero."""
+    model = FiLMTextCNN(embedding())
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    F.cross_entropy(model(ids, link), torch.tensor([0, 1] * 4)).backward()
+    assert model.embedding.weight.grad.abs().sum() > 0 and model.generator.weight.grad.abs().sum() > 0
 
 
 # ------------------------------------------------------------------ (c) the generator learns
@@ -283,13 +321,18 @@ def test_every_option_runs_and_keeps_the_size_of_the_outputs(options):
 
 
 # ------------------------------------------------------------------ weight-decay groups
-def test_parameter_groups_cover_every_trainable_parameter_once_with_the_right_decay():
-    model = FiLMTextCNN(embedding())
+@pytest.mark.parametrize("freeze", [False, True])
+def test_parameter_groups_cover_every_trainable_parameter_once_with_the_right_decay(freeze):
+    model = FiLMTextCNN(embedding(), freeze_embedding=freeze)
     groups = model.parameter_groups(1e-4)
     listed = [p for g in groups for p in g["params"]]
     wanted = [p for p in model.parameters() if p.requires_grad]
     assert len(listed) == len(wanted) and {id(p) for p in listed} == {id(p) for p in wanted}
-    assert all(p is not model.embedding.weight for p in listed)
+    in_groups = any(p is model.embedding.weight for p in listed)
+    assert in_groups is (not freeze)                                   # a frozen embedding is in no group
+    if not freeze:
+        own = [g for g in groups if any(p is model.embedding.weight for p in g["params"])]
+        assert len(own) == 1 and own[0]["params"] == [model.embedding.weight] and own[0]["weight_decay"] == 0.0
     decay = {id(p): g["weight_decay"] for g in groups for p in g["params"]}
     assert decay[id(model.dense.weight)] == 1e-4 and decay[id(model.generator.weight)] == 1e-4
     for layer, name in ((model.dense.bias, "dense bias"), (model.generator.bias, "generator bias"), (model.conv.weight, "conv"),

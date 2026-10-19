@@ -43,7 +43,7 @@ GAMMA_MODES = ("free", "bounded")
 class FiLMTextCNN(nn.Module):
     """E2: a text CNN whose filters are scaled and shifted per message by the link evidence (docs/film_architecture_plan.md).
 
-    text -> frozen embedding -> Conv1d (64 filters, width 3) -> x            (batch, filters, positions)
+    text -> embedding (fine-tuned) -> Conv1d (64 filters, width 3) -> x      (batch, filters, positions)
     generator: [P, u, page_missing] + the Conv average of x -> (delta_gamma, beta), one pair per filter
     FiLM:      x' = gamma * x + beta, applied before ReLU at every position
     x' -> ReLU -> max-pool -> dropout 0.2 -> Dense 64 -> ReLU -> dropout 0.5 -> Output 2
@@ -60,11 +60,15 @@ class FiLMTextCNN(nn.Module):
                           scores cannot cancel positive ones.
       use_beta            True: the generator gives gamma and beta (D3 default). False: gamma only (variant V1), beta = 0,
                           and the generator has half the outputs (4,352 parameters instead of 8,704).
+      freeze_embedding    False: the embedding is fine-tuned during training, as in the diagram (D6, changed 2026-10-20).
+                          True: it stays at its fastText values (the frozen-embedding check run). The layer you pass in is
+                          used as given and its requires_grad is set here, so do not share one layer between two models.
     """
 
     def __init__(self, embedding_layer: nn.Embedding, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
                  link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, gamma_mode: str = "bounded",
-                 mask_padding: bool = False, average_after_relu: bool = False, use_beta: bool = True):
+                 mask_padding: bool = False, average_after_relu: bool = False, use_beta: bool = True,
+                 freeze_embedding: bool = False):
         super().__init__()
         if gamma_mode not in GAMMA_MODES:
             raise ValueError(f"gamma_mode must be one of {GAMMA_MODES}, got {gamma_mode!r}")
@@ -72,11 +76,12 @@ class FiLMTextCNN(nn.Module):
             raise ValueError("mask_padding needs an embedding layer with a padding_idx")
         self.num_filters, self.kernel_size, self.link_dim = num_filters, kernel_size, link_dim
         self.gamma_mode, self.mask_padding, self.average_after_relu = gamma_mode, mask_padding, average_after_relu
-        self.use_beta = use_beta
+        self.use_beta, self.freeze_embedding = use_beta, freeze_embedding
 
-        # Frozen for every model of the study (decided 2026-10-18): it is counted separately from the trainable parameters.
+        # Fine-tuned for every model of the study (D6, changed 2026-10-20 from frozen). Its parameters are counted apart from
+        # the 70,658 of the layers below (vocabulary size x 300 more), and it has its own optimizer group.
         self.embedding = embedding_layer
-        self.embedding.weight.requires_grad = False
+        self.embedding.weight.requires_grad = not freeze_embedding
         self.conv = nn.Conv1d(embedding_layer.embedding_dim, num_filters, kernel_size=kernel_size)
 
         # One Dense layer: (link numbers + one average per filter) -> a delta_gamma and a beta per filter (delta_gamma only
@@ -165,11 +170,15 @@ class FiLMTextCNN(nn.Module):
     def parameter_groups(self, weight_decay: float, generator_weight_decay: float | None = None) -> list[dict]:
         # Optimizer groups: L2 decay on Dense 64's weights, as for every model of the study, and on the generator's weights
         # (decision D13: the generator is new and the data is small; same value unless generator_weight_decay is given).
-        # Biases, the Conv and the output layer get none. The frozen embedding is in no group.
+        # Biases, the Conv and the output layer get none. A trainable embedding has a group of its own with no decay (so its
+        # learning rate can be set apart later); a frozen one is in no group.
         generator_decay = weight_decay if generator_weight_decay is None else generator_weight_decay
         decayed = [(self.dense.weight, weight_decay), (self.generator.weight, generator_decay)]
-        decayed_ids = {id(p) for p, _ in decayed}
-        plain = [p for p in self.parameters() if p.requires_grad and id(p) not in decayed_ids]
-        return [{"params": [self.dense.weight], "weight_decay": weight_decay},
-                {"params": [self.generator.weight], "weight_decay": generator_decay},
-                {"params": plain, "weight_decay": 0.0}]
+        apart = {id(p) for p, _ in decayed} | {id(self.embedding.weight)}
+        plain = [p for p in self.parameters() if p.requires_grad and id(p) not in apart]
+        groups = [{"params": [self.dense.weight], "weight_decay": weight_decay},
+                  {"params": [self.generator.weight], "weight_decay": generator_decay},
+                  {"params": plain, "weight_decay": 0.0}]
+        if self.embedding.weight.requires_grad:
+            groups.append({"params": [self.embedding.weight], "weight_decay": 0.0})
+        return groups
