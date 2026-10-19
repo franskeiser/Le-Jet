@@ -29,6 +29,8 @@ SEQ_LEN_L = 50
 NUM_FILTERS = 64
 KERNEL_SIZE = 3  # one conv branch (Le-Jet decision), so the pooled CNN output is NUM_FILTERS-dim
 DENSE_UNITS = 64
+# C-prune (docs/c_prune_architecture.md): the numbers of Conv filters kept, 75% / 50% / 25% of NUM_FILTERS.
+PRUNE_KEEP = [48, 32, 16]
 
 # Label smoothing for every training loss (Phase A, Phase C, ungated baseline). With 2
 # classes, 0.1 trains toward 0.95/0.05 targets instead of hard 1/0, so the model can't

@@ -22,16 +22,58 @@ compared with the prior (always predicting the smishing share). A Gate RF no bet
 ranking that is noise (section 7, "RF ranking ~ random").
 The fitted forests are not saved: only the ranking is used, and the Gate RF is discarded (section 2.2).
 
+Step 3, groups: the same importance, with similar filters shuffled TOGETHER. Filters that fire on the same
+messages cover for each other: shuffle one and the forest reads its twin, so both look useless (the pilot: in
+2 of 15 seed-folds no single filter was clearly above zero). Here:
+  * filters are grouped by how alike their scores are: Spearman correlation over the train messages, then
+    average-linkage clustering of 1 - |rho|, cut at |rho| = 0.8 (two groups join while their filters
+    correlate at 0.8 or more on average). Labels are not used, so this reads nothing the forest is judged on.
+    A dead filter correlates with nothing and stays alone;
+  * per fold, the SAME forests as step 2 (same folds, same seed, refit) score the held-out fold with one
+    group's columns shuffled by one shared row order, 30 times: the group keeps its own pattern, but loses
+    its link to the label. The rise in log-loss is the group's importance; averaged over the 5 folds, with the
+    same spread as step 2.
+
+Step 4, rank: one order of the 64 filters, best first, from steps 2 and 3 (decided 2026-10-19). One filter per
+group in turns, like picking teams:
+  * groups are taken from the most to the least important (step 3; ties: lower group number first);
+  * round 1 takes each group's best filter (highest step 2 importance; ties: lower filter id), round 2 each
+    group's second best, and so on, until every filter is placed;
+  * dead filters (score 0 on every train message) go last, whatever their group.
+So a kept set of k holds one filter of each of the top k groups before any group gets a second: copies of one
+pattern are removed first, and the RF decides which patterns stay. The top k of this order is keep_idx.
+
+Step 4 check, compare: is this order better than the others? Measured on each fold's VAL messages, which no
+ranking read, with the Phase A CNN and its temporary head, before any fine-tuning. Removing a filter is done
+by setting its pooled score to 0: exactly what the deleted filter would send (section 2.3). For k = 48, 32, 16
+it scores, by val log-loss (and F1):
+    group_turns    this rule (C)
+    single         the step 2 order alone (A)
+    whole_groups   the step 3 groups in order, every member of a group before the next group (B)
+    reverse        group_turns backwards: keep the least important, should do worst
+    random         20 random kept sets (seeded), averaged: the order must beat this [S11]
+Fine-tuning (Phase 6) can repair some of the damage, so this compares the orders, not the final models;
+the Phase 7 controls stay the real test.
+
 Writes, per seed and fold, to experiments/c_prune/<dataset>/gate_rf/:
-    filter_scores_seed<S>_fold<F>.csv   message_id, label (1 = smishing), filter_00 .. filter_63   (scores)
-    importance_seed<S>_fold<F>.csv      filter, importance, spread, importance_fold0 .. 4          (importance)
+    filter_scores_seed<S>_fold<F>.csv     message_id, label (1 = smishing), filter_00 .. filter_63    (scores)
+    importance_seed<S>_fold<F>.csv        filter, importance, spread, importance_fold0 .. 4           (importance)
+    group_importance_seed<S>_fold<F>.csv  group, size, filters, importance, spread, importance_fold0 .. 4 (groups)
+    filter_importance_seed<S>_fold<F>.csv rank (0 = best), filter, group, pick (round in its group), dead,
+                                          group_importance, importance, spread                         (rank)
 and scores_summary.csv: rows, smishing share, and the dead filters (score 0 on every train message: they
 can only be removed, whatever the ranking says); importance_summary.csv: the Gate RF's out-of-fold F1 and
-log-loss against the prior, and how many filters are clearly above zero.
+log-loss against the prior, and how many filters are clearly above zero; group_summary.csv: the number of
+groups, the largest, and how many groups (and the filters in them) are clearly above zero;
+ranking_compare.csv (every seed, fold, k and order) and ranking_compare_summary.csv (per k and order: mean
+val log-loss and F1, and in how many seed-folds group_turns has the lower log-loss).
 
 Usage:
     python -m src.unified.gate_rf --pilot scores
     python -m src.unified.gate_rf --pilot importance
+    python -m src.unified.gate_rf --pilot groups
+    python -m src.unified.gate_rf --pilot rank
+    python -m src.unified.gate_rf --pilot compare
 """
 from __future__ import annotations
 
@@ -42,11 +84,15 @@ from typing import List
 import numpy as np
 import pandas as pd
 import torch
+from joblib import Parallel, delayed
+from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.spatial.distance import squareform
 from sklearn.inspection import permutation_importance
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score, log_loss
 from sklearn.model_selection import StratifiedGroupKFold
 
-from src.config import ARTIFACTS_ROOT, CROWD_N_FOLDS, SEEDS
+from src.config import ARTIFACTS_ROOT, CROWD_N_FOLDS, PRUNE_KEEP, SEEDS
 from src.data.split_crowd import load_fold, make_groups
 from src.features.model.cnn_encoder import TextEncoder
 from src.features.model.rf_extractor import fit_rf
@@ -56,6 +102,9 @@ BATCH_SIZE = 512
 GATE_SPLITS = 5
 GATE_REPEATS = 30
 GATE_TREES = 200
+CORR_THRESHOLD = 0.8
+RANDOM_DRAWS = 20
+ORDERS = ["group_turns", "single", "whole_groups", "reverse", "random"]
 
 
 def out_dir(dataset: Path) -> Path:
@@ -114,28 +163,87 @@ def gate_folds(y: np.ndarray, groups: np.ndarray, seed: int, n_splits: int = GAT
     return list(StratifiedGroupKFold(n_splits, shuffle=True, random_state=seed).split(y, y, groups))
 
 
-def gate_importance(table: pd.DataFrame, groups: np.ndarray, seed: int, n_splits: int = GATE_SPLITS,
-                    n_repeats: int = GATE_REPEATS) -> tuple:
-    """(importance frame, out-of-fold P(smishing)) of the filter columns of a step 1 table."""
-    columns = [c for c in table.columns if c.startswith("filter_")]
-    X, y = table[columns], table["label"].to_numpy()
-    per_fold, oof = [], np.full(len(y), np.nan)
+def score_columns(table: pd.DataFrame) -> List[str]:
+    return [c for c in table.columns if c.startswith("filter_")]
+
+
+def gate_forests(table: pd.DataFrame, groups: np.ndarray, seed: int, n_splits: int = GATE_SPLITS):
+    """Per fold: (fold, Gate RF fit on the other folds, held-out X, held-out y, held-out row indices)."""
+    X, y = table[score_columns(table)], table["label"].to_numpy()
     for i, (fit_idx, held_idx) in enumerate(gate_folds(y, groups, seed, n_splits)):
         rf = fit_rf(X.iloc[fit_idx], y[fit_idx], seed, n_estimators=GATE_TREES)
         # One core per forest call and the columns in parallel instead: the result does not depend on the
         # worker count (random_state fixes every shuffle), and single-core sums are bit-for-bit repeatable.
         rf.set_params(n_jobs=1)
-        oof[held_idx] = rf.predict_proba(X.iloc[held_idx])[:, 1]
-        r = permutation_importance(rf, X.iloc[held_idx], y[held_idx], scoring="neg_log_loss",
+        yield i, rf, X.iloc[held_idx], y[held_idx], held_idx
+
+
+def importance_frame(per_fold: List[np.ndarray], first: dict, n_splits: int) -> pd.DataFrame:
+    """`first` columns, then the mean over the folds, its standard error and one column per fold."""
+    per_fold = np.stack(per_fold)             # (folds, filters or groups)
+    frame = pd.DataFrame({**first, "importance": per_fold.mean(axis=0),
+                          "spread": per_fold.std(axis=0, ddof=1) / np.sqrt(n_splits)})
+    for i, fold_values in enumerate(per_fold):
+        frame[f"importance_fold{i}"] = fold_values
+    return frame
+
+
+def gate_importance(table: pd.DataFrame, groups: np.ndarray, seed: int, n_splits: int = GATE_SPLITS,
+                    n_repeats: int = GATE_REPEATS) -> tuple:
+    """(importance frame, out-of-fold P(smishing)) of the filter columns of a step 1 table."""
+    per_fold, oof = [], np.full(len(table), np.nan)
+    for i, rf, X_held, y_held, held_idx in gate_forests(table, groups, seed, n_splits):
+        oof[held_idx] = rf.predict_proba(X_held)[:, 1]
+        r = permutation_importance(rf, X_held, y_held, scoring="neg_log_loss",
                                    n_repeats=n_repeats, random_state=seed + i, n_jobs=-1)
         per_fold.append(r.importances_mean)   # neg_log_loss: the drop in score = the rise in log-loss
-    per_fold = np.stack(per_fold)             # (folds, filters)
-    importance = pd.DataFrame({"filter": [int(c.split("_")[1]) for c in columns],
-                               "importance": per_fold.mean(axis=0),
-                               "spread": per_fold.std(axis=0, ddof=1) / np.sqrt(n_splits)})
-    for i, fold_values in enumerate(per_fold):
-        importance[f"importance_fold{i}"] = fold_values
-    return importance, oof
+    filters = [int(c.split("_")[1]) for c in score_columns(table)]
+    return importance_frame(per_fold, {"filter": filters}, n_splits), oof
+
+
+def correlated_groups(table: pd.DataFrame, threshold: float = CORR_THRESHOLD) -> np.ndarray:
+    """A group number per filter column (0, 1, ... in order of each group's first filter)."""
+    rho = table[score_columns(table)].corr("spearman").fillna(0.0).abs().to_numpy().copy()
+    np.fill_diagonal(rho, 1.0)               # a dead (constant) filter: NaN -> 0, alike with nothing but itself
+    labels = fcluster(linkage(squareform(1 - rho, checks=False), "average"), 1 - threshold, "distance")
+    order = {label: n for n, label in enumerate(dict.fromkeys(labels))}
+    return np.array([order[label] for label in labels])
+
+
+def shuffled_log_loss(rf, X_held: pd.DataFrame, y_held: np.ndarray, members: np.ndarray, rng_seed: list,
+                      n_repeats: int) -> float:
+    """Mean log-loss over `n_repeats` shuffles of the `members` columns, all by one row order per shuffle."""
+    rng = np.random.default_rng(rng_seed)
+    losses = []
+    for _ in range(n_repeats):
+        shuffled = X_held.copy()
+        shuffled.iloc[:, members] = X_held.iloc[rng.permutation(len(X_held)), members].to_numpy()
+        losses.append(log_loss(y_held, rf.predict_proba(shuffled)[:, 1], labels=[0, 1]))
+    return float(np.mean(losses))
+
+
+def group_importance(table: pd.DataFrame, groups: np.ndarray, filter_groups: np.ndarray, seed: int,
+                     n_splits: int = GATE_SPLITS, n_repeats: int = GATE_REPEATS) -> pd.DataFrame:
+    """Importance of each group of filter columns, shuffled together; step 2's folds and forests."""
+    members = [np.flatnonzero(filter_groups == g) for g in range(filter_groups.max() + 1)]
+    per_fold = []
+    for i, rf, X_held, y_held, _ in gate_forests(table, groups, seed, n_splits):
+        base = log_loss(y_held, rf.predict_proba(X_held)[:, 1], labels=[0, 1])
+        shuffled = Parallel(n_jobs=-1)(delayed(shuffled_log_loss)(rf, X_held, y_held, m, [seed, i, g], n_repeats)
+                                       for g, m in enumerate(members))
+        per_fold.append(np.array(shuffled) - base)
+    filters = [int(c.split("_")[1]) for c in score_columns(table)]
+    first = {"group": list(range(len(members))), "size": [len(m) for m in members],
+             "filters": [" ".join(str(filters[j]) for j in m) for m in members]}
+    return importance_frame(per_fold, first, n_splits)
+
+
+def domain_groups(table: pd.DataFrame, train: pd.DataFrame) -> np.ndarray:
+    """The link_domain group of every row of a step 1 table, from the fold's train part."""
+    domains = table[["message_id"]].merge(train[["message_id", "link_domain"]], on="message_id",
+                                          how="left", validate="one_to_one")
+    assert len(domains) == len(train) and domains["link_domain"].notna().all(), "scores and train differ"
+    return make_groups(domains, "domain").to_numpy()
 
 
 def run_importance(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
@@ -145,11 +253,7 @@ def run_importance(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N
     for seed in seeds:
         for fold in range(n_folds):
             table = pd.read_csv(out / f"filter_scores_seed{seed}_fold{fold}.csv")
-            train = load_fold(seed, fold, pilot=pilot)["train"]
-            domains = table[["message_id"]].merge(train[["message_id", "link_domain"]], on="message_id",
-                                                  how="left", validate="one_to_one")
-            assert len(domains) == len(train) and domains["link_domain"].notna().all(), "scores and train differ"
-            groups = make_groups(domains, "domain").to_numpy()
+            groups = domain_groups(table, load_fold(seed, fold, pilot=pilot)["train"])
             importance, oof = gate_importance(table, groups, seed)
             importance.to_csv(out / f"importance_seed{seed}_fold{fold}.csv", index=False)
             y = table["label"].to_numpy()
@@ -168,12 +272,178 @@ def run_importance(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N
     return summary
 
 
+def run_groups(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    dataset = dataset_path(pilot)
+    out = out_dir(dataset)
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            table = pd.read_csv(out / f"filter_scores_seed{seed}_fold{fold}.csv")
+            groups = domain_groups(table, load_fold(seed, fold, pilot=pilot)["train"])
+            frame = group_importance(table, groups, correlated_groups(table), seed)
+            frame.to_csv(out / f"group_importance_seed{seed}_fold{fold}.csv", index=False)
+            clear = frame["importance"] - 2 * frame["spread"] > 0
+            rows.append({"seed": seed, "fold": fold, "groups": len(frame), "largest": int(frame["size"].max()),
+                         "singletons": int((frame["size"] == 1).sum()),
+                         "groups_clearly_above_zero": int(clear.sum()),
+                         "filters_in_those_groups": int(frame.loc[clear, "size"].sum()),
+                         "top3": " | ".join(frame.nlargest(3, "importance")["filters"])})
+            print(f"seed {seed} fold {fold}: {len(frame)} groups, {rows[-1]['groups_clearly_above_zero']} clearly "
+                  f"above 0 ({rows[-1]['filters_in_those_groups']} filters)")
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out / "group_summary.csv", index=False)
+    return summary
+
+
+def group_members(single: pd.DataFrame, grouped: pd.DataFrame, dead: set) -> List[List[int]]:
+    """The live filters of each group, best first; the groups from most to least important."""
+    by_filter = single.set_index("filter")["importance"]
+    members = []
+    for _, group in grouped.sort_values(["importance", "group"], ascending=[False, True]).iterrows():
+        live = [f for f in map(int, group["filters"].split()) if f not in dead]
+        members.append(sorted(live, key=lambda f: (-by_filter[f], f)))
+    return members
+
+
+def rank_filters(single: pd.DataFrame, grouped: pd.DataFrame, dead: set) -> pd.DataFrame:
+    """Step 4: one filter per group in turns, dead filters last. One row per filter, best first."""
+    members = group_members(single, grouped, dead)
+    group_of = {f: int(g) for g, filters in zip(grouped["group"], grouped["filters"]) for f in map(int, filters.split())}
+    order, picks = [], []
+    for pick in range(max(map(len, members), default=0)):
+        for live in members:
+            if pick < len(live):
+                order.append(live[pick])
+                picks.append(pick)
+    for f in sorted(dead):
+        order.append(f)
+        picks.append(-1)
+    assert sorted(order) == sorted(single["filter"]), "every filter is ranked exactly once"
+    by_filter = single.set_index("filter")
+    group_importance = grouped.set_index("group")["importance"]
+    return pd.DataFrame({"rank": range(len(order)), "filter": order, "group": [group_of[f] for f in order],
+                         "pick": picks, "dead": [f in dead for f in order],
+                         "group_importance": [group_importance[group_of[f]] for f in order],
+                         "importance": by_filter.loc[order, "importance"].to_numpy(),
+                         "spread": by_filter.loc[order, "spread"].to_numpy()})
+
+
+def dead_filters(table: pd.DataFrame) -> set:
+    return {int(c.split("_")[1]) for c in score_columns(table) if (table[c] == 0).all()}
+
+
+def other_orders(single: pd.DataFrame, grouped: pd.DataFrame, dead: set, ranking: pd.DataFrame) -> dict:
+    """The orders group_turns is compared with (the random sets are drawn separately)."""
+    live_single = single[~single["filter"].isin(dead)].sort_values(["importance", "filter"], ascending=[False, True])
+    return {"group_turns": ranking["filter"].tolist(),
+            "single": live_single["filter"].tolist() + sorted(dead),
+            "whole_groups": [f for live in group_members(single, grouped, dead) for f in live] + sorted(dead),
+            "reverse": ranking["filter"].tolist()[::-1]}
+
+
+def run_rank(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    out = out_dir(dataset_path(pilot))
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            name = f"seed{seed}_fold{fold}.csv"
+            dead = dead_filters(pd.read_csv(out / f"filter_scores_{name}"))
+            ranking = rank_filters(pd.read_csv(out / f"importance_{name}"),
+                                   pd.read_csv(out / f"group_importance_{name}"), dead)
+            ranking.to_csv(out / f"filter_importance_{name}", index=False)
+            rows.append({"seed": seed, "fold": fold, "dead": len(dead),
+                         **{f"groups_in_top{k}": ranking["group"].head(k).nunique() for k in PRUNE_KEEP},
+                         "top5": " ".join(map(str, ranking["filter"].head(5)))})
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out / "rank_summary.csv", index=False)
+    return summary
+
+
+def kept_scores(pooled: torch.Tensor, keep: List[int]) -> torch.Tensor:
+    """Pooled scores with every filter outside `keep` set to 0, as a deleted filter would send."""
+    mask = torch.zeros(pooled.shape[1])
+    mask[keep] = 1.0
+    return pooled * mask
+
+
+def val_scores(cnn: TextEncoder, pooled: torch.Tensor, y: np.ndarray, train: tuple, keep: List[int]) -> dict:
+    """Val log-loss and F1 with only the `keep` filters, two ways:
+    as is      the Phase A head unchanged (it still expects the removed filters' votes)
+    refit      a new head (logistic regression) fit on the TRAIN messages' kept scores: a quick stand-in for
+               the fine-tuning of Phase 6, which lets the kept filters take over the removed ones' weight
+    """
+    with torch.no_grad():
+        p = torch.softmax(cnn.temp_head(kept_scores(pooled, keep)), dim=1)[:, 1].numpy()
+    train_X, train_y = train
+    head = LogisticRegression(max_iter=2000).fit(train_X[:, keep], train_y)
+    q = head.predict_proba(pooled.numpy()[:, keep])[:, 1]
+    return {"val_log_loss": log_loss(y, p, labels=[0, 1]), "val_f1": f1_score(y, p >= 0.5, zero_division=0),
+            "val_log_loss_refit": log_loss(y, q, labels=[0, 1]), "val_f1_refit": f1_score(y, q >= 0.5, zero_division=0)}
+
+
+def run_compare(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    dataset = dataset_path(pilot)
+    out = out_dir(dataset)
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            name = f"seed{seed}_fold{fold}.csv"
+            cnn, word_to_idx, sidecar = load_phase_a(model_dir(dataset) / f"phase_a_seed{seed}_fold{fold}.pt")
+            ids, labels = tensors(load_fold(seed, fold, pilot=pilot)["val"], word_to_idx, sidecar["seq_len_l"])
+            with torch.no_grad():
+                pooled = cnn.encode(ids)          # eval mode (load_phase_a): dropout off
+            y = labels.numpy()
+            table = pd.read_csv(out / f"filter_scores_{name}")
+            train = (table[score_columns(table)].to_numpy(), table["label"].to_numpy())
+            dead = dead_filters(table)
+            single, grouped = pd.read_csv(out / f"importance_{name}"), pd.read_csv(out / f"group_importance_{name}")
+            orders = other_orders(single, grouped, dead, pd.read_csv(out / f"filter_importance_{name}"))
+            base = {"seed": seed, "fold": fold}
+            rows.append({**base, "k": pooled.shape[1], "order": "all",
+                         **val_scores(cnn, pooled, y, train, list(range(pooled.shape[1])))})
+            rng = np.random.default_rng([seed, fold])
+            for k in PRUNE_KEEP:
+                for order, filters in orders.items():
+                    rows.append({**base, "k": k, "order": order, **val_scores(cnn, pooled, y, train, filters[:k])})
+                draws = pd.DataFrame([val_scores(cnn, pooled, y, train,
+                                                 rng.choice(pooled.shape[1], k, replace=False).tolist())
+                                      for _ in range(RANDOM_DRAWS)])
+                rows.append({**base, "k": k, "order": "random", **draws.mean().to_dict()})
+    detail = pd.DataFrame(rows)
+    detail.to_csv(out / "ranking_compare.csv", index=False)
+    summary = compare_summary(detail)
+    summary.to_csv(out / "ranking_compare_summary.csv", index=False)
+    return summary
+
+
+def compare_summary(detail: pd.DataFrame) -> pd.DataFrame:
+    """Per k and order: the mean metrics, and in how many seed-folds group_turns has the lower log-loss."""
+    metrics = ["val_log_loss", "val_f1", "val_log_loss_refit", "val_f1_refit"]
+    summary = detail.groupby(["k", "order"], sort=False)[metrics].mean().round(4).reset_index()
+    pruned = detail[detail["order"] != "all"]
+    for metric, column in (("val_log_loss", "turns_lower_as_is"), ("val_log_loss_refit", "turns_lower_refit")):
+        wide = pruned.pivot_table(index=["seed", "fold", "k"], columns="order", values=metric)
+        wins = []
+        for k, order in zip(summary["k"], summary["order"]):
+            if order in ("all", "group_turns"):
+                wins.append("")
+                continue
+            part = wide.xs(k, level="k")
+            wins.append(f"{int((part['group_turns'] < part[order]).sum())}/{len(part)}")
+        summary[column] = wins
+    return summary
+
+
+STEPS = {"scores": run_scores, "importance": run_importance, "groups": run_groups, "rank": run_rank,
+         "compare": run_compare}
+
+
 def main(argv: List[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (pipeline test only)")
-    ap.add_argument("step", choices=["scores", "importance"])
+    ap.add_argument("step", choices=list(STEPS))
     a = ap.parse_args(argv)
-    summary = run_scores(a.pilot) if a.step == "scores" else run_importance(a.pilot)
+    summary = STEPS[a.step](a.pilot)
     pd.set_option("display.width", 200)
     print(summary.to_string(index=False))
 

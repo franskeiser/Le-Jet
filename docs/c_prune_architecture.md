@@ -574,6 +574,13 @@ C-prune **will take longer to train** than the baselines, because of the Gate RF
 
 Tick each box when done. **No code is run until the group agrees to start a phase.**
 
+**Order of work (agreed 2026-10-19):**
+1. Finish the architecture on the synthetic pilot first: the rest of Phase 5, Phase 6 and the Phase 7 controls. The ranking rule does not need deciding for this, because every later step only reads `keep_idx`. Changing the rule later means swapping one file and re-running, not rebuilding.
+2. Collect the crowd data meanwhile (Phase 1), legitimate messages first.
+3. When the real data is in, run the whole pipeline, then `python -m src.unified.gate_rf compare` on **validation**.
+4. Lock the ranking rule there (Phase 6, "Lock the ranking rule"), **once**. Do not change it again after that.
+5. Run Phase 7, and read the test folds **once**, last.
+
 ### Phase 0: Decisions and setup
 - [x] Group agrees on C-prune as the main model (this file)
 - [x] **Link gates: decided 2026-10-18.** No link gates in the main model. The static gating is the RF gate mask on the Conv filters (section 2.4). "C-prune + link gates" is tested once as an ablation (Phase 7)
@@ -616,8 +623,9 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 ### Phase 5: Gate RF and pruning
 - [x] *(pilot)* Record the 64 pooled filter scores for the training messages (eval mode). `python -m src.unified.gate_rf --pilot scores`: each fold's Phase A CNN rebuilt from its sidecar, dropout off, train part only (val and test unseen); `filter_scores_seed<S>_fold<F>.csv` = `message_id`, `label`, `filter_00`–`filter_63` (original filter ids). Pilot: 872–873 rows per fold, 0 dead filters
 - [x] *(pilot)* Gate RF with 5 folds grouped by domain. Permutation importance scored by log-loss on each held-out fold, 30 repeats, averaged (`oof_logloss`). `python -m src.unified.gate_rf --pilot importance`: 200 trees, sklearn defaults; `importance_seed<S>_fold<F>.csv` = `filter`, `importance` (mean rise in log-loss), `spread` (standard error over the 5 folds), one column per fold. Pilot (12 min for 15 seed-folds): the Gate RF learns (out-of-fold log-loss 0.23–0.43 against 0.69 for the prior, F1 0.84–0.89), but single filters barely matter: only 0–10 of 64 are clearly above zero, and in 2 seed-folds (42/0, 123/3) none is above zero. The filters overlap, so shuffling one is covered by the others. This makes the next step (shuffle correlated filters together) worth doing before ranking
-- [ ] Optional: shuffle highly correlated filters together, so similar filters don't split their importance
-- [ ] Save the ranking per seed (`filter_importance_seed*.csv`)
+- [x] *(pilot)* Optional: shuffle highly correlated filters together, so similar filters don't split their importance. `python -m src.unified.gate_rf --pilot groups`: filters grouped by Spearman |rho| ≥ 0.8 on the train messages (average linkage, no labels used), each group shuffled by one shared row order, 30 repeats, on step 2's folds and forests; `group_importance_seed<S>_fold<F>.csv` = `group`, `size`, `filters`, `importance`, `spread`, one column per fold. Pilot (6 min): 21–35 groups per seed-fold (largest 7–23 filters). Groups clearly above zero: 0–7 per seed-fold, covering 7–34 filters, against 0–10 single filters in step 2. Three seed-folds (42/0, 123/3, 123/4) still have none: there, even whole groups cover for each other. How the group numbers make one ranking of the 64 filters is decided in step 4
+- [x] *(pilot)* Save the ranking per seed (`filter_importance_seed*.csv`). **Rule, decided 2026-10-19:** one filter per group in turns. Groups go from most to least important (step 3). Round 1 takes each group's best filter (step 2 importance), round 2 each group's second best, and so on. Dead filters go last. So copies of one pattern are removed first, and the RF decides which patterns stay. `python -m src.unified.gate_rf --pilot rank` (per seed and fold, since each fold has its own CNN)
+- [x] *(pilot)* Check the order against the others on **val** (no ranking reads it), before fine-tuning: `python -m src.unified.gate_rf --pilot compare`. Removed filters send 0. Orders: this rule, step 2 alone, whole groups first, reverse, 20 random sets. Scored two ways: the Phase A head as is, and a head refit on the train messages' kept scores (a stand-in for Phase 6 fine-tuning). Pilot result, **not better**: with the head as is, this rule is the worst (it keeps one copy of each pattern, and the old head still expects all the copies' votes). With the head refit, every order ties: val log-loss 0.199–0.211 against 0.198 for all 64 filters, even 16 random filters reach 0.214. Only at k = 16 does it beat whole groups and reverse (12 of 15 seed-folds). The synthetic pilot is so redundant that any filters do the job, so no order can win on it. **Re-run `compare` on the real crowd data.** The order is kept unless step 2 alone has the lower mean refit val log-loss there, in which case step 2 alone is used. Never decided on test
 - [ ] `select_top_k` gives `keep_idx` for k = 48, 32, 16
 - [ ] `prune_encoder` builds the k-filter CNN. Dense 64 drops the matching columns
 - [ ] **Unit test:** before fine-tuning, the pruned model's output equals the full model's output with the removed filters set to 0
@@ -627,6 +635,7 @@ Tick each box when done. **No code is run until the group agrees to start a phas
 ### Phase 6: Fusion and fine-tuning (Phase C)
 - [ ] Pruned CNN + 40 link numbers → Concatenate → Dense 64 (weight decay) → 2 + softmax
 - [ ] Fine-tune everything except the Link RF with the shared recipe
+- [ ] **Real data only. Lock the ranking rule** before choosing k: run `python -m src.unified.gate_rf compare` and read `ranking_compare_summary.csv`. Keep "one filter per group in turns" unless "single" (step 2 alone) has the lower mean `val_log_loss_refit`; then switch to single, re-make `keep_idx` and re-run fine-tuning. Write the choice and its numbers here. Decided once, on validation only, never changed after the test is read
 - [ ] Choose the final k on validation
 - [ ] Save checkpoint, `keep_idx` sidecar and Link RF per seed
 
@@ -638,6 +647,7 @@ Every model uses the same data, splits, seeds, recipe and frozen embedding. The 
 - [ ] **Random removal** at the same k, with the same fine-tuning. The RF ranking must beat this [S11]
 - [ ] **From scratch:** a k-filter CNN trained from the start on the same schedule. The RF choice must beat simply training a smaller CNN [S13]
 - [ ] **Reverse ranking** (keep the k least important). It should do worst, which shows the ranking means something
+- [ ] **The other ranking rule** at the same k, with the same fine-tuning. If the locked rule is "one per group in turns", run "single" (step 2 alone), and the other way round. It is cheap (both orders already exist) and shows the panel how the rule not chosen would have done
 - [ ] **Ablation:** C-prune + link gates (`rf_gates`, 0.1–3.0 on the 37 contributions) put back. Shows whether link-side gating adds anything
 - [ ] **Variant C:** graded gates (0 or 0.5–3.0) merged into the Conv weights, from the same Gate RF ranking
 - [ ] Print the gate mask (which filters are 1 and 0, and what each filter fires on) for the final model

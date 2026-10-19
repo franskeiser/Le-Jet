@@ -89,6 +89,77 @@ def test_importance_is_repeatable(monkeypatch):
     assert first[0].equals(second[0]) and np.array_equal(first[1], second[1])
 
 
+def _twin_table(n=200):
+    """filter_00 and filter_01 are the same useful signal (twins); 02 / 03 are noise; 04 is dead."""
+    table, groups = _score_table(n)
+    table["filter_01"] = table["filter_00"] * 2 + 0.01 * np.random.default_rng(1).normal(size=n)
+    table["filter_04"] = 0.0
+    return table, groups
+
+
+def test_correlated_groups_join_the_twins_only():
+    table, _ = _twin_table()
+    assert gr.correlated_groups(table).tolist() == [0, 0, 1, 2, 3]
+
+
+def test_twins_look_useless_alone_but_useful_together(monkeypatch):
+    monkeypatch.setattr(gr, "GATE_TREES", 50)
+    table, groups = _twin_table()
+    single, _ = gr.gate_importance(table, groups, seed=42, n_repeats=5)
+    grouped = gr.group_importance(table, groups, gr.correlated_groups(table), seed=42, n_repeats=5)
+    assert grouped["filters"].tolist() == ["0 1", "2", "3", "4"] and grouped["size"].tolist() == [2, 1, 1, 1]
+    twins = grouped.loc[0, "importance"]
+    assert twins - 2 * grouped.loc[0, "spread"] > 0
+    assert twins > 3 * single.loc[[0, 1], "importance"].max()
+    assert grouped.loc[3, "importance"] == 0.0   # shuffling a dead filter changes nothing
+
+
+def test_group_importance_is_repeatable(monkeypatch):
+    monkeypatch.setattr(gr, "GATE_TREES", 20)
+    table, groups = _twin_table()
+    filter_groups = gr.correlated_groups(table)
+    first = gr.group_importance(table, groups, filter_groups, seed=7, n_repeats=3)
+    assert first.equals(gr.group_importance(table, groups, filter_groups, seed=7, n_repeats=3))
+
+
+def _ranking_inputs():
+    """Group 0 = filters 0, 1, 2 (most important); group 1 = 3, 4; group 2 = 5 (dead)."""
+    single = pd.DataFrame({"filter": range(6), "importance": [0.01, 0.03, 0.02, 0.0, 0.05, 0.0],
+                           "spread": [0.001] * 6})
+    grouped = pd.DataFrame({"group": [0, 1, 2], "size": [3, 2, 1], "filters": ["0 1 2", "3 4", "5"],
+                            "importance": [0.2, 0.1, 0.0], "spread": [0.01] * 3})
+    return single, grouped, {5}
+
+
+def test_rank_takes_one_filter_per_group_in_turns_and_dead_last():
+    ranking = gr.rank_filters(*_ranking_inputs())
+    # Round 1: group 0's best (1), group 1's best (4); round 2: 2, 3; round 3: 0; then the dead filter.
+    assert ranking["filter"].tolist() == [1, 4, 2, 3, 0, 5]
+    assert ranking["pick"].tolist() == [0, 0, 1, 1, 2, -1] and ranking["rank"].tolist() == list(range(6))
+    assert ranking["group"].tolist() == [0, 1, 0, 1, 0, 2] and ranking["dead"].tolist() == [False] * 5 + [True]
+
+
+def test_other_orders_are_permutations_of_every_filter():
+    single, grouped, dead = _ranking_inputs()
+    orders = gr.other_orders(single, grouped, dead, gr.rank_filters(single, grouped, dead))
+    assert orders["single"] == [4, 1, 2, 0, 3, 5]
+    assert orders["whole_groups"] == [1, 2, 0, 4, 3, 5]
+    assert orders["reverse"] == [5, 0, 3, 2, 4, 1]
+    assert all(sorted(o) == list(range(6)) for o in orders.values())
+
+
+def test_removed_filters_send_exactly_zero_like_a_deleted_filter():
+    cnn, word_to_idx = _cnn()
+    cnn.eval()
+    ids, _ = tc.tensors(_part(), word_to_idx, 8)
+    keep = [0, 5, 9]
+    with torch.no_grad():
+        pooled = gr.kept_scores(cnn.encode(ids), keep)
+        cnn.conv.weight[[i for i in range(64) if i not in keep]] = 0.0   # the removed filters, really zeroed
+        cnn.conv.bias[[i for i in range(64) if i not in keep]] = 0.0
+        assert torch.equal(pooled, cnn.encode(ids))
+
+
 def test_scores_are_repeatable_and_batching_does_not_change_them(monkeypatch):
     cnn, word_to_idx = _cnn()
     part = _part(10)
