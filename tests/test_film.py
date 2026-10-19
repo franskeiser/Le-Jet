@@ -178,13 +178,27 @@ def test_d_the_link_changes_the_prediction_features_once_the_generator_is_non_ze
 # ------------------------------------------------------------------ (e) the gamma rule
 def test_e_bounded_gamma_stays_between_zero_and_two_and_free_gamma_does_not():
     ids, link = batch(n=32)
-    free, bounded = FiLMTextCNN(embedding()), FiLMTextCNN(embedding(), gamma_mode="bounded")
+    free, bounded = FiLMTextCNN(embedding(), gamma_mode="free"), FiLMTextCNN(embedding(), gamma_mode="bounded")
     for model in (free, bounded):
         randomize_generator(model, std=5.0)
     g_free = free.film_parameters(link, free.conv_features(ids)[1])[0]
     g_bounded = bounded.film_parameters(link, bounded.conv_features(ids)[1])[0]
     assert g_bounded.min() >= 0 and g_bounded.max() <= 2
     assert g_free.min() < 0 and g_free.max() > 2
+
+
+def test_e_the_default_gamma_is_bounded_and_unbounded_is_the_option():
+    """D2, changed 2026-10-20: bounded (1 + tanh) is the default; the unbounded rule (1 + delta) is an ablation."""
+    default = FiLMTextCNN(embedding())
+    assert default.gamma_mode == "bounded"
+    ids, link = batch(n=32)
+    randomize_generator(default, std=5.0)
+    gamma = default.film_parameters(link, default.conv_features(ids)[1])[0]
+    assert gamma.min() >= 0 and gamma.max() <= 2
+    free = FiLMTextCNN(embedding(), gamma_mode="free")
+    randomize_generator(free, std=5.0)
+    g_free = free.film_parameters(link, free.conv_features(ids)[1])[0]
+    assert g_free.min() < 0 or g_free.max() > 2
 
 
 def test_e_bounded_gamma_also_starts_at_one_and_a_bad_mode_is_refused():
@@ -261,7 +275,7 @@ def test_masking_needs_a_padding_index():
 
 
 @pytest.mark.parametrize("options", [{}, {"mask_padding": True}, {"average_after_relu": True},
-                                     {"gamma_mode": "bounded"}, {"use_beta": False}])
+                                     {"gamma_mode": "bounded"}, {"gamma_mode": "free"}, {"use_beta": False}])
 def test_every_option_runs_and_keeps_the_size_of_the_outputs(options):
     model = FiLMTextCNN(embedding(), **options)
     ids, link = batch()
@@ -297,7 +311,7 @@ def test_gamma_only_groups_also_cover_everything():
 
 # ------------------------------------------------------------------ the real thing
 @pytest.mark.parametrize("options", [{}, {"mask_padding": True}, {"average_after_relu": True}, {"gamma_mode": "bounded"},
-                                     {"use_beta": False}])
+                                     {"gamma_mode": "free"}, {"use_beta": False}])
 def test_at_the_start_a_real_trained_text_cnn_is_reproduced_exactly(options):
     """Seed 42, fold 0 of the synthetic pilot: the generator-at-zero model gives the trained CNN's 64 numbers, bit for bit."""
     from src.config import CROWD_PILOT_PATH
@@ -321,3 +335,146 @@ def test_at_the_start_a_real_trained_text_cnn_is_reproduced_exactly(options):
     cnn.eval()
     with torch.no_grad():
         assert torch.equal(model.encode(token_ids, link), cnn.encode(token_ids))
+
+
+# ------------------------------------------------------------------ step 2.4: explanations
+def adjusted_scores(model, ids, link):
+    x, average = model.conv_features(ids)
+    gamma, beta = model.film_parameters(link, average)
+    return gamma.unsqueeze(2) * x + beta.unsqueeze(2)
+
+
+def test_encode_with_positions_gives_the_same_pooled_values_as_forward():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    with torch.no_grad():
+        pooled, position = model.encode_with_positions(ids, link)
+        assert torch.equal(pooled, model.encode(ids, link))
+        logits = model.output(model.dropout_head(F.relu(model.dense(pooled))))
+        assert torch.equal(logits, model(ids, link))                      # the same numbers the verdict is made from
+    assert tuple(pooled.shape) == tuple(position.shape) == (8, FILTERS) and position.dtype == torch.long
+    assert position.min() >= 0 and position.max() <= 47
+
+
+def test_the_position_points_at_the_window_that_gave_the_value():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    with torch.no_grad():
+        pooled, position = model.encode_with_positions(ids, link)
+        picked = adjusted_scores(model, ids, link).gather(2, position.unsqueeze(2)).squeeze(2)
+    assert torch.allclose(F.relu(picked), pooled)
+
+
+def test_encode_with_positions_keeps_the_graph_for_gradient_explanations():
+    model = FiLMTextCNN(embedding()).train()
+    ids, link = batch()
+    pooled, _ = model.encode_with_positions(ids, link)
+    assert pooled.requires_grad
+    pooled.sum().backward()
+    assert model.conv.weight.grad is not None
+
+
+def test_explain_at_the_start_shows_no_effect_of_the_link():
+    model = FiLMTextCNN(embedding()).eval()
+    ids, link = batch()
+    e = model.explain(ids, link)
+    assert (e.gamma == 1).all() and (e.beta == 0).all() and (e.lift == 0).all()
+    assert torch.equal(e.pooled, e.plain_pooled) and torch.equal(e.position, e.plain_position)
+    assert torch.equal(e.pooled, model.encode(ids, link))
+
+
+def test_explain_reports_the_same_gamma_beta_and_pooled_values_the_model_uses():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    e = model.explain(ids, link)
+    gamma, beta = model.film_parameters(link, model.conv_features(ids)[1])
+    assert torch.equal(e.gamma, gamma) and torch.equal(e.beta, beta)
+    assert torch.equal(e.pooled, model.encode(ids, link))
+    assert torch.equal(e.lift, e.pooled - e.plain_pooled)
+    assert torch.equal(e.position, model.encode_with_positions(ids, link)[1])
+    assert not torch.equal(e.pooled, e.plain_pooled)                       # the link did change something
+
+
+def test_explain_gives_the_token_ids_of_each_winning_window():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    e = model.explain(ids, link)
+    assert tuple(e.window_ids.shape) == (8, FILTERS, 3)
+    for b, f in ((0, 0), (3, 17), (7, 63), (5, 40)):
+        start = int(e.position[b, f])
+        assert torch.equal(e.window_ids[b, f], ids[b, start:start + 3])
+
+
+def test_lift_is_positive_when_the_link_raises_filters_and_negative_when_it_lowers_them():
+    ids, link = batch()
+    for shift, sign in ((1.0, 1), (-1.0, -1)):
+        model = FiLMTextCNN(embedding()).eval()
+        with torch.no_grad():
+            model.generator.bias[FILTERS:] = shift                         # beta = shift for every filter, gamma stays 1
+        e = model.explain(ids, link)
+        assert (sign * e.lift >= 0).all() and (sign * e.lift > 0).any()
+        assert (e.gamma == 1).all() and (e.beta == shift).all()
+
+
+def test_a_filter_raised_by_the_link_alone_is_flagged_as_having_no_phrase():
+    """On a message with no words, a large beta lifts filters although there is no phrase to point at."""
+    model = FiLMTextCNN(embedding()).eval()
+    with torch.no_grad():
+        model.generator.bias[FILTERS:] = 5.0
+    nothing = torch.zeros(1, 50, dtype=torch.long)
+    e = model.explain(nothing, torch.rand(1, 3))
+    assert (e.pooled > 0).all() and not e.window_has_words.any()
+    words = torch.randint(1, FRESH, (1, 50))                               # a full message: every window has words
+    assert model.explain(words, torch.rand(1, 3)).window_has_words.all()
+
+
+def test_explain_is_read_only():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    before = model(ids, link).detach().clone()
+    e = model.explain(ids, link)
+    assert not any(t.requires_grad for t in e if isinstance(t, torch.Tensor))
+    assert all(p.grad is None for p in model.parameters())
+    assert torch.equal(model(ids, link), before)
+
+
+@pytest.mark.parametrize("options", [{"mask_padding": True}, {"average_after_relu": True}, {"gamma_mode": "bounded"},
+                                     {"gamma_mode": "free"}, {"use_beta": False}])
+def test_explain_works_with_every_option(options):
+    model = FiLMTextCNN(embedding(), **options).eval()
+    randomize_generator(model, std=0.5)
+    ids, link = batch()
+    e = model.explain(ids, link)
+    assert tuple(e.lift.shape) == (8, FILTERS) and torch.equal(e.pooled, model.encode(ids, link))
+    if not options.get("use_beta", True):
+        assert (e.beta == 0).all()
+
+
+def test_at_the_start_positions_and_values_match_the_text_encoders_on_a_real_fold():
+    """The existing explanation code reads (pooled, position) from TextEncoder.encode_with_positions; E2 gives the same."""
+    from src.config import CROWD_PILOT_PATH
+    from src.data.split_crowd import load_fold
+    from src.unified import text_cnn as tc
+    from src.unified.film_inputs import link_inputs
+
+    dataset = tc.dataset_path(True)
+    checkpoint = tc.model_dir(dataset) / "phase_a_seed42_fold0.pt"
+    if not (tc.ROOT / CROWD_PILOT_PATH).exists() or not checkpoint.exists() or not checkpoint.with_suffix(".json").exists():
+        pytest.skip("the synthetic pilot files are not on this machine")
+    cnn, vocab, _ = tc.load_phase_a(checkpoint)
+    _, _, seq_len = tc.fold_text_setup(dataset, 42, 0)
+    token_ids, _ = tc.tensors(load_fold(42, 0, pilot=True)["val"], vocab, seq_len)
+    link = torch.tensor(link_inputs(42, 0, pilot=True)["val"].stack("full"))
+    model = FiLMTextCNN(cnn.embedding)
+    model.load_state_dict({k: v for k, v in cnn.state_dict().items() if k.startswith(("embedding.", "conv."))}, strict=False)
+    model.eval()
+    cnn.eval()
+    with torch.no_grad():
+        mine, mine_position = model.encode_with_positions(token_ids, link)
+        theirs, theirs_position = cnn.encode_with_positions(token_ids)
+    assert torch.equal(mine, theirs) and torch.equal(mine_position, theirs_position)

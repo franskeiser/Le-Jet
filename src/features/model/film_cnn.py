@@ -1,4 +1,6 @@
 # src/features/model/film_cnn.py
+from typing import NamedTuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,8 +10,33 @@ from src.config import DENSE_UNITS, KERNEL_SIZE, NUM_FILTERS
 # The three numbers the Link RF gives E2 for each message, in this order (src/unified/film_inputs.py E2_LINK).
 LINK_DIM = 3
 
-# How gamma is made from the generator's output (decision D2). "free" is the default: gamma = 1 + delta, unbounded, as in the
-# FiLM paper. "bounded" is the artifact's version, gamma = 1 + tanh(delta), between 0 and 2; it is kept as an ablation.
+class FilterExplanation(NamedTuple):
+    """What the link did to each filter of each message (FiLMTextCNN.explain). Every field is (batch, filters) unless noted.
+
+    pooled            the value the model uses for the filter, after the link adjusted it
+    position          where the winning 3-word window starts
+    window_ids        (batch, filters, kernel) the token ids of that window
+    window_has_words  False if the winning window is all padding: then the filter's strength came from the link (beta)
+                      and the filter's bias, not from a phrase in the message
+    gamma, beta       the link's volume and nudge for this filter
+    plain_pooled      the same filter's value with no link (gamma = 1, beta = 0): what the plain text CNN would use
+    plain_position    where its winning window would have been
+    lift              pooled - plain_pooled: above 0 the link raised the filter, below 0 it lowered it
+    """
+
+    pooled: torch.Tensor
+    position: torch.Tensor
+    window_ids: torch.Tensor
+    window_has_words: torch.Tensor
+    gamma: torch.Tensor
+    beta: torch.Tensor
+    plain_pooled: torch.Tensor
+    plain_position: torch.Tensor
+    lift: torch.Tensor
+
+
+# How gamma is made from the generator's output (decision D2, changed 2026-10-20). "bounded" is the default: gamma = 1 +
+# tanh(delta), between 0 and 2. "free" is gamma = 1 + delta, unbounded, as in the FiLM paper; it is kept as an ablation.
 GAMMA_MODES = ("free", "bounded")
 
 
@@ -26,7 +53,7 @@ class FiLMTextCNN(nn.Module):
     `embedding` and `conv` are named like TextEncoder's, so a trained text CNN's weights load into them directly.
 
     Options (all default to the plan's choice):
-      gamma_mode          "free": gamma = 1 + delta (D2 default); "bounded": gamma = 1 + tanh(delta), between 0 and 2.
+      gamma_mode          "bounded": gamma = 1 + tanh(delta), between 0 and 2 (D2 default); "free": gamma = 1 + delta.
       mask_padding        False: the Conv average is over all positions (D5 default). True: only over positions whose
                           3-word window holds at least one real word, so the average does not depend on message length.
       average_after_relu  False: the Conv average is taken before ReLU (D5 default). True: over ReLU(x), so negative
@@ -36,7 +63,7 @@ class FiLMTextCNN(nn.Module):
     """
 
     def __init__(self, embedding_layer: nn.Embedding, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
-                 link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, gamma_mode: str = "free",
+                 link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, gamma_mode: str = "bounded",
                  mask_padding: bool = False, average_after_relu: bool = False, use_beta: bool = True):
         super().__init__()
         if gamma_mode not in GAMMA_MODES:
@@ -90,21 +117,50 @@ class FiLMTextCNN(nn.Module):
         gamma = 1.0 + (torch.tanh(delta_gamma) if self.gamma_mode == "bounded" else delta_gamma)
         return gamma, beta
 
+    def _pool(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> tuple:
+        # The one place the FiLM step and the pooling are done, so encode(), encode_with_positions() and explain() cannot
+        # disagree. Returns (pooled, position, x, gamma, beta): the pooled numbers (batch, filters), the start of each
+        # filter's winning window, the Conv scores before FiLM, and gamma and beta.
+        x, average = self.conv_features(token_ids)
+        gamma, beta = self.film_parameters(link, average)
+        adjusted = gamma.unsqueeze(2) * x + beta.unsqueeze(2)          # FiLM, before ReLU, at every position
+        pooled, position = F.relu(adjusted).max(dim=2)                 # the same value adaptive_max_pool1d gives
+        if text_keep is not None:
+            pooled = pooled * text_keep.to(pooled.dtype).unsqueeze(1)
+        return pooled, position, x, gamma, beta
+
     def encode(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
         # The pooled text numbers (batch, filters), after the link has adjusted the filters.
         # text_keep: optional (batch,) of 1 / 0. A 0 hides that message's text numbers (modality dropout, training only).
-        x, average = self.conv_features(token_ids)
-        gamma, beta = self.film_parameters(link, average)
-        x = gamma.unsqueeze(2) * x + beta.unsqueeze(2)                 # FiLM, before ReLU, at every position
-        pooled = F.adaptive_max_pool1d(F.relu(x), output_size=1).squeeze(-1)
-        if text_keep is not None:
-            pooled = pooled * text_keep.to(pooled.dtype).unsqueeze(1)
-        return self.dropout_pool(pooled)
+        return self.dropout_pool(self._pool(token_ids, link, text_keep)[0])
 
     def forward(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
         # Raw logits (batch, 2); no Softmax here, as in TextEncoder (the loss applies it).
         features = self.encode(token_ids, link, text_keep)
         return self.output(self.dropout_head(F.relu(self.dense(features))))
+
+    def encode_with_positions(self, token_ids: torch.Tensor, link: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # Explainability-only sibling of encode(), with the same contract as TextEncoder.encode_with_positions() plus the
+        # link: returns the SAME (batch, filters) pooled numbers encode() gives, and each filter's winning window start
+        # (batch, filters), so serving's explain_text.py can point back at the words. It keeps the autograd graph (the
+        # explanation there is gradient x input). Never called from forward() or training.
+        pooled, position = self._pool(token_ids, link)[:2]
+        return self.dropout_pool(pooled), position
+
+    @torch.no_grad()
+    def explain(self, token_ids: torch.Tensor, link: torch.Tensor) -> "FilterExplanation":
+        # What the link did to each filter of each message, for the sentence "the link raised these filters".
+        # Read-only: no gradients, and it does not change what the model predicts.
+        pooled, position, x, gamma, beta = self._pool(token_ids, link)
+        plain_pooled, plain_position = F.relu(x).max(dim=2)            # the same filters with gamma = 1 and beta = 0
+        steps = torch.arange(self.kernel_size, device=position.device)
+        index = (position.unsqueeze(-1) + steps).clamp(max=token_ids.shape[1] - 1)             # (batch, filters, k)
+        window_ids = token_ids.unsqueeze(1).expand(-1, self.num_filters, -1).gather(2, index)
+        pad = self.embedding.padding_idx
+        has_words = torch.ones_like(position, dtype=torch.bool) if pad is None else (window_ids != pad).any(dim=2)
+        return FilterExplanation(pooled=pooled, position=position, window_ids=window_ids, window_has_words=has_words,
+                                 gamma=gamma, beta=beta, plain_pooled=plain_pooled, plain_position=plain_position,
+                                 lift=pooled - plain_pooled)
 
     def parameter_groups(self, weight_decay: float, generator_weight_decay: float | None = None) -> list[dict]:
         # Optimizer groups: L2 decay on Dense 64's weights, as for every model of the study, and on the generator's weights
