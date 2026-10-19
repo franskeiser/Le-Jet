@@ -37,13 +37,23 @@ goes to the smaller k); the final k is the SMALLEST k whose mean is at least the
 standard error. So a smaller, faster model wins when the accuracy gap is within noise (RQ2). One k for every
 seed and fold. Re-run after the train step changes (e.g. a new ranking rule).
 
-Writes experiments/c_prune/<dataset>/fusion/build_summary.csv (build), train_summary.csv (train) and
-final_k.json (choose: the rule, the per-k numbers, the chosen k).
+Step 4, save: per seed, fold and k, a sidecar c_prune_seed<S>_fold<F>_k<K>.json next to the checkpoint, so the
+model can be rebuilt and trusted from it alone: keep_idx, the ranking rule, whether this k is the chosen final
+k, the architecture (incl. the 40 link inputs in order), the recipe, the trainable parameters, the val metrics,
+and the file names + sha256 of the checkpoint, gate mask, Link RF (link_rf_seed<S>_fold<F>.joblib, saved in
+Phase 3), Phase A checkpoint and embedding. load_c_prune rebuilds the model and the Link RF and refuses the
+bundle when any of those files changed; predict_messages runs raw rows (text + 37 link features) through both.
+Checked for every model: the saved weights repeat the train step's val metrics, and the rebuilt bundle, fed the
+RAW val rows (the saved Link RF making the 40 numbers again), repeats them exactly.
+
+Writes experiments/c_prune/<dataset>/fusion/build_summary.csv (build), train_summary.csv (train),
+final_k.json (choose: the rule, the per-k numbers, the chosen k) and save_summary.csv (save).
 
 Usage:
     python -m src.unified.fusion --pilot build
     python -m src.unified.fusion --pilot train
     python -m src.unified.fusion --pilot choose
+    python -m src.unified.fusion --pilot save
 """
 from __future__ import annotations
 
@@ -55,21 +65,29 @@ from datetime import date
 from pathlib import Path
 from typing import Dict, List
 
+import joblib
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss, precision_recall_fscore_support
+from sklearn.metrics import (
+    accuracy_score, balanced_accuracy_score, f1_score, log_loss, precision_recall_fscore_support,
+)
 from torch import nn
 
 from src.config import (
     ARTIFACTS_ROOT, CROWD_N_FOLDS, DENSE_UNITS, DENSE_WEIGHT_DECAY, LABEL_SMOOTHING, PRUNE_KEEP, SEEDS,
 )
 from src.data.split_crowd import load_fold
+from src.features.model.cnn_encoder import TextEncoder
 from src.features.model.fusion_classifier import PrunedFusionClassifier
 from src.features.model.fusion_data import class_weights
-from src.unified.gate_rf import pruned_phase_a
-from src.unified.link_lane import LANE, load_lane
-from src.unified.text_cnn import BATCH_SIZE, EPOCHS, LR, PATIENCE, dataset_path, model_dir, tensors, trainable_parameters
+from src.unified.gate_rf import gate_mask_path, load_gate_mask, pruned_phase_a
+from src.unified.link_lane import LANE, lane_numbers, load_lane
+from src.unified.prepare_web_37 import FEATURES_37
+from src.unified.text_cnn import (
+    BATCH_SIZE, EPOCHS, LR, PATIENCE, ROOT, dataset_path, frozen_embedding, model_dir, sha256, tensors,
+    trainable_parameters,
+)
 
 P_PAGE_HIDDEN, P_TEXT_HIDDEN = 0.25, 0.10
 
@@ -146,10 +164,14 @@ def evaluate(model: PrunedFusionClassifier, ids: torch.Tensor, link: torch.Tenso
 
 def fine_tune(model: PrunedFusionClassifier, train: tuple, val: tuple, seed: int, checkpoint: Path,
               epochs: int = EPOCHS, lr: float = LR, patience: int = PATIENCE,
-              weight_decay: float = DENSE_WEIGHT_DECAY) -> dict:
+              weight_decay: float = DENSE_WEIGHT_DECAY, p_page_hidden: float | None = None,
+              p_text_hidden: float | None = None) -> dict:
     """Fine-tunes `model` in place; the best epoch is saved to `checkpoint` and loaded back. Returns its metrics.
     train = (token ids, full link numbers, blank-page link numbers, labels); val = (token ids, link numbers, labels).
+    The modality dropout rates default to P_PAGE_HIDDEN / P_TEXT_HIDDEN (a text-only model passes 0 for the text).
     """
+    p_page = P_PAGE_HIDDEN if p_page_hidden is None else p_page_hidden
+    p_text = P_TEXT_HIDDEN if p_text_hidden is None else p_text_hidden
     ids, link_full, link_blank, y = train
     assert not model.encoder.embedding.weight.requires_grad, "the embedding must stay frozen"
     torch.manual_seed(seed)                                   # the dropout layers' draws
@@ -159,9 +181,9 @@ def fine_tune(model: PrunedFusionClassifier, train: tuple, val: tuple, seed: int
     best, best_state, best_epoch, bad, epoch = -1.0, None, -1, 0, -1
     for epoch in range(epochs):
         model.train()
-        page_hidden = torch.rand(len(y), generator=gen) < P_PAGE_HIDDEN
+        page_hidden = torch.rand(len(y), generator=gen) < p_page
         link = torch.where(page_hidden[:, None], link_blank, link_full)
-        text_keep = (torch.rand(len(y), generator=gen) >= P_TEXT_HIDDEN).float()
+        text_keep = (torch.rand(len(y), generator=gen) >= p_text).float()
         order = torch.randperm(len(y), generator=gen)
         for start in range(0, len(order), BATCH_SIZE):
             batch = order[start:start + BATCH_SIZE]
@@ -257,7 +279,115 @@ def run_choose(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOL
                           "chosen": int(k) == decision["k"]} for k, v in decision["per_k"].items()])
 
 
-STEPS = {"build": run_build, "train": run_train, "choose": run_choose}
+def sidecar_path(seed: int, fold: int, k: int, pilot: bool = False) -> Path:
+    return checkpoint_path(seed, fold, k, pilot).with_suffix(".json")
+
+
+def write_final_sidecar(seed: int, fold: int, k: int, pilot: bool = False) -> dict:
+    """Step 4: what is needed to rebuild and trust one fine-tuned model, next to its checkpoint."""
+    models = model_dir(dataset_path(pilot))
+    checkpoint = checkpoint_path(seed, fold, k, pilot)
+    phase_a_pt = models / f"phase_a_seed{seed}_fold{fold}.pt"
+    phase_a = json.loads(phase_a_pt.with_suffix(".json").read_text(encoding="utf-8"))
+    mask_file = gate_mask_path(seed, fold, pilot)
+    link_rf = models / f"link_rf_seed{seed}_fold{fold}.joblib"
+    keep = load_gate_mask(seed, fold, k, pilot)
+    model, _, word_to_idx, _ = load_c_prune_weights(checkpoint, phase_a, keep)
+    _, val = train_inputs(seed, fold, word_to_idx, phase_a["seq_len_l"], pilot)
+    emb_dir = ROOT / phase_a["embeddings_dir"]
+    sidecar = {
+        "seed": seed, "fold": fold, "k": k, "final": k == final_k(pilot), "dataset": dataset_path(pilot).name,
+        "keep_idx": keep.tolist(),
+        "ranking_rule": json.loads(mask_file.read_text(encoding="utf-8"))["ranking_rule"],
+        "architecture": {"num_filters_full": phase_a["num_filters"], "k": k, "kernel_size": phase_a["kernel_size"],
+                         "embedding_dim": model.encoder.embedding.embedding_dim, "dense_units": DENSE_UNITS,
+                         "seq_len_l": phase_a["seq_len_l"], "vocab_size": phase_a["vocab_size"],
+                         "link_inputs": list(LANE)},
+        "files": {"checkpoint": checkpoint.name, "gate_mask": mask_file.name, "link_rf": link_rf.name,
+                  "phase_a": phase_a_pt.name, "embeddings_dir": phase_a["embeddings_dir"]},
+        "sha256": {checkpoint.name: sha256(checkpoint), mask_file.name: sha256(mask_file),
+                   link_rf.name: sha256(link_rf), phase_a_pt.name: sha256(phase_a_pt),
+                   "vocab.json": sha256(emb_dir / "vocab.json"),
+                   "embedding_matrix.npy": sha256(emb_dir / "embedding_matrix.npy")},
+        "recipe": {"optimizer": "Adam", "lr": LR, "dense_weight_decay": DENSE_WEIGHT_DECAY, "max_epochs": EPOCHS,
+                   "patience": PATIENCE, "monitor": "val balanced accuracy", "batch_size": BATCH_SIZE,
+                   "label_smoothing": LABEL_SMOOTHING, "class_weights": True, "p_page_hidden": P_PAGE_HIDDEN,
+                   "p_text_hidden": P_TEXT_HIDDEN, "embedding": "frozen"},
+        "trainable_parameters": trainable_parameters(model),
+        "val": evaluate(model, *val),
+    }
+    sidecar_path(seed, fold, k, pilot).write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
+    return sidecar
+
+
+def load_c_prune_weights(checkpoint: Path, phase_a: dict, keep) -> tuple:
+    """(model in eval mode, keep_idx, word_to_idx, phase_a) from a checkpoint and the Phase A settings."""
+    embedding, word_to_idx = frozen_embedding(ROOT / phase_a["embeddings_dir"])
+    encoder = TextEncoder(embedding, len(keep), phase_a["kernel_size"])
+    model = PrunedFusionClassifier(encoder, keep, url_dim=len(LANE), dense_units=DENSE_UNITS)
+    model.load_state_dict(torch.load(checkpoint, map_location="cpu"))   # strict: every key must match
+    assert model.keep_idx.tolist() == list(keep), f"{checkpoint.name} holds another keep_idx"
+    return model.eval(), keep, word_to_idx, phase_a
+
+
+def load_c_prune(seed: int, fold: int, k: int | None = None, pilot: bool = False) -> tuple:
+    """(model, Link RF, word_to_idx, sidecar), rebuilt from the sidecar alone; k defaults to the chosen final k.
+    Refuses the bundle when any file it names changed since it was saved."""
+    k = final_k(pilot) if k is None else k
+    sidecar = json.loads(sidecar_path(seed, fold, k, pilot).read_text(encoding="utf-8"))
+    models, emb_dir = model_dir(dataset_path(pilot)), ROOT / sidecar["files"]["embeddings_dir"]
+    for name, digest in sidecar["sha256"].items():
+        path = emb_dir / name if name in ("vocab.json", "embedding_matrix.npy") else models / name
+        if sha256(path) != digest:
+            raise ValueError(f"{path} changed since the model was saved")
+    assert sidecar["architecture"]["link_inputs"] == list(LANE), "the link lane's 40 inputs changed order"
+    keep = load_gate_mask(seed, fold, k, pilot)
+    assert keep.tolist() == sidecar["keep_idx"], "the gate mask and the sidecar disagree"
+    phase_a = {key: sidecar["architecture"][key] for key in ("kernel_size", "seq_len_l")}
+    phase_a["embeddings_dir"] = sidecar["files"]["embeddings_dir"]
+    model, _, word_to_idx, _ = load_c_prune_weights(models / sidecar["files"]["checkpoint"], phase_a, keep)
+    link_rf = joblib.load(models / sidecar["files"]["link_rf"])
+    return model, link_rf, word_to_idx, sidecar
+
+
+def predict_messages(model: PrunedFusionClassifier, link_rf: dict, word_to_idx: Dict[str, int], seq_len: int,
+                     rows: pd.DataFrame) -> np.ndarray:
+    """P(smishing) of raw rows (sms_text + the 37 link features + page_fetched): the Link RF makes the 40 numbers,
+    then the model reads text and numbers. The whole path of a new message, as in the app."""
+    assert link_rf["features"] == list(FEATURES_37), "the Link RF reads other features"
+    link = torch.tensor(lane_numbers(link_rf["model"], rows)[LANE].to_numpy(), dtype=torch.float32)
+    ids, _ = tensors(rows.assign(label="smishing"), word_to_idx, seq_len)   # the label is not used here
+    return model.predict_proba(ids, link)[:, 1].numpy()
+
+
+def run_save(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    train_summary = pd.read_csv(out_dir(dataset_path(pilot)) / "train_summary.csv").set_index(["seed", "fold", "k"])
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            val_rows = load_fold(seed, fold, pilot=pilot)["val"]
+            y = (val_rows["label"] == "smishing").to_numpy().astype(int)
+            for k in PRUNE_KEEP:
+                saved = write_final_sidecar(seed, fold, k, pilot)
+                # The metrics of the saved weights equal the train step's (rounded there to 4 decimals).
+                recorded = train_summary.loc[(seed, fold, k)]
+                assert all(abs(saved["val"][m] - recorded[m]) < 6e-5 for m in saved["val"]), "not the trained model"
+                # Rebuilt from the sidecar alone, from the RAW val rows through the saved Link RF.
+                model, link_rf, word_to_idx, sidecar = load_c_prune(seed, fold, k, pilot)
+                p = predict_messages(model, link_rf, word_to_idx, sidecar["architecture"]["seq_len_l"], val_rows)
+                again = {"val_f1": f1_score(y, p >= 0.5, zero_division=0), "val_log_loss": log_loss(y, p, labels=[0, 1])}
+                gap = max(abs(again[m] - saved["val"][m]) for m in again)
+                assert gap < 1e-9, f"seed {seed} fold {fold} k {k}: the rebuilt model differs (gap {gap})"
+                rows.append({"seed": seed, "fold": fold, "k": k, "final": saved["final"],
+                             "val_f1": round(saved["val"]["val_f1"], 4), "rebuilt_gap": gap,
+                             "sidecar": sidecar_path(seed, fold, k, pilot).name})
+            print(f"seed {seed} fold {fold}: saved and rebuilt k = {', '.join(map(str, PRUNE_KEEP))}")
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out_dir(dataset_path(pilot)) / "save_summary.csv", index=False)
+    return summary
+
+
+STEPS = {"build": run_build, "train": run_train, "choose": run_choose, "save": run_save}
 
 
 def main(argv: List[str] | None = None) -> None:

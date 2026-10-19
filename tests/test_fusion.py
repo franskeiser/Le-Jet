@@ -207,3 +207,65 @@ def test_choose_k_tie_goes_to_the_smaller_k():
 
 def test_choose_k_when_the_smallest_is_best():
     assert fu.choose_k(_summary({48: 0.979, 32: 0.979, 16: 0.985}, spread=0.02))["k"] == 16
+
+
+def _saved_model(tmp_path, monkeypatch):
+    """A fused model saved as a checkpoint under a temporary root, with its embedding folder."""
+    import json
+    monkeypatch.setattr(fu, "ROOT", tmp_path)
+    emb_dir = tmp_path / "emb"
+    emb_dir.mkdir()
+    model, word_to_idx = _model()
+    (emb_dir / "vocab.json").write_text(json.dumps(VOCAB), encoding="utf-8")
+    np.save(emb_dir / "embedding_matrix.npy", model.encoder.embedding.weight.detach().numpy())
+    checkpoint = tmp_path / "c.pt"
+    torch.save(model.state_dict(), checkpoint)
+    return model, checkpoint, {"embeddings_dir": "emb", "kernel_size": 3}
+
+
+def test_saved_weights_rebuild_the_same_model(tmp_path, monkeypatch):
+    model, checkpoint, phase_a = _saved_model(tmp_path, monkeypatch)
+    again, _, _, _ = fu.load_c_prune_weights(checkpoint, phase_a, KEEP)
+    assert not again.training and again.encoder.temp_head is None
+    assert all(torch.equal(v, again.state_dict()[k]) for k, v in model.state_dict().items())
+
+
+def test_saved_weights_refuse_another_keep_idx(tmp_path, monkeypatch):
+    _, checkpoint, phase_a = _saved_model(tmp_path, monkeypatch)
+    with pytest.raises(AssertionError, match="holds another keep_idx"):
+        fu.load_c_prune_weights(checkpoint, phase_a, [1, 5, 9, 33, 63])
+
+
+def test_load_refuses_a_bundle_whose_files_changed(tmp_path, monkeypatch):
+    import json
+    from src.unified.text_cnn import sha256
+    models = tmp_path / "models"
+    models.mkdir()
+    monkeypatch.setattr(fu, "model_dir", lambda dataset: models)
+    monkeypatch.setattr(fu, "ROOT", tmp_path)
+    (models / "link_rf_seed42_fold0.joblib").write_bytes(b"forest")
+    sidecar = {"files": {"embeddings_dir": "emb"},
+               "sha256": {"link_rf_seed42_fold0.joblib": sha256(models / "link_rf_seed42_fold0.joblib")}}
+    (models / "c_prune_seed42_fold0_k16.json").write_text(json.dumps(sidecar), encoding="utf-8")
+    (models / "link_rf_seed42_fold0.joblib").write_bytes(b"retrained forest")
+    with pytest.raises(ValueError, match="changed since the model was saved"):
+        fu.load_c_prune(42, 0, 16, pilot=True)
+
+
+def test_predict_messages_runs_raw_rows_through_the_link_rf_then_the_model():
+    from sklearn.ensemble import RandomForestClassifier
+    from src.unified.link_lane import lane_numbers
+    from src.unified.prepare_web_37 import FEATURES_37
+    model, word_to_idx = _model()
+    model.eval()
+    rng = np.random.default_rng(0)
+    rows = pd.DataFrame(rng.normal(size=(6, len(FEATURES_37))), columns=FEATURES_37)
+    rows["page_fetched"] = [1, 0, 1, 1, 0, 1]
+    rows["sms_text"] = ["verify now your account is locked https://a.xyz", "your statement is ready"] * 3
+    rf = RandomForestClassifier(n_estimators=5, random_state=0).fit(rows[FEATURES_37], [1, 0] * 3)
+    p = fu.predict_messages(model, {"model": rf, "features": list(FEATURES_37)}, word_to_idx, 8, rows)
+    link = torch.tensor(lane_numbers(rf, rows)[LANE].to_numpy(), dtype=torch.float32)
+    ids, _ = fu.tensors(rows.assign(label="smishing"), word_to_idx, 8)
+    assert np.array_equal(p, model.predict_proba(ids, link)[:, 1].numpy()) and p.shape == (6,)
+    with pytest.raises(AssertionError, match="reads other features"):
+        fu.predict_messages(model, {"model": rf, "features": list(FEATURES_37)[::-1]}, word_to_idx, 8, rows)

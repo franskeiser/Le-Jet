@@ -1,0 +1,4 @@
+seed,comparison,b,c,p_exact
+42,C-prune (k = 16) vs plain CNN,159,11,8.849720830997581e-35
+123,C-prune (k = 16) vs plain CNN,150,9,4.134551281994592e-34
+2024,C-prune (k = 16) vs plain CNN,166,10,1.3447875112772576e-37
