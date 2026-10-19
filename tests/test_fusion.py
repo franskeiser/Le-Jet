@@ -113,3 +113,68 @@ def test_fusion_inputs_refuse_missing_or_extra_link_rows(lane_ids):
     part = pd.DataFrame({"message_id": ["m1", "m2", "m3"], "label": ["smishing"] * 3, "sms_text": ["verify now"] * 3})
     with pytest.raises(ValueError, match="do not match one to one"):
         fu.fusion_inputs(part, _lane(lane_ids), word_to_idx, seq_len=4)
+
+
+def test_text_keep_hides_the_text_of_chosen_messages_only():
+    model, _ = _model()
+    model.eval()
+    torch.manual_seed(1)
+    ids, link = torch.randint(0, len(VOCAB), (4, 10)), torch.randn(4, 40)
+    keep = torch.tensor([1.0, 0.0, 1.0, 0.0])
+    with torch.no_grad():
+        out = model(ids, link, keep)
+        hidden = model.dense2(torch.relu(model.dense1(torch.cat([torch.zeros(4, 5), link], dim=1))))
+        assert torch.equal(out[[0, 2]], model(ids, link)[[0, 2]])     # kept rows: as without text_keep
+        assert torch.allclose(out[[1, 3]], hidden[[1, 3]])           # hidden rows: the k filter scores are 0
+
+
+def _train_data(word_to_idx, n=40):
+    part = lambda m: pd.DataFrame({"sms_text": ["verify now your account is locked", "your statement is ready"] * m,
+                                   "label": ["smishing", "legitimate"] * m})
+    from src.unified.text_cnn import tensors
+    ids, y = tensors(part(n // 2), word_to_idx, 8)
+    vids, vy = tensors(part(5), word_to_idx, 8)
+    rng = np.random.default_rng(0)
+    link = lambda m: torch.tensor(rng.normal(size=(m, 40)), dtype=torch.float32)
+    blank = link(n)
+    blank[:, LANE.index("page_missing")] = 1.0
+    return (ids, link(n), blank, y), (vids, link(10), vy)
+
+
+def test_fine_tune_learns_keeps_the_embedding_frozen_and_saves_the_best_epoch(tmp_path):
+    model, word_to_idx = _model()
+    frozen = model.encoder.embedding.weight.detach().clone()
+    # About the pilot's train size: 13 batches an epoch (40 rows would be one step an epoch, too few to learn).
+    train, val = _train_data(word_to_idx, n=800)
+    metrics = fu.fine_tune(model, train, val, seed=42, checkpoint=tmp_path / "c.pt", epochs=5)
+    assert torch.equal(model.encoder.embedding.weight, frozen)
+    saved = torch.load(tmp_path / "c.pt")
+    assert all(torch.equal(saved[k], v) for k, v in model.state_dict().items()) and not model.training
+    assert metrics["val_f1"] == 1.0 and 0 <= metrics["best_epoch"] < metrics["epochs_run"] <= 5
+    assert set(metrics) >= {"val_balanced_accuracy", "val_log_loss", "val_precision", "val_recall"}
+
+
+def test_fine_tune_is_repeatable(tmp_path):
+    states = []
+    for name in ("a.pt", "b.pt"):
+        model, word_to_idx = _model()
+        fu.fine_tune(model, *_train_data(word_to_idx), seed=7, checkpoint=tmp_path / name, epochs=3)
+        states.append(torch.load(tmp_path / name))
+    assert all(torch.equal(states[0][k], states[1][k]) for k in states[0])
+
+
+def test_hidden_text_gives_the_conv_nothing_to_learn(tmp_path, monkeypatch):
+    monkeypatch.setattr(fu, "P_TEXT_HIDDEN", 1.0)    # every message's text hidden, every epoch
+    model, word_to_idx = _model()
+    conv = model.encoder.conv.weight.detach().clone()
+    fu.fine_tune(model, *_train_data(word_to_idx), seed=42, checkpoint=tmp_path / "c.pt", epochs=2)
+    assert torch.equal(model.encoder.conv.weight, conv)
+
+
+def test_hidden_pages_train_on_the_blank_page_numbers_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(fu, "P_PAGE_HIDDEN", 1.0)    # every page hidden: the inspected numbers are never read
+    model, word_to_idx = _model()
+    (ids, _, blank, y), val = _train_data(word_to_idx)
+    poisoned = torch.full_like(blank, float("nan"))  # any use of them would turn the weights into NaN
+    fu.fine_tune(model, (ids, poisoned, blank, y), val, seed=42, checkpoint=tmp_path / "c.pt", epochs=2)
+    assert all(torch.isfinite(p).all() for p in model.parameters())

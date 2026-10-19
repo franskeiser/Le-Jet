@@ -156,7 +156,8 @@ class PrunedFusionClassifier(UngatedFusionClassifier):
     #     the explanations (Phase 8) and to refuse a checkpoint of another k on load;
     #   * the Phase A temporary head is dropped from the encoder (set to None, so the encoder passed in loses
     #     it): the fused model never calls it, and it must not count as a trainable parameter (section 5.3);
-    #   * parameter_groups: weight decay on Dense 64's weights only.
+    #   * parameter_groups: weight decay on Dense 64's weights only;
+    #   * forward's optional text_keep, for modality dropout while fine-tuning.
     def __init__(self, encoder: TextEncoder, keep_idx, url_dim: int, dense_units: int = DENSE_UNITS):
         keep = torch.as_tensor(np.asarray(keep_idx), dtype=torch.long)
         if len(keep) != encoder.conv.out_channels:
@@ -164,6 +165,17 @@ class PrunedFusionClassifier(UngatedFusionClassifier):
         super().__init__(encoder, cnn_dim=len(keep), url_dim=url_dim, dense_units=dense_units)
         self.encoder.temp_head = None
         self.register_buffer('keep_idx', keep)
+
+    def forward(self, token_ids: torch.Tensor, url_features: torch.Tensor,
+                text_keep: torch.Tensor | None = None) -> torch.Tensor:
+        # UngatedFusionClassifier's forward, plus modality dropout's text half for training only: text_keep is
+        # (batch,) 1 = text kept, 0 = hidden (its k filter scores set to 0, as run_fused_lean.fit_head does).
+        # Never passed at validation, test or live time.
+        cnn_features = self.encoder.encode(token_ids)
+        if text_keep is not None:
+            cnn_features = cnn_features * text_keep[:, None]
+        h = torch.relu(self.dense1(torch.cat([cnn_features, url_features], dim=1)))
+        return self.dense2(self.dropout(h))
 
     def parameter_groups(self, weight_decay: float) -> list[dict]:
         # For torch.optim.Adam(groups, lr=...): Adam's weight_decay is L2 added to the gradient. Only the
