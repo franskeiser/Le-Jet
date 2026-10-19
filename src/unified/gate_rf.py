@@ -60,6 +60,13 @@ the step 4 ranking, in ascending id order (kept position i of the pruned CNN is 
 Checked: each kept set lies inside the larger ones (the same ranking cut shorter). load_keep_idx gives one
 set to the later phases.
 
+Step 9, mask: the gate mask sidecar per seed and fold, next to its Phase A checkpoint, for k = 48, 32, 16.
+It holds keep_idx and the gate mask (64 numbers, 1 kept and 0 removed) per k, the full ranking, the ranking
+rule (RANKING_RULE), the Gate RF settings, and the sha256 of the Phase A checkpoint and of the ranking files.
+load_gate_mask refuses it when any of those files changed (a filter id only means something for the CNN the
+mask was made from), and checks it agrees with itself: the mask's 1s are keep_idx, keep_idx is the top k of the
+ranking. Every later step reads keep_idx from here (pruned_phase_a included). Run it before prune.
+
 Step 6, prune: cnn_encoder.prune_encoder builds the k-filter CNN from the Phase A CNN and keep_idx: the kept
 filters' Conv rows and biases, and the matching columns of the layer reading them (prune_input_columns; here
 the temporary head, in Phase 6 any Dense that reads [filters | 40 link numbers]). pruned_phase_a gives one to
@@ -86,7 +93,9 @@ groups, the largest, and how many groups (and the filters in them) are clearly a
 ranking_compare.csv (every seed, fold, k and order) and ranking_compare_summary.csv (per k and order: mean
 val log-loss and F1, and in how many seed-folds group_turns has the lower log-loss); keep_summary.csv (per
 seed, fold and k: keep_idx, and how many of the groups and dead filters it holds); prune_summary.csv (per
-seed, fold and k: the pruned CNN's trainable parameters against the full one's, and the step 7 gaps).
+seed, fold and k: the pruned CNN's trainable parameters against the full one's, and the step 7 gaps);
+mask_summary.csv. And to models/c_prune/<dataset>/:
+    gate_mask_seed<S>_fold<F>.json        the step 9 sidecar                                          (mask)
 
 Usage:
     python -m src.unified.gate_rf --pilot scores
@@ -95,12 +104,14 @@ Usage:
     python -m src.unified.gate_rf --pilot rank
     python -m src.unified.gate_rf --pilot compare
     python -m src.unified.gate_rf --pilot keep
-    python -m src.unified.gate_rf --pilot prune
+    python -m src.unified.gate_rf --pilot mask
+    python -m src.unified.gate_rf --pilot prune      (reads the masks)
 """
 from __future__ import annotations
 
 import argparse
 import copy
+import json
 from pathlib import Path
 from typing import List
 
@@ -120,7 +131,7 @@ from src.data.split_crowd import load_fold, make_groups
 from src.features.model.cnn_encoder import TextEncoder, prune_encoder
 from src.features.model.rf_extractor import fit_rf
 from src.features.model.rf_gating_module import select_top_k
-from src.unified.text_cnn import dataset_path, load_phase_a, model_dir, tensors, trainable_parameters
+from src.unified.text_cnn import dataset_path, load_phase_a, model_dir, sha256, tensors, trainable_parameters
 
 BATCH_SIZE = 512
 GATE_SPLITS = 5
@@ -129,6 +140,9 @@ GATE_TREES = 200
 CORR_THRESHOLD = 0.8
 RANDOM_DRAWS = 20
 ORDERS = ["group_turns", "single", "whole_groups", "reverse", "random"]
+# The ranking rule the gate masks are made with (step 4; locked on the real data's val, Phase 6): group_turns
+# (one filter per group in turns) or single (step 2 alone). After a change, run the mask step again.
+RANKING_RULE = "group_turns"
 
 
 def out_dir(dataset: Path) -> Path:
@@ -458,10 +472,93 @@ def compare_summary(detail: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
+def ranking_inputs(seed: int, fold: int, rule: str, pilot: bool = False) -> List[Path]:
+    """The files one rule's order is made from."""
+    out, name = out_dir(dataset_path(pilot)), f"seed{seed}_fold{fold}.csv"
+    if rule == "group_turns":
+        return [out / f"filter_importance_{name}"]
+    if rule == "single":
+        return [out / f"importance_{name}", out / f"filter_scores_{name}"]
+    raise ValueError(f"unknown ranking rule {rule!r}: use group_turns or single")
+
+
+def ranking_order(seed: int, fold: int, rule: str = None, pilot: bool = False) -> List[int]:
+    """Every filter id once, best first, by `rule` (default RANKING_RULE)."""
+    rule = rule or RANKING_RULE
+    files = ranking_inputs(seed, fold, rule, pilot)
+    if rule == "group_turns":
+        return pd.read_csv(files[0]).sort_values("rank")["filter"].astype(int).tolist()
+    single, dead = pd.read_csv(files[0]), dead_filters(pd.read_csv(files[1]))
+    live = single[~single["filter"].isin(dead)].sort_values(["importance", "filter"], ascending=[False, True])
+    return live["filter"].astype(int).tolist() + sorted(dead)
+
+
 def load_keep_idx(seed: int, fold: int, k: int, pilot: bool = False) -> np.ndarray:
-    """keep_idx of one seed and fold: the top k of its step 4 ranking, ascending ids. For Phases 5-7."""
-    ranking = pd.read_csv(out_dir(dataset_path(pilot)) / f"filter_importance_seed{seed}_fold{fold}.csv")
-    return select_top_k(ranking.sort_values("rank")["filter"], k)
+    """keep_idx of one seed and fold: the top k of its ranking (RANKING_RULE), ascending ids."""
+    return select_top_k(ranking_order(seed, fold, pilot=pilot), k)
+
+
+def gate_mask_path(seed: int, fold: int, pilot: bool = False) -> Path:
+    return model_dir(dataset_path(pilot)) / f"gate_mask_seed{seed}_fold{fold}.json"
+
+
+def write_gate_mask(seed: int, fold: int, pilot: bool = False) -> dict:
+    """Step 9: the gate mask sidecar of one seed and fold, next to its Phase A checkpoint."""
+    checkpoint = model_dir(dataset_path(pilot)) / f"phase_a_seed{seed}_fold{fold}.pt"
+    phase_a = json.loads(checkpoint.with_suffix(".json").read_text(encoding="utf-8"))
+    ranking = ranking_order(seed, fold, pilot=pilot)
+    assert len(ranking) == phase_a["num_filters"], "the ranking and the Phase A CNN differ in filters"
+    keep = {}
+    for k in PRUNE_KEEP:
+        keep_idx = select_top_k(ranking, k)
+        mask = np.zeros(len(ranking), dtype=int)
+        mask[keep_idx] = 1
+        keep[str(k)] = {"keep_idx": keep_idx.tolist(), "gate_mask": mask.tolist()}
+    sidecar = {
+        "seed": seed, "fold": fold, "num_filters": len(ranking), "ranking_rule": RANKING_RULE,
+        "phase_a_checkpoint": checkpoint.name,
+        "gate_rf": {"splits": GATE_SPLITS, "repeats": GATE_REPEATS, "trees": GATE_TREES,
+                    "corr_threshold": CORR_THRESHOLD, "scoring": "log_loss", "grouped_by": "link_domain"},
+        "sha256": {checkpoint.name: sha256(checkpoint),
+                   **{f.relative_to(ARTIFACTS_ROOT).as_posix(): sha256(f)
+                      for f in ranking_inputs(seed, fold, RANKING_RULE, pilot)}},
+        "ranking": ranking,
+        "keep": keep,
+    }
+    gate_mask_path(seed, fold, pilot).write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
+    return sidecar
+
+
+def load_gate_mask(seed: int, fold: int, k: int, pilot: bool = False) -> np.ndarray:
+    """keep_idx from the gate mask sidecar; refuses it if a file it was made from changed or it disagrees inside."""
+    path = gate_mask_path(seed, fold, pilot)
+    sidecar = json.loads(path.read_text(encoding="utf-8"))
+    for name, digest in sidecar["sha256"].items():
+        source = path.parent / name if name == sidecar["phase_a_checkpoint"] else ARTIFACTS_ROOT / name
+        if sha256(source) != digest:
+            raise ValueError(f"{source} changed since the gate mask was made: run the mask step again")
+    if str(k) not in sidecar["keep"]:
+        raise ValueError(f"no gate mask for k = {k} in {path.name} (it has {', '.join(sidecar['keep'])})")
+    keep_idx = np.array(sidecar["keep"][str(k)]["keep_idx"])
+    mask = np.array(sidecar["keep"][str(k)]["gate_mask"])
+    assert np.array_equal(np.flatnonzero(mask), keep_idx), f"{path.name}: gate mask and keep_idx differ"
+    assert np.array_equal(select_top_k(sidecar["ranking"], k), keep_idx), f"{path.name}: keep_idx is not the top {k}"
+    return keep_idx
+
+
+def run_mask(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            write_gate_mask(seed, fold, pilot)
+            for k in PRUNE_KEEP:
+                keep = load_gate_mask(seed, fold, k, pilot)   # read back through every check
+                assert np.array_equal(keep, load_keep_idx(seed, fold, k, pilot))
+                rows.append({"seed": seed, "fold": fold, "k": k, "rule": RANKING_RULE, "kept": len(keep),
+                             "file": gate_mask_path(seed, fold, pilot).name})
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out_dir(dataset_path(pilot)) / "mask_summary.csv", index=False)
+    return summary
 
 
 def run_keep(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
@@ -489,7 +586,7 @@ def pruned_phase_a(seed: int, fold: int, k: int, pilot: bool = False) -> tuple:
     """(k-filter CNN in eval mode, keep_idx, word_to_idx, Phase A sidecar) of one seed and fold. For Phase 6."""
     dataset = dataset_path(pilot)
     cnn, word_to_idx, sidecar = load_phase_a(model_dir(dataset) / f"phase_a_seed{seed}_fold{fold}.pt")
-    keep = load_keep_idx(seed, fold, k, pilot)
+    keep = load_gate_mask(seed, fold, k, pilot)
     return prune_encoder(cnn, keep), keep, word_to_idx, sidecar
 
 
@@ -549,7 +646,7 @@ def run_prune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
 
 
 STEPS = {"scores": run_scores, "importance": run_importance, "groups": run_groups, "rank": run_rank,
-         "compare": run_compare, "keep": run_keep, "prune": run_prune}
+         "compare": run_compare, "keep": run_keep, "mask": run_mask, "prune": run_prune}
 
 
 def main(argv: List[str] | None = None) -> None:

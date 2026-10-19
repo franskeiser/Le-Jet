@@ -7,6 +7,7 @@ Run with:  python -m pytest tests/test_prune.py
 from __future__ import annotations
 
 import copy
+import json
 
 import numpy as np
 import pandas as pd
@@ -171,3 +172,80 @@ def test_keeping_all_columns_leaves_a_fusion_dense_unchanged():
     x = torch.randn(5, 104)
     with torch.no_grad():
         assert torch.equal(same(x), dense(x))
+
+
+def _mask_setup(tmp_path, monkeypatch):
+    """A 6-filter 'Phase A checkpoint' + sidecar and the ranking files, under a temporary root."""
+    models, out = tmp_path / "models", tmp_path / "experiments"
+    models.mkdir()
+    out.mkdir()
+    for name, value in (("ARTIFACTS_ROOT", tmp_path), ("PRUNE_KEEP", [4, 2]), ("RANKING_RULE", "group_turns")):
+        monkeypatch.setattr(gr, name, value)
+    monkeypatch.setattr(gr, "model_dir", lambda dataset: models)
+    monkeypatch.setattr(gr, "out_dir", lambda dataset: out)
+    (models / "phase_a_seed42_fold0.pt").write_bytes(b"weights")
+    (models / "phase_a_seed42_fold0.json").write_text(json.dumps({"num_filters": 6}), encoding="utf-8")
+    pd.DataFrame({"rank": range(6), "filter": [4, 1, 5, 0, 2, 3]}).to_csv(
+        out / "filter_importance_seed42_fold0.csv", index=False)
+    pd.DataFrame({"filter": range(6), "importance": [0.1, 0.5, 0.0, 0.9, 0.2, 0.3]}).to_csv(
+        out / "importance_seed42_fold0.csv", index=False)
+    scores = pd.DataFrame({"message_id": ["a", "b"], "label": [1, 0],
+                           **{f"filter_{i:02d}": [1.0, 0.5] for i in range(6)}})
+    scores["filter_03"] = 0.0   # dead
+    scores.to_csv(out / "filter_scores_seed42_fold0.csv", index=False)
+    return models, out
+
+
+def test_gate_mask_sidecar_round_trip(tmp_path, monkeypatch):
+    models, _ = _mask_setup(tmp_path, monkeypatch)
+    sidecar = gr.write_gate_mask(42, 0, pilot=True)
+    saved = json.loads((models / "gate_mask_seed42_fold0.json").read_text(encoding="utf-8"))
+    assert saved == sidecar and saved["ranking_rule"] == "group_turns" and saved["ranking"] == [4, 1, 5, 0, 2, 3]
+    assert saved["keep"]["4"] == {"keep_idx": [0, 1, 4, 5], "gate_mask": [1, 1, 0, 0, 1, 1]}
+    assert set(saved["sha256"]) == {"phase_a_seed42_fold0.pt", "experiments/filter_importance_seed42_fold0.csv"}
+    assert gr.load_gate_mask(42, 0, 4, pilot=True).tolist() == [0, 1, 4, 5]
+    assert gr.load_gate_mask(42, 0, 2, pilot=True).tolist() == [1, 4]
+
+
+def test_gate_mask_refuses_a_changed_checkpoint(tmp_path, monkeypatch):
+    models, _ = _mask_setup(tmp_path, monkeypatch)
+    gr.write_gate_mask(42, 0, pilot=True)
+    (models / "phase_a_seed42_fold0.pt").write_bytes(b"retrained")   # a new CNN: its filter ids mean other things
+    with pytest.raises(ValueError, match="changed since the gate mask was made"):
+        gr.load_gate_mask(42, 0, 4, pilot=True)
+
+
+def test_gate_mask_refuses_a_changed_ranking(tmp_path, monkeypatch):
+    _, out = _mask_setup(tmp_path, monkeypatch)
+    gr.write_gate_mask(42, 0, pilot=True)
+    pd.DataFrame({"rank": range(6), "filter": range(6)}).to_csv(out / "filter_importance_seed42_fold0.csv", index=False)
+    with pytest.raises(ValueError, match="changed since the gate mask was made"):
+        gr.load_gate_mask(42, 0, 4, pilot=True)
+
+
+def test_gate_mask_refuses_an_unknown_k_and_an_edited_mask(tmp_path, monkeypatch):
+    models, _ = _mask_setup(tmp_path, monkeypatch)
+    gr.write_gate_mask(42, 0, pilot=True)
+    with pytest.raises(ValueError, match="no gate mask for k = 3"):
+        gr.load_gate_mask(42, 0, 3, pilot=True)
+    path = models / "gate_mask_seed42_fold0.json"
+    edited = json.loads(path.read_text(encoding="utf-8"))
+    edited["keep"]["2"]["gate_mask"] = [1, 0, 0, 0, 0, 1]
+    path.write_text(json.dumps(edited), encoding="utf-8")
+    with pytest.raises(AssertionError, match="gate mask and keep_idx differ"):
+        gr.load_gate_mask(42, 0, 2, pilot=True)
+
+
+def test_gate_mask_with_the_single_rule(tmp_path, monkeypatch):
+    _mask_setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(gr, "RANKING_RULE", "single")
+    sidecar = gr.write_gate_mask(42, 0, pilot=True)
+    # Step 2 importance alone, highest first; the dead filter 3 last although its importance is the highest.
+    assert sidecar["ranking_rule"] == "single" and sidecar["ranking"] == [1, 5, 4, 0, 2, 3]
+    assert gr.load_gate_mask(42, 0, 2, pilot=True).tolist() == [1, 5]
+    assert len(sidecar["sha256"]) == 3   # the checkpoint, importance and filter scores
+
+
+def test_ranking_rule_must_be_known():
+    with pytest.raises(ValueError, match="unknown ranking rule"):
+        gr.ranking_inputs(42, 0, "whole_groups")
