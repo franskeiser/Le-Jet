@@ -1,0 +1,16 @@
+seed,model,trainable_parameters
+42,c_prune_k48,49074
+42,c_prune_k32,33634
+42,c_prune_k16,18194
+42,plain_cnn,61954
+42,ungated,64514
+123,c_prune_k48,49074
+123,c_prune_k32,33634
+123,c_prune_k16,18194
+123,plain_cnn,61954
+123,ungated,64514
+2024,c_prune_k48,49074
+2024,c_prune_k32,33634
+2024,c_prune_k16,18194
+2024,plain_cnn,61954
+2024,ungated,64514

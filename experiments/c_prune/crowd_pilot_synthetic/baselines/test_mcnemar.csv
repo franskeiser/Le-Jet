@@ -1,4 +1,7 @@
-seed,comparison,b,c,p_exact
-42,C-prune (k = 16) vs plain CNN,159,11,8.849720830997581e-35
-123,C-prune (k = 16) vs plain CNN,150,9,4.134551281994592e-34
-2024,C-prune (k = 16) vs plain CNN,166,10,1.3447875112772576e-37
+seed,comparison,b,c,p_exact,p_holm,significant
+42,C-prune (k = 16) vs plain CNN,159,11,8.849720830997581e-35,1.7699441661995163e-34,True
+42,C-prune (k = 16) vs UNGATED,10,9,1.0,1.0,False
+123,C-prune (k = 16) vs plain CNN,150,9,4.134551281994592e-34,8.269102563989184e-34,True
+123,C-prune (k = 16) vs UNGATED,18,10,0.1849333420395851,0.1849333420395851,False
+2024,C-prune (k = 16) vs plain CNN,166,10,1.3447875112772576e-37,2.689575022554515e-37,True
+2024,C-prune (k = 16) vs UNGATED,11,6,0.332305908203125,0.332305908203125,False

@@ -39,3 +39,14 @@ def test_time_per_message_skips_the_warm_up(monkeypatch):
     calls = []
     ms = bl.time_per_message(calls.append, 5)
     assert calls == [0, 1, 2, 0, 1, 2, 3, 4] and ms.shape == (5,) and (ms >= 0).all()
+
+
+def test_holm_correction():
+    # Sorted 0.01, 0.02, 0.04 with m = 3: 0.03, max(0.03, 0.04) = 0.04, max(0.04, 0.04) = 0.04; original order back.
+    assert bl.holm([0.04, 0.01, 0.02]) == pytest.approx([0.04, 0.03, 0.04])
+    assert bl.holm([0.5, 0.9]) == pytest.approx([1.0, 1.0])   # capped at 1
+    assert bl.holm([0.003]) == pytest.approx([0.003])         # one test: unchanged
+
+
+def test_ungated_is_c_prune_with_every_filter_kept_and_the_link_lane():
+    assert bl.BASELINES["ungated"]["link"] and not bl.BASELINES["plain_cnn"]["link"]
