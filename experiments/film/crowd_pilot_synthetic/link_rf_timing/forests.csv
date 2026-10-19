@@ -1,0 +1,4 @@
+seed,fold,trees,nodes,file_mb,max_depth,max_features,min_samples_leaf,n_estimators
+42,0,200,25764,2.0,None,sqrt,1,200
+123,0,500,63866,5.1,None,sqrt,1,500
+2024,0,200,24192,1.9,None,sqrt,1,200
