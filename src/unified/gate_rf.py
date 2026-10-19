@@ -67,6 +67,12 @@ load_gate_mask refuses it when any of those files changed (a filter id only mean
 mask was made from), and checks it agrees with itself: the mask's 1s are keep_idx, keep_idx is the top k of the
 ranking. Every later step reads keep_idx from here (pruned_phase_a included). Run it before prune.
 
+Phase 6, lock: the ranking rule, decided once on the real data's val (docs/c_prune_architecture.md Phase 6). From
+the compare step: keep group_turns unless single has the lower mean val_log_loss_refit over every seed, fold
+and k. Writes experiments/c_prune/<dataset>/gate_rf/ranking_rule_decision.json (date, rule, the numbers) and
+refuses to run again once it exists. The mask step then refuses a RANKING_RULE other than the locked one. On
+the pilot it is a dry run only: it prints what it would decide and locks nothing.
+
 Step 6, prune: cnn_encoder.prune_encoder builds the k-filter CNN from the Phase A CNN and keep_idx: the kept
 filters' Conv rows and biases, and the matching columns of the layer reading them (prune_input_columns; here
 the temporary head, in Phase 6 any Dense that reads [filters | 40 link numbers]). pruned_phase_a gives one to
@@ -106,12 +112,14 @@ Usage:
     python -m src.unified.gate_rf --pilot keep
     python -m src.unified.gate_rf --pilot mask
     python -m src.unified.gate_rf --pilot prune      (reads the masks)
+    python -m src.unified.gate_rf --pilot lock       (a dry run on the pilot; on the real data it locks, once)
 """
 from __future__ import annotations
 
 import argparse
 import copy
 import json
+from datetime import date
 from pathlib import Path
 from typing import List
 
@@ -504,6 +512,9 @@ def gate_mask_path(seed: int, fold: int, pilot: bool = False) -> Path:
 
 def write_gate_mask(seed: int, fold: int, pilot: bool = False) -> dict:
     """Step 9: the gate mask sidecar of one seed and fold, next to its Phase A checkpoint."""
+    locked = locked_rule(pilot)
+    if locked is not None and locked != RANKING_RULE:
+        raise ValueError(f'the ranking rule is locked to {locked}: set RANKING_RULE = "{locked}" in gate_rf.py')
     checkpoint = model_dir(dataset_path(pilot)) / f"phase_a_seed{seed}_fold{fold}.pt"
     phase_a = json.loads(checkpoint.with_suffix(".json").read_text(encoding="utf-8"))
     ranking = ranking_order(seed, fold, pilot=pilot)
@@ -645,8 +656,55 @@ def run_prune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
     return summary
 
 
+def ranking_decision(detail: pd.DataFrame) -> dict:
+    """The plan's rule (Phase 6): keep group_turns unless single has the lower mean val_log_loss_refit, over every
+    seed, fold and k of the compare step."""
+    pair = detail[detail["order"].isin(["group_turns", "single"])]
+    means = pair.groupby("order")["val_log_loss_refit"].mean()
+    wide = pair.pivot_table(index=["seed", "fold", "k"], columns="order", values="val_log_loss_refit")
+    per_k = pair.pivot_table(index="k", columns="order", values="val_log_loss_refit")
+    return {"rule": "single" if means["single"] < means["group_turns"] else "group_turns",
+            "mean_val_log_loss_refit": {o: round(float(v), 6) for o, v in means.items()},
+            "per_k": {str(k): {o: round(float(v), 6) for o, v in row.items()} for k, row in per_k.iterrows()},
+            "single_lower_in": f"{int((wide['single'] < wide['group_turns']).sum())}/{len(wide)}"}
+
+
+def decision_path(pilot: bool = False) -> Path:
+    return out_dir(dataset_path(pilot)) / "ranking_rule_decision.json"
+
+
+def locked_rule(pilot: bool = False) -> str | None:
+    """The locked ranking rule of the real data, or None before the lock (and always on the pilot)."""
+    path = decision_path(pilot)
+    return None if pilot or not path.exists() else json.loads(path.read_text(encoding="utf-8"))["rule"]
+
+
+def run_lock(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    """Phase 6, lock the ranking rule: once, on the real data's val. The pilot only gets a dry run."""
+    detail = pd.read_csv(out_dir(dataset_path(pilot)) / "ranking_compare.csv")
+    expected = {(s, f) for s in seeds for f in range(n_folds)}
+    assert set(zip(detail["seed"], detail["fold"])) == expected, "the compare step did not cover every seed and fold"
+    decision = ranking_decision(detail)
+    if pilot:
+        print(f"DRY RUN on the synthetic pilot, nothing locked: the rule would be {decision['rule']}")
+    else:
+        path = decision_path(pilot)
+        if path.exists():
+            raise SystemExit(f"the ranking rule is already locked ({path}); it is decided once and never changed")
+        path.write_text(json.dumps({"locked_on": date.today().isoformat(), "dataset": dataset_path(pilot).name,
+                                    "metric": "mean val_log_loss_refit over every seed, fold and k (lower wins)",
+                                    "rule_before": RANKING_RULE, **decision}, indent=2), encoding="utf-8")
+        print(f"LOCKED: the ranking rule is {decision['rule']} ({path})")
+    if decision["rule"] != RANKING_RULE:
+        print(f'next: set RANKING_RULE = "{decision["rule"]}" in src/unified/gate_rf.py, then run the mask and '
+              "prune steps and fusion train again")
+    rows = [{"order": o, "mean_val_log_loss_refit": v} for o, v in decision["mean_val_log_loss_refit"].items()]
+    return pd.DataFrame(rows + [{"order": f"rule: {decision['rule']}",
+                                 "mean_val_log_loss_refit": f"single lower in {decision['single_lower_in']}"}])
+
+
 STEPS = {"scores": run_scores, "importance": run_importance, "groups": run_groups, "rank": run_rank,
-         "compare": run_compare, "keep": run_keep, "mask": run_mask, "prune": run_prune}
+         "compare": run_compare, "keep": run_keep, "mask": run_mask, "prune": run_prune, "lock": run_lock}
 
 
 def main(argv: List[str] | None = None) -> None:

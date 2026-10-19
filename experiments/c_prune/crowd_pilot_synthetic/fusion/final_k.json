@@ -1,0 +1,25 @@
+{
+  "chosen_on": "2026-10-19",
+  "dataset": "crowd_pilot_synthetic.csv",
+  "rule": "one standard error: the smallest k whose mean val F1 is at least the best k's mean minus its standard error (std / sqrt(seed-folds)); val only, test never read",
+  "k": 16,
+  "best_k": 16,
+  "threshold": 0.982857,
+  "per_k": {
+    "16": {
+      "mean": 0.985087,
+      "se": 0.00223,
+      "seed_folds": 15
+    },
+    "32": {
+      "mean": 0.979273,
+      "se": 0.004921,
+      "seed_folds": 15
+    },
+    "48": {
+      "mean": 0.978973,
+      "se": 0.004622,
+      "seed_folds": 15
+    }
+  }
+}

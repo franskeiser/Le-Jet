@@ -249,3 +249,50 @@ def test_gate_mask_with_the_single_rule(tmp_path, monkeypatch):
 def test_ranking_rule_must_be_known():
     with pytest.raises(ValueError, match="unknown ranking rule"):
         gr.ranking_inputs(42, 0, "whole_groups")
+
+
+def _compare_detail(single_loss: float, seeds=(42,), folds=(0, 1)):
+    rows = []
+    for s in seeds:
+        for f in folds:
+            for k in (48, 16):
+                rows += [{"seed": s, "fold": f, "k": k, "order": "group_turns", "val_log_loss_refit": 0.20},
+                         {"seed": s, "fold": f, "k": k, "order": "single", "val_log_loss_refit": single_loss},
+                         {"seed": s, "fold": f, "k": k, "order": "random", "val_log_loss_refit": 0.10}]
+    return pd.DataFrame(rows)
+
+
+def test_ranking_decision_follows_the_plan_rule():
+    assert gr.ranking_decision(_compare_detail(0.19))["rule"] == "single"        # single lower: switch
+    kept = gr.ranking_decision(_compare_detail(0.21))
+    assert kept["rule"] == "group_turns" and kept["single_lower_in"] == "0/4"   # random's 0.10 plays no part
+    assert gr.ranking_decision(_compare_detail(0.20))["rule"] == "group_turns"  # a tie keeps the rule
+
+
+def test_lock_is_a_dry_run_on_the_pilot(tmp_path, monkeypatch):
+    monkeypatch.setattr(gr, "out_dir", lambda dataset: tmp_path)
+    _compare_detail(0.19).to_csv(tmp_path / "ranking_compare.csv", index=False)
+    gr.run_lock(pilot=True, seeds=[42], n_folds=2)
+    assert not (tmp_path / "ranking_rule_decision.json").exists() and gr.locked_rule(pilot=True) is None
+
+
+def test_lock_happens_once_and_the_mask_step_obeys_it(tmp_path, monkeypatch):
+    _mask_setup(tmp_path, monkeypatch)
+    out = tmp_path / "experiments"
+    _compare_detail(0.19).to_csv(out / "ranking_compare.csv", index=False)
+    gr.run_lock(pilot=False, seeds=[42], n_folds=2)
+    saved = json.loads((out / "ranking_rule_decision.json").read_text(encoding="utf-8"))
+    assert saved["rule"] == "single" and saved["rule_before"] == "group_turns" and gr.locked_rule() == "single"
+    with pytest.raises(SystemExit, match="already locked"):
+        gr.run_lock(pilot=False, seeds=[42], n_folds=2)
+    with pytest.raises(ValueError, match="locked to single"):              # RANKING_RULE is still group_turns
+        gr.write_gate_mask(42, 0, pilot=False)
+    monkeypatch.setattr(gr, "RANKING_RULE", "single")
+    assert gr.write_gate_mask(42, 0, pilot=False)["ranking_rule"] == "single"
+
+
+def test_lock_needs_every_seed_and_fold(tmp_path, monkeypatch):
+    monkeypatch.setattr(gr, "out_dir", lambda dataset: tmp_path)
+    _compare_detail(0.19, folds=(0,)).to_csv(tmp_path / "ranking_compare.csv", index=False)
+    with pytest.raises(AssertionError, match="did not cover every seed and fold"):
+        gr.run_lock(pilot=False, seeds=[42], n_folds=2)

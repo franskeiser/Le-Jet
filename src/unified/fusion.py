@@ -30,17 +30,28 @@ The best epoch's weights go to models/c_prune/<dataset>/c_prune_seed<S>_fold<F>_
 step). Per model the summary records the best epoch's val metrics (accuracy, balanced accuracy, precision,
 recall, F1, log-loss), the epochs run, and the wall-clock training time (RQ2, "fine-tuning").
 
-Writes experiments/c_prune/<dataset>/fusion/build_summary.csv (build) and train_summary.csv (train).
+Step 3, choose: the final k, on validation only (decided 2026-10-19): the one-standard-error rule (Breiman et
+al. 1984; Hastie et al., The Elements of Statistical Learning, 7.10). Per k, the mean val F1 over every seed and
+fold of the train step and its standard error (std / sqrt(seed-folds)); the best k has the highest mean (a tie
+goes to the smaller k); the final k is the SMALLEST k whose mean is at least the best mean minus the best k's
+standard error. So a smaller, faster model wins when the accuracy gap is within noise (RQ2). One k for every
+seed and fold. Re-run after the train step changes (e.g. a new ranking rule).
+
+Writes experiments/c_prune/<dataset>/fusion/build_summary.csv (build), train_summary.csv (train) and
+final_k.json (choose: the rule, the per-k numbers, the chosen k).
 
 Usage:
     python -m src.unified.fusion --pilot build
     python -m src.unified.fusion --pilot train
+    python -m src.unified.fusion --pilot choose
 """
 from __future__ import annotations
 
 import argparse
 import copy
+import json
 import time
+from datetime import date
 from pathlib import Path
 from typing import Dict, List
 
@@ -209,7 +220,44 @@ def run_train(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
     return summary
 
 
-STEPS = {"build": run_build, "train": run_train}
+def choose_k(summary: pd.DataFrame, metric: str = "val_f1") -> dict:
+    """The one-standard-error rule: the smallest k whose mean val F1 is within one standard error of the best k's."""
+    per_k = summary.groupby("k")[metric].agg(["mean", "std", "count"]).sort_index()
+    per_k["se"] = per_k["std"] / np.sqrt(per_k["count"])
+    best = max(per_k.index, key=lambda k: (per_k.loc[k, "mean"], -k))     # a tie goes to the smaller k
+    threshold = per_k.loc[best, "mean"] - per_k.loc[best, "se"]
+    chosen = min(k for k in per_k.index if per_k.loc[k, "mean"] >= threshold)
+    return {"k": int(chosen), "best_k": int(best), "threshold": round(float(threshold), 6),
+            "per_k": {str(k): {"mean": round(float(r["mean"]), 6), "se": round(float(r["se"]), 6),
+                               "seed_folds": int(r["count"])} for k, r in per_k.iterrows()}}
+
+
+def final_k_path(pilot: bool = False) -> Path:
+    return out_dir(dataset_path(pilot)) / "final_k.json"
+
+
+def final_k(pilot: bool = False) -> int:
+    """The k chosen on validation (the choose step)."""
+    return json.loads(final_k_path(pilot).read_text(encoding="utf-8"))["k"]
+
+
+def run_choose(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    summary = pd.read_csv(out_dir(dataset_path(pilot)) / "train_summary.csv")
+    expected = {(s, f, k) for s in seeds for f in range(n_folds) for k in PRUNE_KEEP}
+    assert set(zip(summary["seed"], summary["fold"], summary["k"])) == expected, "train did not cover every model"
+    decision = choose_k(summary)
+    final_k_path(pilot).write_text(json.dumps({
+        "chosen_on": date.today().isoformat(), "dataset": dataset_path(pilot).name,
+        "rule": "one standard error: the smallest k whose mean val F1 is at least the best k's mean minus its "
+                "standard error (std / sqrt(seed-folds)); val only, test never read", **decision}, indent=2),
+        encoding="utf-8")
+    print(f"final k = {decision['k']} (best mean val F1 at k = {decision['best_k']}, "
+          f"threshold {decision['threshold']:.4f})")
+    return pd.DataFrame([{"k": int(k), **v, "within_1se": v["mean"] >= decision["threshold"],
+                          "chosen": int(k) == decision["k"]} for k, v in decision["per_k"].items()])
+
+
+STEPS = {"build": run_build, "train": run_train, "choose": run_choose}
 
 
 def main(argv: List[str] | None = None) -> None:

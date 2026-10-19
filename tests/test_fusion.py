@@ -178,3 +178,32 @@ def test_hidden_pages_train_on_the_blank_page_numbers_only(tmp_path, monkeypatch
     poisoned = torch.full_like(blank, float("nan"))  # any use of them would turn the weights into NaN
     fu.fine_tune(model, (ids, poisoned, blank, y), val, seed=42, checkpoint=tmp_path / "c.pt", epochs=2)
     assert all(torch.isfinite(p).all() for p in model.parameters())
+
+
+def _summary(means: dict, spread: float, n: int = 15):
+    rows = []
+    for k, mean in means.items():
+        offsets = np.linspace(-spread, spread, n)
+        rows += [{"seed": i, "fold": 0, "k": k, "val_f1": mean + o} for i, o in enumerate(offsets)]
+    return pd.DataFrame(rows)
+
+
+def test_choose_k_takes_the_smallest_k_within_one_standard_error():
+    # Best is 48 (0.96); its SE is about 0.0082 with this spread, so 32 (0.955) is within, 16 (0.94) is not.
+    decision = fu.choose_k(_summary({48: 0.96, 32: 0.955, 16: 0.94}, spread=0.05))
+    assert decision["best_k"] == 48 and decision["k"] == 32
+    se = decision["per_k"]["48"]["se"]
+    assert decision["threshold"] == pytest.approx(0.96 - se) and 0.005 < se < 0.015
+
+
+def test_choose_k_keeps_the_best_when_the_others_are_clearly_worse():
+    assert fu.choose_k(_summary({48: 0.96, 32: 0.90, 16: 0.85}, spread=0.01))["k"] == 48
+
+
+def test_choose_k_tie_goes_to_the_smaller_k():
+    decision = fu.choose_k(_summary({48: 0.95, 32: 0.95, 16: 0.90}, spread=0.0))
+    assert decision["best_k"] == 32 and decision["k"] == 32   # no spread: SE 0, 16 is not within
+
+
+def test_choose_k_when_the_smallest_is_best():
+    assert fu.choose_k(_summary({48: 0.979, 32: 0.979, 16: 0.985}, spread=0.02))["k"] == 16
