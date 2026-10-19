@@ -60,6 +60,13 @@ the step 4 ranking, in ascending id order (kept position i of the pruned CNN is 
 Checked: each kept set lies inside the larger ones (the same ranking cut shorter). load_keep_idx gives one
 set to the later phases.
 
+Step 6, prune: cnn_encoder.prune_encoder builds the k-filter CNN from the Phase A CNN and keep_idx: the kept
+filters' Conv rows and biases, and the matching columns of the layer reading them (prune_input_columns; here
+the temporary head, in Phase 6 any Dense that reads [filters | 40 link numbers]). pruned_phase_a gives one to
+Phase 6. Checked for every seed, fold and k: the shapes, the embedding still frozen, and the trainable
+parameters equal section 5.3 (Conv 300 x 3 x k + k, temporary head 2k + 2). Nothing is saved here: the pruned
+CNN is saved after fine-tuning (Phase 6).
+
 Writes, per seed and fold, to experiments/c_prune/<dataset>/gate_rf/:
     filter_scores_seed<S>_fold<F>.csv     message_id, label (1 = smishing), filter_00 .. filter_63    (scores)
     importance_seed<S>_fold<F>.csv        filter, importance, spread, importance_fold0 .. 4           (importance)
@@ -72,7 +79,8 @@ log-loss against the prior, and how many filters are clearly above zero; group_s
 groups, the largest, and how many groups (and the filters in them) are clearly above zero;
 ranking_compare.csv (every seed, fold, k and order) and ranking_compare_summary.csv (per k and order: mean
 val log-loss and F1, and in how many seed-folds group_turns has the lower log-loss); keep_summary.csv (per
-seed, fold and k: keep_idx, and how many of the groups and dead filters it holds).
+seed, fold and k: keep_idx, and how many of the groups and dead filters it holds); prune_summary.csv (per
+seed, fold and k: the pruned CNN's trainable parameters against the full one's).
 
 Usage:
     python -m src.unified.gate_rf --pilot scores
@@ -81,6 +89,7 @@ Usage:
     python -m src.unified.gate_rf --pilot rank
     python -m src.unified.gate_rf --pilot compare
     python -m src.unified.gate_rf --pilot keep
+    python -m src.unified.gate_rf --pilot prune
 """
 from __future__ import annotations
 
@@ -101,10 +110,10 @@ from sklearn.model_selection import StratifiedGroupKFold
 
 from src.config import ARTIFACTS_ROOT, CROWD_N_FOLDS, PRUNE_KEEP, SEEDS
 from src.data.split_crowd import load_fold, make_groups
-from src.features.model.cnn_encoder import TextEncoder
+from src.features.model.cnn_encoder import TextEncoder, prune_encoder
 from src.features.model.rf_extractor import fit_rf
 from src.features.model.rf_gating_module import select_top_k
-from src.unified.text_cnn import dataset_path, load_phase_a, model_dir, tensors
+from src.unified.text_cnn import dataset_path, load_phase_a, model_dir, tensors, trainable_parameters
 
 BATCH_SIZE = 512
 GATE_SPLITS = 5
@@ -469,8 +478,35 @@ def run_keep(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS
     return summary
 
 
+def pruned_phase_a(seed: int, fold: int, k: int, pilot: bool = False) -> tuple:
+    """(k-filter CNN in eval mode, keep_idx, word_to_idx, Phase A sidecar) of one seed and fold. For Phase 6."""
+    dataset = dataset_path(pilot)
+    cnn, word_to_idx, sidecar = load_phase_a(model_dir(dataset) / f"phase_a_seed{seed}_fold{fold}.pt")
+    keep = load_keep_idx(seed, fold, k, pilot)
+    return prune_encoder(cnn, keep), keep, word_to_idx, sidecar
+
+
+def run_prune(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS) -> pd.DataFrame:
+    rows = []
+    for seed in seeds:
+        for fold in range(n_folds):
+            for k in PRUNE_KEEP:
+                pruned, keep, _, sidecar = pruned_phase_a(seed, fold, k, pilot)
+                dim = pruned.embedding.embedding_dim
+                conv, head = dim * sidecar["kernel_size"] * k + k, k * 2 + 2   # section 5.3
+                assert pruned.conv.weight.shape == (k, dim, sidecar["kernel_size"]) and pruned.temp_head.in_features == k
+                assert not pruned.embedding.weight.requires_grad and not pruned.training
+                assert trainable_parameters(pruned) == conv + head, "trainable parameters differ from section 5.3"
+                rows.append({"seed": seed, "fold": fold, "k": k, "conv_parameters": conv, "head_parameters": head,
+                             "trainable_parameters": trainable_parameters(pruned),
+                             "full_trainable_parameters": sidecar["trainable_parameters"]})
+    summary = pd.DataFrame(rows)
+    summary.to_csv(out_dir(dataset_path(pilot)) / "prune_summary.csv", index=False)
+    return summary
+
+
 STEPS = {"scores": run_scores, "importance": run_importance, "groups": run_groups, "rank": run_rank,
-         "compare": run_compare, "keep": run_keep}
+         "compare": run_compare, "keep": run_keep, "prune": run_prune}
 
 
 def main(argv: List[str] | None = None) -> None:

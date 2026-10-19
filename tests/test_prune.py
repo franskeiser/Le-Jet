@@ -9,9 +9,25 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+import torch
+from torch import nn
 
+from src.features.model.cnn_encoder import TextEncoder, prune_encoder, prune_input_columns
+from src.features.model.embedding import build_torch_embedding_layer
 from src.features.model.rf_gating_module import select_top_k
 from src.unified import gate_rf as gr
+
+KEEP = [0, 5, 9, 33, 63]
+
+
+def _encoder(num_filters=64):
+    vocab = ["<PAD>", "<URL>", "verify", "now", "account", "locked"]
+    matrix = np.random.default_rng(0).normal(size=(len(vocab), 8)).astype(np.float32)
+    matrix[0] = 0.0
+    embedding = build_torch_embedding_layer(matrix, {w: i for i, w in enumerate(vocab)})
+    embedding.weight.requires_grad = False
+    torch.manual_seed(0)
+    return TextEncoder(embedding, num_filters)
 
 
 def test_select_top_k_takes_the_first_k_in_ascending_id_order():
@@ -39,3 +55,50 @@ def test_load_keep_idx_reads_the_saved_ranking(tmp_path, monkeypatch):
     pd.DataFrame({"rank": [2, 0, 3, 1], "filter": [0, 3, 1, 2]}).to_csv(
         tmp_path / "filter_importance_seed42_fold0.csv", index=False)
     assert gr.load_keep_idx(42, 0, 2, pilot=True).tolist() == [2, 3]
+
+
+def test_prune_encoder_copies_only_the_kept_filters():
+    full = _encoder()
+    pruned = prune_encoder(full, KEEP)
+    assert pruned.conv.weight.shape == (5, 8, 3) and pruned.conv.bias.shape == (5,)
+    assert torch.equal(pruned.conv.weight, full.conv.weight[KEEP])
+    assert torch.equal(pruned.conv.bias, full.conv.bias[KEEP])
+    # Kept position i is original filter KEEP[i], in the temporary head too.
+    assert pruned.temp_head.weight.shape == (2, 5)
+    assert torch.equal(pruned.temp_head.weight, full.temp_head.weight[:, KEEP])
+    assert torch.equal(pruned.temp_head.bias, full.temp_head.bias)
+    assert torch.equal(pruned.embedding.weight, full.embedding.weight)
+
+
+def test_prune_encoder_keeps_the_embedding_frozen_and_the_mode():
+    full = _encoder()
+    full.eval()
+    pruned = prune_encoder(full, KEEP)
+    assert not pruned.embedding.weight.requires_grad and not pruned.training
+    # Trainable: Conv 8 x 3 x k + k and the head 2k + 2 (section 5.3 with an 8-d toy embedding).
+    assert sum(p.numel() for p in pruned.parameters() if p.requires_grad) == 8 * 3 * 5 + 5 + 2 * 5 + 2
+
+
+def test_prune_encoder_leaves_the_full_model_untouched():
+    full = _encoder()
+    before = {k: v.clone() for k, v in full.state_dict().items()}
+    pruned = prune_encoder(full, KEEP)
+    with torch.no_grad():
+        for p in pruned.parameters():
+            p.add_(1.0)   # changing the pruned model must not reach the full one: nothing is shared
+    assert all(torch.equal(before[k], v) for k, v in full.state_dict().items())
+
+
+def test_prune_input_columns_drops_filter_columns_and_keeps_the_rest():
+    dense = nn.Linear(64 + 40, 64)   # Dense 64 reading [64 filters | 40 link numbers]
+    pruned = prune_input_columns(dense, KEEP, cnn_dim=64)
+    assert pruned.in_features == 5 + 40 and pruned.out_features == 64
+    assert torch.equal(pruned.weight[:, :5], dense.weight[:, KEEP])
+    assert torch.equal(pruned.weight[:, 5:], dense.weight[:, 64:])
+    assert torch.equal(pruned.bias, dense.bias)
+
+
+@pytest.mark.parametrize("keep", [[], [5, 0], [0, 0, 1], [-1, 3], [3, 64]])
+def test_prune_refuses_a_bad_keep_idx(keep):
+    with pytest.raises(ValueError, match="ascending, unique ids in 0..63"):
+        prune_encoder(_encoder(), keep)
