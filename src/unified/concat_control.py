@@ -30,19 +30,29 @@ from src.unified import film
 from src.unified import fit_model as fm
 from src.unified import text_cnn as tc
 from src.unified.film_data import part_inputs
+from src.unified.film_inputs import LINK_WIDTH
 
 KIND = "concat"
 
 
 def kind_of(warm_start: bool) -> str:
     return KIND if warm_start else KIND + "_scratch"
-EXPECTED_TRAINABLE = 62146             # embedding not included
 
+
+def expected_trainable(link_dim: int, embedding_dim: int = 300, num_filters: int = 64, kernel_size: int = 3, dense_units: int = 64) -> int:
+    """Trainable parameters without the embedding: conv + dense reading (64 text numbers + link_dim link numbers) + output."""
+    return (embedding_dim * kernel_size * num_filters + num_filters + (num_filters + link_dim) * dense_units + dense_units + dense_units * 2 + 2)
+
+
+# The pipeline gives the control P, u, page_missing AND has_url (film_inputs.LINK_WIDTH = 4), so it can tell "no link" as well as E2 can:
+# 62,210 trainable parameters without the embedding (62,146 with the three numbers alone).
+EXPECTED_TRAINABLE = expected_trainable(LINK_WIDTH)
 
 def build_control(seed: int, fold: int, pilot: bool = False, **options) -> tuple[ConcatTextCNN, Dict[str, int], int]:
     """(model, word_to_idx, SEQ_LEN_L) of one seed and fold, untrained, with a fresh embedding layer of its own."""
     embedding, word_to_idx, seq_len = tc.fold_text_setup(tc.dataset_path(pilot), seed, fold)
     tc.seed_everything(seed)
+    options.setdefault("link_dim", LINK_WIDTH)
     return ConcatTextCNN(embedding, **options), word_to_idx, seq_len
 
 
@@ -62,7 +72,7 @@ def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epoch
     result = fm.fit(model, (train.token_ids, train.link_full, train.link_blank, train.labels),
                     (val.token_ids, val.link_full, val.labels), seed, checkpoint, epochs=epochs)
     without, with_embedding = trainable_counts(model)
-    assert without == EXPECTED_TRAINABLE
+    assert without == expected_trainable(model.link_dim)
     emb_dir = tc.embeddings_dir(dataset, seed, fold)
     fm.write_sidecar(checkpoint, {
         "kind": kind, "seed": seed, "fold": fold, "num_filters": model.num_filters, "kernel_size": model.kernel_size,

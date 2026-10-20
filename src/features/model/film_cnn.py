@@ -48,6 +48,13 @@ class FiLMTextCNN(nn.Module):
     FiLM:      x' = gamma * x + beta, applied before ReLU at every position
     x' -> ReLU -> max-pool -> dropout 0.2 -> Dense 64 -> ReLU -> dropout 0.5 -> Output 2
 
+    No link (diagram, 2026-10-20): has_url, a (batch,) of 1 / 0, either passed on its own or as the LAST column of `link`
+    ([P, u, page_missing, has_url], width link_dim + 1; the data pipeline does this). A message with 0 skips the generator:
+    gamma = 1 and beta = 0 for it whatever its link numbers hold (they may be NaN), so it gets exactly the plain text CNN's numbers
+    and the generator receives no gradient from it. Leaving has_url out (and passing a width-3 link) means every message has a
+    link, as before. bypass_no_link=False ignores has_url altogether: the generator reads the link numbers of every message, a
+    no-link message included (the ablation that shows what the bypass adds).
+
     The head sees only the 64 text numbers; the link reaches the verdict only through gamma and beta. The generator's weights
     and bias start at zero, so at the start gamma = 1 and beta = 0 and the model is the plain text CNN it was built from.
     `embedding` and `conv` are named like TextEncoder's, so a trained text CNN's weights load into them directly.
@@ -60,6 +67,7 @@ class FiLMTextCNN(nn.Module):
                           scores cannot cancel positive ones.
       use_beta            True: the generator gives gamma and beta (D3 default). False: gamma only (variant V1), beta = 0,
                           and the generator has half the outputs (4,352 parameters instead of 8,704).
+      bypass_no_link      True: a message with has_url = 0 gets gamma = 1, beta = 0 (default). False: has_url is ignored.
       freeze_embedding    False: the embedding is fine-tuned during training, as in the diagram (D6, changed 2026-10-20).
                           True: it stays at its fastText values (the frozen-embedding check run). The layer you pass in is
                           used as given and its requires_grad is set here, so do not share one layer between two models.
@@ -68,7 +76,7 @@ class FiLMTextCNN(nn.Module):
     def __init__(self, embedding_layer: nn.Embedding, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
                  link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, gamma_mode: str = "bounded",
                  mask_padding: bool = False, average_after_relu: bool = False, use_beta: bool = True,
-                 freeze_embedding: bool = False):
+                 freeze_embedding: bool = False, bypass_no_link: bool = True):
         super().__init__()
         if gamma_mode not in GAMMA_MODES:
             raise ValueError(f"gamma_mode must be one of {GAMMA_MODES}, got {gamma_mode!r}")
@@ -76,7 +84,7 @@ class FiLMTextCNN(nn.Module):
             raise ValueError("mask_padding needs an embedding layer with a padding_idx")
         self.num_filters, self.kernel_size, self.link_dim = num_filters, kernel_size, link_dim
         self.gamma_mode, self.mask_padding, self.average_after_relu = gamma_mode, mask_padding, average_after_relu
-        self.use_beta, self.freeze_embedding = use_beta, freeze_embedding
+        self.use_beta, self.freeze_embedding, self.bypass_no_link = use_beta, freeze_embedding, bypass_no_link
 
         # Fine-tuned for every model of the study (D6, changed 2026-10-20 from frozen). Its parameters are counted apart from
         # the 70,658 of the layers below (vocabulary size x 300 more), and it has its own optimizer group.
@@ -113,50 +121,74 @@ class FiLMTextCNN(nn.Module):
         x = self.conv(embedded.transpose(1, 2))        # (batch, filters, positions)
         return x, self.conv_average(x, token_ids)
 
-    def film_parameters(self, link: torch.Tensor, average: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # link: (batch, 3) = [P, u, page_missing]. Returns gamma and beta, each (batch, filters).
-        if link.dim() != 2 or link.shape[1] != self.link_dim or link.shape[0] != average.shape[0]:
-            raise ValueError(f"link must be (batch, {self.link_dim}) with the same batch as the text, got {tuple(link.shape)}")
+    def film_parameters(self, link: torch.Tensor, average: torch.Tensor,
+                        has_url: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+        # link: (batch, 3) = [P, u, page_missing], or (batch, 4) with has_url as the last column. Returns gamma and beta, each
+        # (batch, filters). has_url: optional (batch,) of 1 / 0. A 0 gives gamma = 1, beta = 0 (no link: the filters are unchanged).
+        width_ok = link.dim() == 2 and link.shape[1] in (self.link_dim, self.link_dim + 1)
+        if not width_ok or link.shape[0] != average.shape[0]:
+            raise ValueError(f"link must be (batch, {self.link_dim}) or (batch, {self.link_dim + 1}) with has_url last, with the same "
+                             f"batch as the text, got {tuple(link.shape)}")
+        if link.shape[1] == self.link_dim + 1:
+            if has_url is None and self.bypass_no_link:
+                has_url = link[:, self.link_dim]
+            link = link[:, : self.link_dim]
+        if not self.bypass_no_link:
+            has_url = None
+        linked = None
+        if has_url is not None:
+            if has_url.shape != (average.shape[0],) or not ((has_url == 0) | (has_url == 1)).all():
+                raise ValueError(f"has_url must be (batch,) of 0 / 1 with the same batch as the text, got {tuple(has_url.shape)}")
+            linked = has_url.bool().unsqueeze(1)
+            link = torch.where(linked, link, torch.zeros_like(link))      # a no-link row's numbers (even NaN) never reach the generator
         generated = self.generator(torch.cat([link, average], dim=1))
         delta_gamma, beta = generated.chunk(2, dim=1) if self.use_beta else (generated, torch.zeros_like(generated))
         gamma = 1.0 + (torch.tanh(delta_gamma) if self.gamma_mode == "bounded" else delta_gamma)
+        if linked is not None:
+            gamma = torch.where(linked, gamma, torch.ones_like(gamma))
+            beta = torch.where(linked, beta, torch.zeros_like(beta))
         return gamma, beta
 
-    def _pool(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> tuple:
+    def _pool(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None,
+              has_url: torch.Tensor | None = None) -> tuple:
         # The one place the FiLM step and the pooling are done, so encode(), encode_with_positions() and explain() cannot
         # disagree. Returns (pooled, position, x, gamma, beta): the pooled numbers (batch, filters), the start of each
         # filter's winning window, the Conv scores before FiLM, and gamma and beta.
         x, average = self.conv_features(token_ids)
-        gamma, beta = self.film_parameters(link, average)
+        gamma, beta = self.film_parameters(link, average, has_url)
         adjusted = gamma.unsqueeze(2) * x + beta.unsqueeze(2)          # FiLM, before ReLU, at every position
         pooled, position = F.relu(adjusted).max(dim=2)                 # the same value adaptive_max_pool1d gives
         if text_keep is not None:
             pooled = pooled * text_keep.to(pooled.dtype).unsqueeze(1)
         return pooled, position, x, gamma, beta
 
-    def encode(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
+    def encode(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None,
+               has_url: torch.Tensor | None = None) -> torch.Tensor:
         # The pooled text numbers (batch, filters), after the link has adjusted the filters.
         # text_keep: optional (batch,) of 1 / 0. A 0 hides that message's text numbers (modality dropout, training only).
-        return self.dropout_pool(self._pool(token_ids, link, text_keep)[0])
+        # has_url: optional (batch,) of 1 / 0. A 0 means no link: gamma = 1, beta = 0 for that message.
+        return self.dropout_pool(self._pool(token_ids, link, text_keep, has_url)[0])
 
-    def forward(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None,
+                has_url: torch.Tensor | None = None) -> torch.Tensor:
         # Raw logits (batch, 2); no Softmax here, as in TextEncoder (the loss applies it).
-        features = self.encode(token_ids, link, text_keep)
+        features = self.encode(token_ids, link, text_keep, has_url)
         return self.output(self.dropout_head(F.relu(self.dense(features))))
 
-    def encode_with_positions(self, token_ids: torch.Tensor, link: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def encode_with_positions(self, token_ids: torch.Tensor, link: torch.Tensor,
+                              has_url: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         # Explainability-only sibling of encode(), with the same contract as TextEncoder.encode_with_positions() plus the
         # link: returns the SAME (batch, filters) pooled numbers encode() gives, and each filter's winning window start
         # (batch, filters), so serving's explain_text.py can point back at the words. It keeps the autograd graph (the
         # explanation there is gradient x input). Never called from forward() or training.
-        pooled, position = self._pool(token_ids, link)[:2]
+        pooled, position = self._pool(token_ids, link, None, has_url)[:2]
         return self.dropout_pool(pooled), position
 
     @torch.no_grad()
-    def explain(self, token_ids: torch.Tensor, link: torch.Tensor) -> "FilterExplanation":
+    def explain(self, token_ids: torch.Tensor, link: torch.Tensor, has_url: torch.Tensor | None = None) -> "FilterExplanation":
         # What the link did to each filter of each message, for the sentence "the link raised these filters".
         # Read-only: no gradients, and it does not change what the model predicts.
-        pooled, position, x, gamma, beta = self._pool(token_ids, link)
+        pooled, position, x, gamma, beta = self._pool(token_ids, link, None, has_url)
         plain_pooled, plain_position = F.relu(x).max(dim=2)            # the same filters with gamma = 1 and beta = 0
         steps = torch.arange(self.kernel_size, device=position.device)
         index = (position.unsqueeze(-1) + steps).clamp(max=token_ids.shape[1] - 1)             # (batch, filters, k)

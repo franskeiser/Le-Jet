@@ -92,7 +92,7 @@ class Fake(torch.nn.Module):
 def fake_part(ids):
     n = len(ids)
     return PartData(message_id=np.array(ids), token_ids=torch.arange(n).reshape(n, 1) + 3, labels=torch.tensor([0, 1] * (n // 2)),
-                    link_full=torch.zeros(n, 3), link_blank=torch.ones(n, 3))
+                    link_full=torch.zeros(n, 4), link_blank=torch.ones(n, 4))               # [P, u, page_missing, has_url]
 
 
 def test_a_message_tested_twice_is_refused(monkeypatch):
@@ -156,3 +156,28 @@ def test_a_pilot_run_scores_every_message_once_writes_its_tables_and_logs_each_r
     fc.run_compare(pilot=True, seeds=[42], folds=[0])
     assert len((out / "test_reads.log").read_text().strip().splitlines()) == 2        # every read is logged
     assert "seeds=[42]" in (out / "test_reads.log").read_text()
+
+
+# ------------------------------------------------------------------ the has_url groups
+def _frame():
+    rows = []
+    for seed in (1, 2):
+        for model, wrong_no_link in (("A", False), ("B", True)):
+            for i in range(12):
+                has_url, live = (0, 0) if i < 4 else ((1, 1) if i < 8 else (1, 0))
+                label = i % 2
+                pred = (1 - label) if (wrong_no_link and has_url == 0) else label       # B is wrong on every no-link message
+                rows.append({"seed": seed, "model": model, "condition": "complete", "label": label, "pred": pred,
+                             "has_url": has_url, "page_live": live, "message_id": i})
+    return pd.DataFrame(rows)
+
+
+def test_group_metrics_split_the_messages_by_link_and_page_and_score_each_group_alone():
+    g = fc.group_metrics(_frame())
+    cell = lambda group, model, col: float(g[(g["group"] == group) & (g["model"] == model)][col].iloc[0])
+    assert cell("all messages", "A", "n_mean") == 12 and cell("no link", "A", "n_mean") == 4
+    assert cell("with a link", "A", "n_mean") == 8 and cell("with a link, page live", "A", "n_mean") == 4
+    assert cell("with a link, page not fetched", "A", "n_mean") == 4
+    assert cell("no link", "A", "accuracy_mean") == 1.0 and cell("no link", "B", "accuracy_mean") == 0.0
+    assert cell("with a link", "B", "accuracy_mean") == 1.0                       # B's mistakes are all in the no-link group
+    assert cell("all messages", "B", "accuracy_mean") == pytest.approx(8 / 12)

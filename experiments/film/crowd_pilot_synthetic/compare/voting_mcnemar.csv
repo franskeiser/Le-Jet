@@ -1,0 +1,19 @@
+seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,CNN-only (baseline),KNN-RF-ETC voting (text only),99,85,0.3378942799553431,0.3378942799553431,False
+42,Concatenation (control),KNN-RF-ETC voting (text only),147,35,1.5793331338223995e-17,7.896665669111998e-17,True
+42,Concatenation (from scratch),KNN-RF-ETC voting (text only),143,36,2.699005053090651e-16,1.0796020212362605e-15,True
+42,E2 (from scratch),KNN-RF-ETC voting (text only),165,24,4.505288418814956e-27,2.7031730512889733e-26,True
+42,E2 (warm start),KNN-RF-ETC voting (text only),148,45,5.087520893806752e-14,1.5262562681420254e-13,True
+42,RF-only (Link RF),KNN-RF-ETC voting (text only),184,81,2.2161316281179118e-10,4.4322632562358235e-10,True
+123,CNN-only (baseline),KNN-RF-ETC voting (text only),91,79,0.39892714749643315,0.39892714749643315,False
+123,Concatenation (control),KNN-RF-ETC voting (text only),155,50,1.0623155763595258e-13,3.186946729078578e-13,True
+123,Concatenation (from scratch),KNN-RF-ETC voting (text only),173,27,2.8853963271389072e-27,1.4426981635694535e-26,True
+123,E2 (from scratch),KNN-RF-ETC voting (text only),164,10,4.787244158587412e-37,2.872346495152447e-36,True
+123,E2 (warm start),KNN-RF-ETC voting (text only),147,44,3.633407829649534e-14,1.4533631318598136e-13,True
+123,RF-only (Link RF),KNN-RF-ETC voting (text only),174,83,1.4095416756431956e-08,2.819083351286391e-08,True
+2024,CNN-only (baseline),KNN-RF-ETC voting (text only),116,96,0.19179617486993603,0.19179617486993603,False
+2024,Concatenation (control),KNN-RF-ETC voting (text only),142,71,1.302849511665242e-06,2.605699023330484e-06,True
+2024,Concatenation (from scratch),KNN-RF-ETC voting (text only),150,43,4.401183822522763e-15,1.7604735290091053e-14,True
+2024,E2 (from scratch),KNN-RF-ETC voting (text only),171,19,9.179152405389723e-32,5.507491443233834e-31,True
+2024,E2 (warm start),KNN-RF-ETC voting (text only),161,30,7.167434382229872e-23,3.583717191114936e-22,True
+2024,RF-only (Link RF),KNN-RF-ETC voting (text only),178,83,4.03986834592893e-09,1.211960503778679e-08,True

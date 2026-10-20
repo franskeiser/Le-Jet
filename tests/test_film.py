@@ -521,3 +521,72 @@ def test_at_the_start_positions_and_values_match_the_text_encoders_on_a_real_fol
         mine, mine_position = model.encode_with_positions(token_ids, link)
         theirs, theirs_position = cnn.encode_with_positions(token_ids)
     assert torch.equal(mine, theirs) and torch.equal(mine_position, theirs_position)
+
+
+# ------------------------------------------------------------------ (h) no link: has_url = 0 skips the generator
+def test_h_has_url_left_out_or_all_ones_changes_nothing():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model)
+    ids, link = batch()
+    assert torch.equal(model(ids, link), model(ids, link, has_url=torch.ones(8)))
+    e0, e1 = model.explain(ids, link), model.explain(ids, link, has_url=torch.ones(8))
+    assert torch.equal(e0.pooled, e1.pooled) and torch.equal(e0.gamma, e1.gamma)
+
+
+def test_h_no_link_gives_gamma_one_beta_zero_and_the_plain_cnn_numbers_even_with_a_trained_generator():
+    model = FiLMTextCNN(embedding()).eval()
+    ids, link = batch()
+    no_link = torch.zeros(8)
+    plain = FiLMTextCNN(embedding()).eval()                      # same embedding (seed 0), generator at zero
+    plain.conv.load_state_dict(model.conv.state_dict())
+    randomize_generator(model, std=2.0)
+    gamma, beta = model.film_parameters(link, model.conv_features(ids)[1], no_link)
+    assert (gamma == 1).all() and (beta == 0).all()
+    assert torch.equal(model.encode(ids, link, has_url=no_link), plain.encode(ids, link))
+    e = model.explain(ids, link, has_url=no_link)
+    assert (e.lift == 0).all() and torch.equal(e.pooled, e.plain_pooled)
+
+
+def test_h_it_works_per_message_and_only_the_no_link_rows_are_bypassed():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model, std=1.0)
+    ids, link = batch()
+    mixed = torch.tensor([1, 0, 1, 0, 1, 0, 1, 0.])
+    full, none = model(ids, link), model(ids, link, has_url=torch.zeros(8))
+    out = model(ids, link, has_url=mixed)
+    keep = mixed.bool()
+    assert torch.allclose(out[keep], full[keep], atol=1e-6) and torch.allclose(out[~keep], none[~keep], atol=1e-6)
+    assert not torch.allclose(full[~keep], none[~keep])          # the bypass really changes those rows
+
+
+def test_h_the_link_numbers_of_a_no_link_message_are_ignored_even_if_nan():
+    model = FiLMTextCNN(embedding()).eval()
+    randomize_generator(model)
+    ids, link = batch()
+    nan_link = link.clone()
+    nan_link[::2] = float("nan")
+    has_url = torch.tensor([0, 1, 0, 1, 0, 1, 0, 1.])
+    out = model(ids, nan_link, has_url=has_url)
+    assert torch.isfinite(out).all()
+    zeroed = torch.where(torch.isnan(nan_link), torch.zeros_like(link), link)
+    assert torch.allclose(out, model(ids, zeroed, has_url=has_url))
+
+
+def test_h_a_no_link_message_gives_the_generator_no_gradient_and_a_link_message_does():
+    model = FiLMTextCNN(embedding()).train()
+    randomize_generator(model)
+    ids, link = batch()
+    model(ids, link, has_url=torch.zeros(8)).sum().backward()
+    assert model.generator.weight.grad is None or (model.generator.weight.grad == 0).all()
+    model.zero_grad()
+    model(ids, link, has_url=torch.ones(8)).sum().backward()
+    assert (model.generator.weight.grad != 0).any()
+
+
+def test_h_a_bad_has_url_is_refused():
+    model = FiLMTextCNN(embedding()).eval()
+    ids, link = batch()
+    with pytest.raises(ValueError, match="has_url must be"):
+        model(ids, link, has_url=torch.ones(5))                  # wrong batch
+    with pytest.raises(ValueError, match="has_url must be"):
+        model(ids, link, has_url=torch.full((8,), 2.0))          # not 0 / 1

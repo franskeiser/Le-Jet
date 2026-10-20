@@ -39,7 +39,7 @@ def trainable(model):
 # ------------------------------------------------------------------ the model
 def test_the_control_has_62146_trainable_parameters_without_the_embedding():
     model = ConcatTextCNN(embedding())
-    assert trainable(model) == 62146 == cc.EXPECTED_TRAINABLE
+    assert trainable(model) == 62146 == cc.expected_trainable(3)
     parts = {n: sum(p.numel() for p in layer.parameters()) for n, layer in
              (("conv", model.conv), ("dense", model.dense), ("output", model.output))}
     assert parts == {"conv": 57664, "dense": 4352, "output": 130}              # dense reads 64 text numbers + 3 link numbers
@@ -121,7 +121,7 @@ def test_the_warm_started_control_is_trained_saved_and_reloads_exactly(outputs):
     row, _ = cc.train_cell(42, 0, pilot=True, epochs=2)
     checkpoint = fm.checkpoint_path(DATASET, "concat", 42, 0)
     sidecar = fm.read_sidecar(checkpoint)
-    assert sidecar["kind"] == "concat" and sidecar["trainable_without_embedding"] == 62146
+    assert sidecar["kind"] == "concat" and sidecar["trainable_without_embedding"] == cc.EXPECTED_TRAINABLE
     assert sidecar["warm_start"]["checkpoint"] == "cnn_seed42_fold0.pt" and set(sidecar["sha256"]) == {"vocab.json", "embedding_matrix.npy", checkpoint.name, "link_rf"}
     assert sidecar["recipe"]["p_page_hidden"] == 0.25 and sidecar["recipe"]["p_text_hidden"] == 0.10 and sidecar["recipe"]["lr"] == 1e-3
     model, vocab, seq_len, _ = cc.load_control(42, 0, pilot=True)

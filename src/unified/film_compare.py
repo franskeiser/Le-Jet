@@ -45,6 +45,7 @@ from src.unified import cnn_baseline as cb
 from src.unified import concat_control as cc
 from src.unified import film
 from src.unified import fit_model as fm
+from src.unified import raw_cnn_control as rc
 from src.unified import text_cnn as tc
 from src.unified.film_data import part_inputs
 
@@ -53,11 +54,16 @@ CONTROL = "Concatenation (control)"
 CONTROL_SCRATCH = "Concatenation (from scratch)"
 E2 = "E2 (warm start)"
 E2_SCRATCH = "E2 (from scratch)"
+E2_NOBYPASS = "E2 (from scratch, no has_url bypass)"      # the ablation: the generator also reads the numbers of a no-link message
+RAW_CNN = "CNN-only, text + URL features (from scratch)"   # one network, the 37 raw features instead of the Link RF
+RF_ONLY = "RF-only (Link RF)"          # scored by rf_only_compare.py from the saved forest scores, not here
 CONDITIONS = ("complete", "page hidden")
 METRICS = ["accuracy", "precision", "recall", "f1"]
 COMPARISONS = [(E2, BASELINE), (E2, CONTROL), (CONTROL, BASELINE),                          # warm start family: the headline
                (E2_SCRATCH, CONTROL_SCRATCH), (CONTROL_SCRATCH, BASELINE), (E2_SCRATCH, BASELINE),   # from scratch family
-               (E2_SCRATCH, E2), (CONTROL_SCRATCH, CONTROL)]                                          # what the warm start does
+               (E2_SCRATCH, E2), (CONTROL_SCRATCH, CONTROL),                                          # what the warm start does
+               (E2_SCRATCH, E2_NOBYPASS),                                                             # what the has_url bypass adds
+               (E2_SCRATCH, RAW_CNN), (CONTROL_SCRATCH, RAW_CNN), (RAW_CNN, BASELINE)]                # what the Link RF adds over raw features
 
 # name -> (checkpoint kind, loader returning (model, word_to_idx, seq_len))
 LOADERS: Dict[str, tuple[str, Callable]] = {
@@ -66,7 +72,14 @@ LOADERS: Dict[str, tuple[str, Callable]] = {
     CONTROL_SCRATCH: ("concat_scratch", lambda seed, fold, pilot: cc.load_control(seed, fold, pilot, warm_start=False)[:3]),
     E2: ("film", lambda seed, fold, pilot: film.load_film(seed, fold, pilot, warm_start=True)[:3]),
     E2_SCRATCH: ("film_scratch", lambda seed, fold, pilot: film.load_film(seed, fold, pilot, warm_start=False)[:3]),
+    RAW_CNN: ("cnn_raw", lambda seed, fold, pilot: rc.load_raw(seed, fold, pilot)[:3]),
+    E2_NOBYPASS: ("film_scratch_nobypass", lambda seed, fold, pilot: film.load_film(seed, fold, pilot, warm_start=False, bypass=False)[:3]),
 }
+GROUPS = [("all messages", lambda d: d["has_url"] >= 0),
+          ("with a link", lambda d: d["has_url"] == 1),
+          ("with a link, page live", lambda d: (d["has_url"] == 1) & (d["page_live"] == 1)),
+          ("with a link, page not fetched", lambda d: (d["has_url"] == 1) & (d["page_live"] == 0)),
+          ("no link", lambda d: d["has_url"] == 0)]
 
 
 # ------------------------------------------------------------------ statistics
@@ -118,11 +131,14 @@ def test_predictions(pilot: bool, seeds: List[int], folds: List[int], names: Lis
             base_vocab, base_len = loaded[BASELINE][1], loaded[BASELINE][2]
             assert all(v == base_vocab and l == base_len for _, v, l in loaded.values()), "the models disagree on the fold's vocabulary"
             test = part_inputs(seed, fold, "test", base_vocab, base_len, pilot)
+            raw_test = rc.raw_part_inputs(seed, fold, "test", base_vocab, base_len, pilot) if RAW_CNN in loaded else None
             for name, (model, _, _) in loaded.items():
                 for condition in CONDITIONS:
-                    p = predict(model, name, test, condition)
+                    p = predict(model, name, raw_test if name == RAW_CNN else test, condition)
                     rows.append(pd.DataFrame({"seed": seed, "fold": fold, "message_id": test.message_id, "label": test.labels.numpy(),
-                                              "model": name, "condition": condition, "p_smishing": p, "pred": (p >= 0.5).astype(int)}))
+                                              "model": name, "condition": condition, "p_smishing": p, "pred": (p >= 0.5).astype(int),
+                                              "has_url": test.link_full[:, 3].numpy().astype(int),
+                                              "page_live": (1 - test.link_full[:, 2]).numpy().astype(int)}))
     out = pd.concat(rows, ignore_index=True)
     for (seed, model, condition), group in out.groupby(["seed", "model", "condition"]):
         assert group["message_id"].is_unique, f"seed {seed}: a message was tested twice by {model}"
@@ -144,6 +160,21 @@ def metrics_tables(predictions: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFram
     return per_seed, summary.reset_index()
 
 
+def group_metrics(predictions: pd.DataFrame, condition: str = "complete") -> pd.DataFrame:
+    """Accuracy, precision, recall and F1 (mean and std over the seeds) per model, for the messages with a link, with a live page, with a
+    page not fetched, and with no link. A group a model cannot speak for (a class missing) is left out of its mean, not scored 0."""
+    rows = []
+    part = predictions[predictions["condition"] == condition]
+    for group, select in GROUPS:
+        for (seed, model), g in part[select(part)].groupby(["seed", "model"], sort=False):
+            rows.append({"group": group, "seed": seed, "model": model, "n": len(g), "smishing_share": round(float(g["label"].mean()), 3),
+                         **scores(g["label"].to_numpy(), g["pred"].to_numpy())})
+    per_seed = pd.DataFrame(rows)
+    summary = per_seed.groupby(["group", "model"], sort=False)[["n", "smishing_share"] + METRICS].agg(["mean", "std"])
+    summary.columns = [f"{m}_{s}" for m, s in summary.columns]
+    return summary.reset_index()
+
+
 def mcnemar_table(predictions: pd.DataFrame) -> pd.DataFrame:
     complete = predictions[predictions["condition"] == "complete"]
     present = set(complete["model"])
@@ -163,18 +194,20 @@ def run_compare(pilot: bool, read_test: bool = False, seeds: List[int] = SEEDS, 
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
     if not pilot and not read_test:
         raise PermissionError("the test folds of the real data are read once, after everything is fixed: pass --read-test")
-    names = [BASELINE] + [n for n in (CONTROL, E2, CONTROL_SCRATCH, E2_SCRATCH)
+    names = [BASELINE] + [n for n in (CONTROL, E2, CONTROL_SCRATCH, E2_SCRATCH, E2_NOBYPASS, RAW_CNN)
                           if all(fm.checkpoint_path(dataset, LOADERS[n][0], s, f).exists() for s in seeds for f in folds)]
     log_read(dataset, names, seeds, folds, read_test)
     predictions = test_predictions(pilot, seeds, folds, names)
     per_seed, summary = metrics_tables(predictions)
     mc = mcnemar_table(predictions)
+    groups = group_metrics(predictions)
     out = fm.out_dir(dataset, "compare")
     predictions.to_csv(out / "test_predictions.csv", index=False)
     per_seed.to_csv(out / "test_metrics.csv", index=False)
     summary.to_csv(out / "test_summary.csv", index=False)
     mc.to_csv(out / "test_mcnemar.csv", index=False)
-    return {"predictions": predictions, "per_seed": per_seed, "summary": summary, "mcnemar": mc, "models": names}
+    groups.to_csv(out / "test_groups.csv", index=False)
+    return {"predictions": predictions, "per_seed": per_seed, "summary": summary, "mcnemar": mc, "groups": groups, "models": names}
 
 
 def format_summary(summary: pd.DataFrame) -> str:
@@ -202,6 +235,14 @@ def main(argv: List[str] | None = None) -> None:
         sys.exit(2)
     print(format_summary(result["summary"]))
     pd.set_option("display.width", 200)
+    print("\nBy group (complete pages; mean over the seeds):")
+    g = result["groups"]
+    for group, _ in GROUPS:
+        part = g[g["group"] == group]
+        print(f"\n{group} (n per seed about {part['n_mean'].iloc[0]:.0f}, smishing share {part['smishing_share_mean'].iloc[0]:.2f})")
+        print(f"{'model':<40}" + "".join(f"{m:>10}" for m in METRICS))
+        for _, r in part.iterrows():
+            print(f"{r['model']:<40}" + "".join(f"{r[f'{m}_mean']:>10.3f}" for m in METRICS))
     print("\nMcNemar (exact, complete pages), Holm-corrected per seed over the comparisons listed:")
     print(result["mcnemar"].round(4).to_string(index=False))
 
