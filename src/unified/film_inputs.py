@@ -32,6 +32,7 @@ from src.data.split_crowd import load_fold
 from src.unified import link_lane as ll
 
 E2_LINK = ["P", "u", "page_missing"]
+LINK_WIDTH = len(E2_LINK) + 1        # the tensors the models read: [P, u, page_missing, has_url]
 PARTS = ("train", "val", "test")
 
 
@@ -43,11 +44,17 @@ class PartLink:
     label: np.ndarray                    # (n,) 1 = smishing, 0 = legitimate
     full: Dict[str, np.ndarray]          # P, u, page_missing, each (n,): the page as inspected
     blank: Dict[str, np.ndarray]         # the same with the page hidden (page_missing = 1)
+    has_url: np.ndarray = None           # (n,) 1 if the message has a link; a dataset without the column has a link in every message
 
     def stack(self, which: str = "full") -> np.ndarray:
         """(n, 3) float32 array [P, u, page_missing] of `full` or `blank`."""
         numbers = self.full if which == "full" else self.blank
         return np.column_stack([numbers[c] for c in E2_LINK]).astype(np.float32)
+
+    def stack4(self, which: str = "full") -> np.ndarray:
+        """(n, 4) float32 array [P, u, page_missing, has_url]: what E2, the concatenation control and the baseline are given."""
+        has_url = np.ones(len(self.message_id)) if self.has_url is None else self.has_url
+        return np.column_stack([self.stack(which), has_url]).astype(np.float32)
 
 
 def align(rows: pd.DataFrame, full: pd.DataFrame, blank: pd.DataFrame) -> PartLink:
@@ -75,8 +82,9 @@ def align(rows: pd.DataFrame, full: pd.DataFrame, blank: pd.DataFrame) -> PartLi
     if not (aligned["blank"]["page_missing"] == 1).all():
         raise ValueError("blank: page_missing must be 1 on every row")
 
+    has_url = rows["has_url"].astype(int).to_numpy() if "has_url" in rows.columns else np.ones(len(rows), dtype=int)
     return PartLink(message_id=ids.to_numpy(), label=(rows["label"] == "smishing").to_numpy().astype(int),
-                    full=aligned["full"], blank=aligned["blank"])
+                    full=aligned["full"], blank=aligned["blank"], has_url=has_url)
 
 
 def link_inputs(seed: int, fold: int, pilot: bool = False) -> Dict[str, PartLink]:

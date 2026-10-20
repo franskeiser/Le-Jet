@@ -52,7 +52,10 @@ DENSE_WEIGHT_DECAY = 1e-4
 # Crowd study: one crowdsourced dataset (every message has a link) with 5-fold grouped cross-validation. Kept apart from
 # the paths above so the earlier pipeline keeps working. The pilot is SYNTHETIC text: a pipeline test only, never results.
 CROWD_DATASET_PATH = "data/processed/crowd_smishing_v1.csv"   # src/data/build_crowd_dataset.py
-CROWD_PILOT_PATH = "data/processed/crowd_pilot_synthetic.csv"  # ... --pilot
+# ... --pilot. Set LEJET_PILOT_DATASET to point every --pilot run at another synthetic dataset, for example
+# data/processed/crowd_relevant_synthetic.csv: its splits, embeddings, forests, models and results are written under that file's own
+# name, so the earlier pilot's results are left as they are.
+CROWD_PILOT_PATH = os.environ.get("LEJET_PILOT_DATASET", "data/processed/crowd_pilot_synthetic.csv")
 CROWD_SPLITS_DIR = "data/splits_crowd"                         # src/data/split_crowd.py
 CROWD_EMBEDDINGS_DIR = "models/embeddings_crowd"               # src/features/build_crowd_embeddings.py
 CROWD_N_FOLDS = 5

@@ -59,7 +59,7 @@ def setup():
 def test_predict_messages_returns_what_the_generator_read_and_the_verdict(setup):
     model, rf, rows = setup
     out = film.predict_messages(model, rf, VOCAB, 12, rows.iloc[:20])
-    assert list(out.columns) == ["P", "u", "page_missing", "p_smishing", "pred"] and list(out.index) == list(rows.index[:20])
+    assert list(out.columns) == ["P", "u", "page_missing", "has_url", "p_smishing", "pred"] and list(out.index) == list(rows.index[:20])
     p, u = p_and_u(rf, rows.iloc[:20][FEATURES_37])
     assert np.allclose(out["P"], p) and np.allclose(out["u"], u)
     assert list(out["page_missing"]) == [0, 1, 0, 0, 1, 0] * 3 + [0, 1]

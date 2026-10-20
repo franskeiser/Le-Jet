@@ -103,21 +103,28 @@ def load_link_rf(dataset: Path, seed: int, fold: int):
 
 def predict_messages(model: FiLMTextCNN, link_rf, word_to_idx: Dict[str, int], seq_len: int, rows: pd.DataFrame,
                      hide_page: bool = False) -> pd.DataFrame:
-    """Score raw messages like the app: `rows` has sms_text, the 37 link/page features and page_fetched.
+    """Score raw messages like the app: `rows` has sms_text, the 37 link/page features and page_fetched, and has_url if some
+    messages carry no link (without the column every message has one).
 
-    Returns a frame with the index of `rows` and P, u, page_missing (what the generator read), p_smishing and pred (1 = smishing).
+    A message with no link never reaches the inspector or the Link RF: P = 0, u = 0, page_missing = 1, has_url = 0, and E2 skips its
+    generator for it. Returns a frame with the index of `rows` and P, u, page_missing, has_url (what the model read), p_smishing and
+    pred (1 = smishing).
     """
     scored = ll.blank_page(rows) if hide_page else rows
-    p, u = p_and_u(link_rf, scored[FEATURES_37])
+    has_url = rows["has_url"].astype(int).to_numpy() if "has_url" in rows.columns else np.ones(len(rows), dtype=int)
+    linked = has_url == 1
+    p, u = np.zeros(len(rows)), np.zeros(len(rows))
+    if linked.any():
+        p[linked], u[linked] = p_and_u(link_rf, scored.loc[linked, FEATURES_37])
     page_missing = 1 - scored["page_fetched"].astype(int).to_numpy()              # blank_page sets page_fetched to 0
-    link = torch.tensor(np.column_stack([p, u, page_missing]), dtype=torch.float32)
+    link = torch.tensor(np.column_stack([p, u, page_missing, has_url]), dtype=torch.float32)
     token_ids = encode_batch_tolerant(rows["sms_text"].astype(str).tolist(), word_to_idx, seq_len)
     was_training = model.training
     model.eval()
     with torch.no_grad():
         p_smishing = torch.softmax(model(token_ids, link), dim=1)[:, 1].numpy()
     model.train(was_training)
-    return pd.DataFrame({"P": p, "u": u, "page_missing": page_missing, "p_smishing": p_smishing,
+    return pd.DataFrame({"P": p, "u": u, "page_missing": page_missing, "has_url": has_url, "p_smishing": p_smishing,
                          "pred": (p_smishing >= 0.5).astype(int)}, index=rows.index)
 
 
@@ -176,8 +183,9 @@ def run_build(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
 
 
 # ------------------------------------------------------------------ step train
-def kind_of(warm_start: bool) -> str:
-    return "film" if warm_start else "film_scratch"
+def kind_of(warm_start: bool, bypass: bool = True) -> str:
+    """"film" / "film_scratch" is E2 with the has_url bypass (the main model); "..._nobypass" ignores has_url (the ablation)."""
+    return ("film" if warm_start else "film_scratch") + ("" if bypass else "_nobypass")
 
 
 def warm_start_from_baseline(model: torch.nn.Module, dataset: Path, seed: int, fold: int,
@@ -212,13 +220,13 @@ def start_matches_baseline(model: FiLMTextCNN, seed: int, fold: int, pilot: bool
 
 def model_options(model: FiLMTextCNN) -> dict:
     return {"gamma_mode": model.gamma_mode, "mask_padding": model.mask_padding, "average_after_relu": model.average_after_relu,
-            "use_beta": model.use_beta, "freeze_embedding": model.freeze_embedding}
+            "use_beta": model.use_beta, "freeze_embedding": model.freeze_embedding, "bypass_no_link": model.bypass_no_link}
 
 
 def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epochs: int = fm.EPOCHS, **options) -> tuple:
     """Train, save and describe one seed and fold. Returns (summary row, per-epoch log, per-filter table)."""
     dataset = tc.dataset_path(pilot)
-    kind = kind_of(warm_start)
+    kind = kind_of(warm_start, options.get("bypass_no_link", True))
     model, word_to_idx, seq_len = build_film(seed, fold, pilot, **options)
     source = None
     if warm_start:
@@ -254,13 +262,13 @@ def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epoch
 
 
 def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, warm_start: bool = True,
-              epochs: int = fm.EPOCHS) -> pd.DataFrame:
+              epochs: int = fm.EPOCHS, bypass: bool = True) -> pd.DataFrame:
     dataset = tc.dataset_path(pilot)
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
     rows, logs, filters = [], [], []
     for seed in seeds:
         for fold in folds:
-            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs)
+            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, bypass_no_link=bypass)
             rows.append(row)
             logs.append(log)
             filters.append(table)
@@ -268,7 +276,7 @@ def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
                   f"best epoch {row['best_epoch']} of {row['epochs_run']} | {row['train_seconds']:.1f} s | "
                   f"mean |gamma-1| {row['gamma_dev_mean']:.3f}, mean |beta| {row['beta_abs_mean']:.3f}, "
                   f"{row['filters_moved']} of {fm_filters(table)} filters moved", flush=True)
-    out = fm.out_dir(dataset, "train" if warm_start else "train_scratch")
+    out = fm.out_dir(dataset, ("train" if warm_start else "train_scratch") + ("" if bypass else "_nobypass"))
     out.mkdir(parents=True, exist_ok=True)
     summary = pd.DataFrame(rows)
     summary.to_csv(out / "train_summary.csv", index=False)
@@ -282,7 +290,8 @@ def fm_filters(table: pd.DataFrame) -> int:
 
 
 # ------------------------------------------------------------------ step check
-def load_film(seed: int, fold: int, pilot: bool = False, warm_start: bool = True) -> tuple[FiLMTextCNN, Dict[str, int], int, dict]:
+def load_film(seed: int, fold: int, pilot: bool = False, warm_start: bool = True,
+              bypass: bool = True) -> tuple[FiLMTextCNN, Dict[str, int], int, dict]:
     """(model in eval mode, word_to_idx, SEQ_LEN_L, sidecar), rebuilt from the sidecar alone; refuses a changed file.
 
     The files checked are the ones the model is made of and served from: the vocabulary, the starting embedding matrix, the
@@ -290,7 +299,7 @@ def load_film(seed: int, fold: int, pilot: bool = False, warm_start: bool = True
     does not invalidate E2).
     """
     dataset = tc.dataset_path(pilot)
-    checkpoint = fm.checkpoint_path(dataset, kind_of(warm_start), seed, fold)
+    checkpoint = fm.checkpoint_path(dataset, kind_of(warm_start, bypass), seed, fold)
     sidecar = fm.read_sidecar(checkpoint)
     fm.check_hashes(sidecar["sha256"], fm.sidecar_files(dataset, seed, fold, checkpoint, {"link_rf": link_rf_path(dataset, seed, fold)}))
     embedding, word_to_idx = tc.frozen_embedding(tc.ROOT / sidecar["embeddings_dir"])
@@ -300,13 +309,14 @@ def load_film(seed: int, fold: int, pilot: bool = False, warm_start: bool = True
     return model.eval(), word_to_idx, sidecar["seq_len_l"], sidecar
 
 
-def run_check(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, warm_start: bool = True) -> pd.DataFrame:
+def run_check(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, warm_start: bool = True,
+              bypass: bool = True) -> pd.DataFrame:
     dataset = tc.dataset_path(pilot)
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
     rows = []
     for seed in seeds:
         for fold in folds:
-            model, word_to_idx, seq_len, sidecar = load_film(seed, fold, pilot, warm_start)
+            model, word_to_idx, seq_len, sidecar = load_film(seed, fold, pilot, warm_start, bypass)
             val = part_inputs(seed, fold, "val", word_to_idx, seq_len, pilot)
             again = fm.evaluate(model, val.token_ids, val.link_full, val.labels)
             gap = max(abs(again[k] - sidecar["val"][k]) for k in fm.VAL_METRICS)
@@ -318,7 +328,7 @@ def run_check(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
             rows.append({"seed": seed, "fold": fold, "val_f1": again["val_f1"], "max_gap": gap, "app_path_ok": app_ok,
                          "ok": gap == 0.0 and app_ok})
     summary = pd.DataFrame(rows)
-    out = fm.out_dir(dataset, "check" if warm_start else "check_scratch")
+    out = fm.out_dir(dataset, ("check" if warm_start else "check_scratch") + ("" if bypass else "_nobypass"))
     out.mkdir(parents=True, exist_ok=True)
     summary.to_csv(out / "check_summary.csv", index=False)
     return summary
@@ -332,6 +342,8 @@ def main(argv: List[str] | None = None) -> None:
     ap.add_argument("--folds", type=int, nargs="+", default=None, help=f"folds to run (default 0-{CROWD_N_FOLDS - 1})")
     ap.add_argument("--warm-start", choices=["baseline", "none"], default="baseline",
                     help="train: start from the retrained baseline (default) or from scratch (the D7a check run); check: which set")
+    ap.add_argument("--no-bypass", action="store_true",
+                    help="train / check E2 WITHOUT the has_url bypass (the ablation): the generator reads the link numbers of every message")
     args = ap.parse_args(argv)
     warm = args.warm_start == "baseline"
     if args.step == "build":
@@ -344,10 +356,10 @@ def main(argv: List[str] | None = None) -> None:
                 print(f"  seed {r['seed']} fold {r['fold']}: failed {[c for c in checks if not r[c]]}")
             sys.exit(1)
     elif args.step == "train":
-        summary = run_train(args.pilot, args.seeds, args.folds, warm)
+        summary = run_train(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass)
         print(f"\n{len(summary)} E2 models trained; mean val F1 {summary['val_f1'].mean():.3f} (std {summary['val_f1'].std():.3f})")
     else:
-        summary = run_check(args.pilot, args.seeds, args.folds, warm)
+        summary = run_check(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass)
         print(summary.to_string(index=False))
         print(f"\n{int(summary['ok'].sum())} of {len(summary)} rebuilt from their sidecars with a gap of exactly 0")
         sys.exit(0 if summary["ok"].all() else 1)

@@ -22,6 +22,10 @@ never saw. The forest is saved for the later steps and the live app. Only val is
 scores are written but not evaluated here (the final comparison reads the test once, after everything is fixed).
 
 The 40 link numbers a model can read (step 4): P, u, the 37 c_ and page_missing = 1 - page_fetched.
+
+Messages with no link (has_url = 0, when the dataset has that column): the forest is tuned, fitted and scored on the messages that HAVE a
+link only. A no-link message gets P = 0, u = 0, every c_ = 0 and page_missing = 1 (no page), which the models never read as evidence:
+E2 skips its generator for it (has_url = 0) and the concatenation control reads has_url next to them. Summaries are over link messages.
 has_url is gone: every message has a link. Steps 2 and 3 write every row twice, scored by the SAME forest:
     full    the row as inspected
     blank   the page hidden: the 13 page columns set to -1, page_missing = 1. The 4 outside columns
@@ -80,13 +84,19 @@ def labels(df: pd.DataFrame) -> np.ndarray:
     return (df["label"] == "smishing").to_numpy().astype(int)
 
 
+def has_link(df: pd.DataFrame) -> pd.Series:
+    """True for the messages that carry a link. A dataset without a has_url column (the first pilot) has a link in every message."""
+    return df["has_url"].astype(int).eq(1) if "has_url" in df.columns else pd.Series(True, index=df.index)
+
+
 def group_rule(dataset: Path) -> str:
     report = ROOT / CROWD_SPLITS_DIR / dataset.stem / "split_report.json"
     return json.loads(report.read_text(encoding="utf-8"))["group_by"]
 
 
 def tune(train: pd.DataFrame, rule: str, seed: int, n_splits: int = TUNE_SPLITS) -> Tuple[dict, pd.DataFrame]:
-    """Settings for the link forest, chosen by grouped CV on `train` only."""
+    """Settings for the link forest, chosen by grouped CV on `train` only (the messages that have a link)."""
+    train = train[has_link(train)]
     X, y = train[FEATURES_37], labels(train)
     groups = make_groups(train, rule, n_splits).to_numpy()
     folds = list(StratifiedGroupKFold(n_splits, shuffle=True, random_state=seed).split(X, y, groups))
@@ -125,8 +135,11 @@ def blank_page(rows: pd.DataFrame) -> pd.DataFrame:
 
 
 def lane_numbers(rf, rows: pd.DataFrame) -> pd.DataFrame:
-    """The 40 link numbers of `rows` (same index)."""
-    out = score(rf, rows)
+    """The 40 link numbers of `rows` (same index). A message with no link gets zeros and page_missing = 1; the forest never sees it."""
+    linked = has_link(rows).to_numpy()
+    out = pd.DataFrame(0.0, index=rows.index, columns=OUTPUTS)
+    if linked.any():
+        out.loc[linked, OUTPUTS] = score(rf, rows[linked])[OUTPUTS].to_numpy()
     out["page_missing"] = 1 - rows["page_fetched"].astype(int)
     return out
 
@@ -139,7 +152,9 @@ def oof_outputs(train: pd.DataFrame, rule: str, seed: int, params: dict,
     groups = make_groups(train, rule, n_splits).to_numpy()
     full, blank = [], []
     for fit_idx, held_idx in StratifiedGroupKFold(n_splits, shuffle=True, random_state=seed).split(train, y, groups):
-        rf = fit_rf(train.iloc[fit_idx][FEATURES_37], y[fit_idx], seed, **params)
+        fit_rows = train.iloc[fit_idx]
+        fit_linked = has_link(fit_rows).to_numpy()
+        rf = fit_rf(fit_rows[fit_linked][FEATURES_37], y[fit_idx][fit_linked], seed, **params)
         held = train.iloc[held_idx]
         full.append(lane_numbers(rf, held))
         blank.append(lane_numbers(rf, blank_page(held)))
@@ -155,6 +170,7 @@ def final_outputs(parts: dict, seed: int, params: dict) -> tuple:
     """(forest fit on all of parts["train"], the 40 numbers of the val and test rows with message_id and part,
     the same with the page hidden)."""
     train = parts["train"]
+    train = train[has_link(train)]
     rf = fit_rf(train[FEATURES_37], labels(train), seed, **params)
     full, blank = [], []
     for name in ("val", "test"):
@@ -207,12 +223,13 @@ def run_oof(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLDS)
             for frame, name in ((oof, "oof"), (oof_blank, "oof_blank")):
                 frame.insert(0, "message_id", train["message_id"])
                 frame.to_csv(out / f"{name}_seed{seed}_fold{fold}.csv", index=False)
-            y = labels(train)
-            rows.append({"seed": seed, "fold": fold, "train_rows": len(train),
-                         "oof_f1": round(f1_score(y, oof["P"] >= 0.5), 4),
-                         "oof_log_loss": round(log_loss(y, oof["P"].clip(1e-6, 1 - 1e-6), labels=[0, 1]), 4),
-                         "mean_u": round(float(oof["u"].mean()), 4),
-                         "oof_f1_page_hidden": round(f1_score(y, oof_blank["P"] >= 0.5), 4)})
+            linked = has_link(train).to_numpy()                       # the forest speaks only for the messages that have a link
+            y = labels(train)[linked]
+            rows.append({"seed": seed, "fold": fold, "train_rows": len(train), "train_rows_with_link": int(linked.sum()),
+                         "oof_f1": round(f1_score(y, oof["P"][linked] >= 0.5), 4),
+                         "oof_log_loss": round(log_loss(y, oof["P"][linked].clip(1e-6, 1 - 1e-6), labels=[0, 1]), 4),
+                         "mean_u": round(float(oof["u"][linked].mean()), 4),
+                         "oof_f1_page_hidden": round(f1_score(y, oof_blank["P"][linked] >= 0.5), 4)})
             print(f"seed {seed} fold {fold}: oof F1 {rows[-1]['oof_f1']}")
     summary = pd.DataFrame(rows)
     summary.to_csv(out / "oof_summary.csv", index=False)
@@ -251,12 +268,14 @@ def run_final(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
             scored.to_csv(out / f"final_seed{seed}_fold{fold}.csv", index=False)
             scored_blank.to_csv(out / f"final_blank_seed{seed}_fold{fold}.csv", index=False)
             val = scored[scored["part"] == "val"]
-            y = labels(parts["val"])
-            rows.append({"seed": seed, "fold": fold, "val_rows": len(val), "test_rows_scored": int((scored["part"] == "test").sum()),
-                         "val_f1": round(f1_score(y, val["P"] >= 0.5), 4),
-                         "val_log_loss": round(log_loss(y, val["P"].clip(1e-6, 1 - 1e-6), labels=[0, 1]), 4),
+            linked = has_link(parts["val"]).to_numpy()
+            y = labels(parts["val"])[linked]
+            rows.append({"seed": seed, "fold": fold, "val_rows": len(val), "val_rows_with_link": int(linked.sum()),
+                         "test_rows_scored": int((scored["part"] == "test").sum()),
+                         "val_f1": round(f1_score(y, val["P"][linked] >= 0.5), 4),
+                         "val_log_loss": round(log_loss(y, val["P"][linked].clip(1e-6, 1 - 1e-6), labels=[0, 1]), 4),
                          "val_f1_page_hidden": round(f1_score(
-                             y, scored_blank.loc[scored_blank["part"] == "val", "P"] >= 0.5), 4)})
+                             y, scored_blank.loc[scored_blank["part"] == "val", "P"][linked] >= 0.5), 4)})
             print(f"seed {seed} fold {fold}: val F1 {rows[-1]['val_f1']}")
     summary = pd.DataFrame(rows)
     summary.to_csv(out / "final_summary.csv", index=False)
@@ -275,10 +294,16 @@ def run_check(pilot: bool, seeds: List[int] = SEEDS, n_folds: int = CROWD_N_FOLD
     for seed in seeds:
         for fold in range(n_folds):
             lane = load_lane(seed, fold, pilot=pilot)
+            parts = load_fold(seed, fold, pilot=pilot)
             bias = forest_bias(joblib.load(model_dir(dataset) / f"link_rf_seed{seed}_fold{fold}.joblib")["model"])
-            final_gap = max(float((f["P"] - f[CONTRIBUTIONS].sum(axis=1) - bias).abs().max())
+
+            def linked(frame, part):          # P = bias + sum c_ holds for the messages the forest scored: those with a link
+                ids = set(parts[part].loc[has_link(parts[part]), "message_id"])
+                return frame[frame["message_id"].isin(ids)]
+            final_gap = max(float((linked(f, part)["P"] - linked(f, part)[CONTRIBUTIONS].sum(axis=1) - bias).abs().max())
                             for part in ("val", "test") for f in lane[part])
-            oof_biases = max(int((f["P"] - f[CONTRIBUTIONS].sum(axis=1)).round(5).nunique()) for f in lane["train"])
+            oof_biases = max(int((linked(f, "train")["P"] - linked(f, "train")[CONTRIBUTIONS].sum(axis=1)).round(5).nunique())
+                             for f in lane["train"])
             assert final_gap < atol, f"seed {seed} fold {fold}: P != bias + sum c_ (gap {final_gap})"
             assert oof_biases <= OOF_SPLITS, f"seed {seed} fold {fold}: {oof_biases} different oof biases"
             rows.append({"seed": seed, "fold": fold, "bias": round(bias, 4),

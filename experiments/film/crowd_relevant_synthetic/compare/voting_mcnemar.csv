@@ -1,0 +1,16 @@
+seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,CNN-only (baseline),KNN-RF-ETC voting (text only),366,294,0.0056749067788867255,0.011349813557773451,True
+42,Concatenation (from scratch),KNN-RF-ETC voting (text only),721,151,9.784244970264578e-90,4.892122485132289e-89,True
+42,E2 (from scratch),KNN-RF-ETC voting (text only),727,164,3.1800975931605267e-85,9.54029277948158e-85,True
+42,"E2 (from scratch, no has_url bypass)",KNN-RF-ETC voting (text only),727,162,4.272997605533518e-86,1.7091990422134073e-85,True
+42,RF-only (Link RF),KNN-RF-ETC voting (text only),772,696,0.050253608521149996,0.050253608521149996,False
+123,CNN-only (baseline),KNN-RF-ETC voting (text only),438,326,5.757971813796324e-05,0.00011515943627592648,True
+123,Concatenation (from scratch),KNN-RF-ETC voting (text only),729,132,9.347659550777593e-101,3.739063820311037e-100,True
+123,E2 (from scratch),KNN-RF-ETC voting (text only),740,140,3.2058112404909087e-99,9.617433721472725e-99,True
+123,"E2 (from scratch, no has_url bypass)",KNN-RF-ETC voting (text only),738,134,8.6223028080297e-102,4.31115140401485e-101,True
+123,RF-only (Link RF),KNN-RF-ETC voting (text only),784,693,0.019159836259210944,0.019159836259210944,True
+2024,CNN-only (baseline),KNN-RF-ETC voting (text only),365,330,0.19712153130766755,0.3942430626153351,False
+2024,Concatenation (from scratch),KNN-RF-ETC voting (text only),710,144,1.4074464207989153e-90,7.037232103994576e-90,True
+2024,E2 (from scratch),KNN-RF-ETC voting (text only),723,159,1.4699500691784865e-86,5.879800276713946e-86,True
+2024,"E2 (from scratch, no has_url bypass)",KNN-RF-ETC voting (text only),716,169,8.972190851872733e-81,2.69165725556182e-80,True
+2024,RF-only (Link RF),KNN-RF-ETC voting (text only),744,706,0.33121751663364013,0.3942430626153351,False

@@ -1,0 +1,2 @@
+2026-10-20T19:45:42 dataset=crowd_relevant_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False models=['CNN-only (baseline)', 'Concatenation (from scratch)', 'E2 (from scratch)', 'E2 (from scratch, no has_url bypass)']
+2026-10-20T22:12:37 dataset=crowd_relevant_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False models=['CNN-only (baseline)', 'Concatenation (from scratch)', 'E2 (from scratch)', 'E2 (from scratch, no has_url bypass)', 'CNN-only, text + URL features (from scratch)']

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.config import CROWD_EMBEDDINGS_DIR, CROWD_N_FOLDS, CROWD_SPLITS_DIR, SEEDS
+from src.config import CROWD_DATASET_PATH, CROWD_EMBEDDINGS_DIR, CROWD_N_FOLDS, CROWD_PILOT_PATH, CROWD_SPLITS_DIR, SEEDS
 from src.data.split_crowd import load_fold
 from src.features.build_embeddings import DEFAULT_PRIMARY, DEFAULT_SECONDARY, build_vocab
 from src.features.model.embedding import MmapFastTextVectors, build_embedding_matrix
@@ -40,7 +40,7 @@ def main() -> None:
             parts = load_fold(seed, fold, pilot=a.pilot, splits_dir=CROWD_SPLITS_DIR)
             vocab, _ = build_vocab(parts["train"]["sms_text"].astype(str).tolist())
             matrix, _, sources = build_embedding_matrix(vocab, primary, secondary)
-            dataset = "crowd_pilot_synthetic" if a.pilot else "crowd_smishing_v1"
+            dataset = Path(CROWD_PILOT_PATH if a.pilot else CROWD_DATASET_PATH).stem
             out = ROOT / CROWD_EMBEDDINGS_DIR / dataset / f"seed{seed}_fold{fold}"
             out.mkdir(parents=True, exist_ok=True)
             np.save(out / "embedding_matrix.npy", matrix)

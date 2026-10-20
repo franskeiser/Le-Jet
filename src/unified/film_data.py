@@ -23,8 +23,8 @@ class PartData(NamedTuple):
     message_id: np.ndarray
     token_ids: torch.Tensor        # (n, seq_len)
     labels: torch.Tensor           # (n,) 1 = smishing
-    link_full: torch.Tensor        # (n, 3) P, u, page_missing: the page as inspected (train rows out-of-fold)
-    link_blank: torch.Tensor       # (n, 3) the same with the page hidden (page_missing = 1)
+    link_full: torch.Tensor        # (n, 4) P, u, page_missing, has_url: the page as inspected (train rows out-of-fold)
+    link_blank: torch.Tensor       # (n, 4) the same with the page hidden (page_missing = 1); has_url is the same in both
 
 
 def part_inputs(seed: int, fold: int, part: str, word_to_idx: Dict[str, int], seq_len: int, pilot: bool = False) -> PartData:
@@ -33,4 +33,4 @@ def part_inputs(seed: int, fold: int, part: str, word_to_idx: Dict[str, int], se
     link = fi.link_inputs(seed, fold, pilot=pilot)[part]
     assert LABEL_TO_IDX["smishing"] == 1 and torch.equal(labels, torch.tensor(link.label)), "labels disagree with the link rows"
     return PartData(message_id=link.message_id, token_ids=token_ids, labels=labels,
-                    link_full=torch.tensor(link.stack("full")), link_blank=torch.tensor(link.stack("blank")))
+                    link_full=torch.tensor(link.stack4("full")), link_blank=torch.tensor(link.stack4("blank")))

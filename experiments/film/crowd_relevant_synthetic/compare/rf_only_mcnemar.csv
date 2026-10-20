@@ -1,0 +1,13 @@
+seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,CNN-only (baseline),RF-only (Link RF),696,700,0.9360078901785682,0.9360078901785682,False
+42,Concatenation (from scratch),RF-only (Link RF),598,104,3.7784346396891514e-85,1.5113738558756606e-84,True
+42,E2 (from scratch),RF-only (Link RF),596,109,4.2422837728970394e-82,8.484567545794079e-82,True
+42,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),598,109,1.481721440308641e-82,4.445164320925923e-82,True
+123,CNN-only (baseline),RF-only (Link RF),705,684,0.591535728122359,0.591535728122359,False
+123,Concatenation (from scratch),RF-only (Link RF),641,135,1.3262149262724467e-79,2.6524298525448934e-79,True
+123,E2 (from scratch),RF-only (Link RF),622,113,5.329431683639847e-86,1.5988295050919543e-85,True
+123,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),616,103,7.102548909776699e-90,2.8410195639106795e-89,True
+2024,CNN-only (baseline),RF-only (Link RF),713,716,0.957808388565483,0.957808388565483,False
+2024,Concatenation (from scratch),RF-only (Link RF),642,114,4.491209264294272e-90,8.982418528588544e-90,True
+2024,E2 (from scratch),RF-only (Link RF),620,94,7.328081312437329e-96,2.9312325249749317e-95,True
+2024,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),607,98,1.683000208269066e-90,5.0490006248071985e-90,True
