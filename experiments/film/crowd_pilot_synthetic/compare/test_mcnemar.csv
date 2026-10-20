@@ -1,0 +1,25 @@
+seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,E2 (warm start),CNN-only (baseline),109,20,5.072228635611523e-16,2.5361143178057614e-15,True
+42,E2 (warm start),Concatenation (control),33,42,0.3556992390814873,0.7113984781629746,False
+42,Concatenation (control),CNN-only (baseline),119,21,8.201244547147495e-18,5.740871183003247e-17,True
+42,E2 (from scratch),Concatenation (from scratch),63,29,0.000509090224349734,0.0015272706730492022,True
+42,Concatenation (from scratch),CNN-only (baseline),114,21,1.1599085487375384e-16,6.95945129242523e-16,True
+42,E2 (from scratch),CNN-only (baseline),147,20,4.417192007039092e-25,3.5337536056312734e-24,True
+42,E2 (from scratch),E2 (warm start),54,16,5.85395552938811e-06,2.341582211755244e-05,True
+42,Concatenation (from scratch),Concatenation (control),45,50,0.6817425059181855,0.7113984781629746,False
+123,E2 (warm start),CNN-only (baseline),121,30,3.717726603907368e-14,2.0757280494447132e-13,True
+123,E2 (warm start),Concatenation (control),21,23,0.880395821280672,0.880395821280672,False
+123,Concatenation (control),CNN-only (baseline),125,32,3.459546749074522e-14,2.0757280494447132e-13,True
+123,E2 (from scratch),Concatenation (from scratch),24,16,0.26818725105476915,0.5363745021095383,False
+123,Concatenation (from scratch),CNN-only (baseline),159,25,4.705828310106366e-25,3.2940798170744563e-24,True
+123,E2 (from scratch),CNN-only (baseline),155,13,4.93623121705354e-32,3.948984973642832e-31,True
+123,E2 (from scratch),E2 (warm start),61,10,4.6446053760977124e-10,1.857842150439085e-09,True
+123,Concatenation (from scratch),Concatenation (control),63,22,9.811984308900493e-06,2.943595292670148e-05,True
+2024,E2 (warm start),CNN-only (baseline),131,20,3.450382863956076e-21,2.4152680047692533e-20,True
+2024,E2 (warm start),Concatenation (control),83,23,3.787227599932374e-09,1.893613799966187e-08,True
+2024,Concatenation (control),CNN-only (baseline),70,19,4.957489567762136e-08,1.4872468703286406e-07,True
+2024,E2 (from scratch),Concatenation (from scratch),55,10,1.1753602809018608e-08,4.701441123607443e-08,True
+2024,Concatenation (from scratch),CNN-only (baseline),100,13,8.471157872064742e-18,5.082694723238845e-17,True
+2024,E2 (from scratch),CNN-only (baseline),147,15,2.0707568742771897e-28,1.6566054994217518e-27,True
+2024,E2 (from scratch),E2 (warm start),28,7,0.0005082604475319386,0.001016520895063877,True
+2024,Concatenation (from scratch),Concatenation (control),73,37,0.0007689850065829601,0.001016520895063877,True
