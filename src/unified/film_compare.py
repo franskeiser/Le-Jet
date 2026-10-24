@@ -239,6 +239,9 @@ def main(argv: List[str] | None = None) -> None:
     g = result["groups"]
     for group, _ in GROUPS:
         part = g[g["group"] == group]
+        if part.empty:                                     # for example no "no link" messages in a dataset where every message has one
+            print(f"\n{group}: no messages")
+            continue
         print(f"\n{group} (n per seed about {part['n_mean'].iloc[0]:.0f}, smishing share {part['smishing_share_mean'].iloc[0]:.2f})")
         print(f"{'model':<40}" + "".join(f"{m:>10}" for m in METRICS))
         for _, r in part.iterrows():

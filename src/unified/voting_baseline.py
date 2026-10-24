@@ -45,11 +45,17 @@ def strip_links(text: str) -> str:
     return " ".join(text.split())
 
 
-def fit_and_score(train: pd.DataFrame, test: pd.DataFrame, seed: int) -> tuple[np.ndarray, np.ndarray]:
-    """(share of voters saying smishing, majority verdict) for every test row, from a detector fitted on `train` only."""
+def fit_detector(train: pd.DataFrame, seed: int) -> JainSmishingDetector:
+    """The voting model fitted on `train` only: TF-IDF and the KNN + RF + ExtraTrees vote (`tfidf`, `text_clf`); no URL classifier."""
     detector = JainSmishingDetector(seed)
     y = (train["label"] == "smishing").astype(int).to_numpy()
-    detector._fit_text_classifier([strip_links(t) for t in train["sms_text"]], y)   # the text classifier only, no URL classifier
+    detector._fit_text_classifier([strip_links(t) for t in train["sms_text"]], y)
+    return detector
+
+
+def fit_and_score(train: pd.DataFrame, test: pd.DataFrame, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    """(share of voters saying smishing, majority verdict) for every test row, from a detector fitted on `train` only."""
+    detector = fit_detector(train, seed)
     X = detector.tfidf.transform([_prep(t) for t in test["sms_text"]])
     votes = np.column_stack([est.predict(X) for est in detector.text_clf.estimators_])
     return votes.mean(axis=1), detector.text_clf.predict(X).astype(int)

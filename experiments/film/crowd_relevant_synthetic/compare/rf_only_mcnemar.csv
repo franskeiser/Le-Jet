@@ -1,13 +1,16 @@
 seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
-42,CNN-only (baseline),RF-only (Link RF),696,700,0.9360078901785682,0.9360078901785682,False
-42,Concatenation (from scratch),RF-only (Link RF),598,104,3.7784346396891514e-85,1.5113738558756606e-84,True
-42,E2 (from scratch),RF-only (Link RF),596,109,4.2422837728970394e-82,8.484567545794079e-82,True
-42,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),598,109,1.481721440308641e-82,4.445164320925923e-82,True
-123,CNN-only (baseline),RF-only (Link RF),705,684,0.591535728122359,0.591535728122359,False
-123,Concatenation (from scratch),RF-only (Link RF),641,135,1.3262149262724467e-79,2.6524298525448934e-79,True
-123,E2 (from scratch),RF-only (Link RF),622,113,5.329431683639847e-86,1.5988295050919543e-85,True
-123,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),616,103,7.102548909776699e-90,2.8410195639106795e-89,True
-2024,CNN-only (baseline),RF-only (Link RF),713,716,0.957808388565483,0.957808388565483,False
-2024,Concatenation (from scratch),RF-only (Link RF),642,114,4.491209264294272e-90,8.982418528588544e-90,True
-2024,E2 (from scratch),RF-only (Link RF),620,94,7.328081312437329e-96,2.9312325249749317e-95,True
-2024,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),607,98,1.683000208269066e-90,5.0490006248071985e-90,True
+42,CNN-only (baseline),RF-only (Link RF),742,689,0.16922635467832214,0.16922635467832214,False
+42,"CNN-only, text + URL features (from scratch)",RF-only (Link RF),630,193,8.021447649531e-55,1.6042895299062e-54,True
+42,Concatenation (from scratch),RF-only (Link RF),648,112,1.6451450378193593e-92,4.935435113458078e-92,True
+42,E2 (from scratch),RF-only (Link RF),638,97,1.913994550664125e-98,9.569972753320625e-98,True
+42,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),630,94,2.894122732600833e-98,1.1576490930403332e-97,True
+123,CNN-only (baseline),RF-only (Link RF),739,683,0.1446702703061653,0.1446702703061653,False
+123,"CNN-only, text + URL features (from scratch)",RF-only (Link RF),652,169,1.2454213288139163e-67,2.4908426576278326e-67,True
+123,Concatenation (from scratch),RF-only (Link RF),664,106,1.5815214114118202e-99,7.907607057059101e-99,True
+123,E2 (from scratch),RF-only (Link RF),648,104,7.417378527560503e-97,2.225213558268151e-96,True
+123,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),653,103,1.3319343787456922e-98,5.327737514982769e-98,True
+2024,CNN-only (baseline),RF-only (Link RF),745,710,0.3727480189525665,0.3727480189525665,False
+2024,"CNN-only, text + URL features (from scratch)",RF-only (Link RF),646,199,8.152753192941657e-56,1.6305506385883315e-55,True
+2024,Concatenation (from scratch),RF-only (Link RF),676,112,4.822716984317472e-99,1.9290867937269887e-98,True
+2024,E2 (from scratch),RF-only (Link RF),656,106,1.2336548329390872e-97,3.700964498817262e-97,True
+2024,"E2 (from scratch, no has_url bypass)",RF-only (Link RF),637,91,9.77048729222515e-102,4.885243646112575e-101,True

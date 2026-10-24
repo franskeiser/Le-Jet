@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Le-Jet SMS Collection</title>
+<style>
+  :root {
+    --bg: #f3f5f9; --surface: #ffffff; --surface-2: #f6f8fc; --text: #141a26; --muted: #66728a; --line: #e2e6ef;
+    --accent: #3556d8; --accent-soft: #e9eeff; --accent-text: #ffffff;
+    --bad: #c4302b; --bad-soft: #fdeceb; --good: #168a4c; --good-soft: #e5f6ec; --warn: #9a5b00; --warn-soft: #fff3da;
+    --shadow: 0 1px 2px rgba(20, 26, 38, .06), 0 6px 20px rgba(20, 26, 38, .06);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1118; --surface: #171b25; --surface-2: #1e2330; --text: #e8ebf3; --muted: #97a2b8; --line: #2a3142;
+      --accent: #8196ff; --accent-soft: #232b4d; --accent-text: #0b1022;
+      --bad: #ff8a85; --bad-soft: #3a1f22; --good: #5fd391; --good-soft: #14301f; --warn: #f0b95a; --warn-soft: #33290f;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px rgba(0, 0, 0, .3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  [hidden] { display: none !important; }
+  .ic { width: 1.15em; height: 1.15em; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .86em; word-break: break-all; }
+  .muted { color: var(--muted); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+  /* ---------- page frame */
+  .top { max-width: 980px; margin: 0 auto; padding: 18px 16px 6px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; letter-spacing: -.01em; margin-right: auto; }
+  .brand .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: var(--accent-text); display: grid; place-items: center; }
+  .brand small { display: block; font-weight: 500; font-size: .8rem; color: var(--muted); letter-spacing: 0; }
+  .codebox { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+  .codebox input { border: 0; background: transparent; color: var(--text); font: inherit; width: 150px; padding: 6px 0; outline: none; }
+  main { max-width: 980px; margin: 0 auto; padding: 8px 16px 90px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 18px; }
+  .pad { padding: 20px; }
+  h2 { font-size: 1.05rem; margin: 0; letter-spacing: -.01em; }
+
+  /* ---------- tabs */
+  .tabs { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); }
+  .tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: var(--muted);
+         font: inherit; font-weight: 600; padding: 12px 10px; border-radius: 10px; cursor: pointer; }
+  .tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+  .tab:hover:not([aria-selected="true"]) { background: var(--surface-2); }
+
+  /* ---------- form pieces */
+  .note { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+          padding: 10px 12px; font-size: .88rem; color: var(--muted); margin: 0 0 16px; }
+  .note b { color: var(--text); }
+  .note .ic { margin-top: 2px; color: var(--accent); }
+  label.t, .t { display: block; font-weight: 600; margin: 0 0 8px; }
+  textarea { width: 100%; min-height: 150px; resize: vertical; padding: 14px; border-radius: 12px; border: 1px solid var(--line);
+             background: var(--surface-2); color: var(--text); font: inherit; line-height: 1.5; }
+  textarea:focus { outline: 3px solid var(--accent-soft); border-color: var(--accent); }
+  .meta { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 8px; min-height: 30px; flex-wrap: wrap; }
+  .count { font-size: .8rem; color: var(--muted); margin-left: auto; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .82rem; font-weight: 600;
+          background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); max-width: 100%; }
+  .chip.good { background: var(--good-soft); color: var(--good); border-color: transparent; }
+  .chip.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .chip .mono { font-weight: 500; font-size: .95em; }
+  .hint { color: var(--muted); font-size: .86rem; }
+  .err { color: var(--bad); font-weight: 600; font-size: .92rem; margin: 10px 0 0; }
+
+  .seg { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+  .segbtn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface);
+            color: var(--text); font: inherit; font-weight: 600; cursor: pointer; min-height: 44px; }
+  .segbtn:hover { background: var(--surface-2); }
+  .segbtn.smishing.on { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+  .segbtn.legitimate.on { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+  .segbtn:disabled { opacity: .5; cursor: not-allowed; }
+  .segbtn.lang { padding: 9px 14px; }
+  .segbtn.lang.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .langs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border-radius: 12px; border: 1.5px solid var(--line);
+         background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; min-height: 44px; }
+  .btn:hover:not(:disabled) { background: var(--surface-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+  .btn.small { padding: 7px 12px; min-height: 36px; font-size: .88rem; border-radius: 10px; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .spin { width: 1.1em; height: 1.1em; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
+  .actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 18px; }
+  .field { margin-top: 18px; }
+
+  /* ---------- success panel */
+  .done { margin-top: 18px; border: 1.5px solid var(--good); background: var(--good-soft); border-radius: 12px; padding: 14px 16px; }
+  .done .row1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 700; color: var(--good); }
+  .done .mono { color: var(--text); display: block; margin-top: 6px; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+  .feat { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 22px; margin-top: 8px; font-size: .82rem; }
+  .feat div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed var(--line); padding: 3px 0; }
+  .feat span:first-child { color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+  .feat .na { color: var(--muted); }
+
+  /* ---------- screenshots */
+  .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 30px 16px; border: 2px dashed var(--line); border-radius: 14px;
+          background: var(--surface-2); cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop .ic { width: 34px; height: 34px; color: var(--accent); }
+  .drop strong { font-size: 1.02rem; }
+  .thumbs { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .thumb { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+  .thumb img { display: block; width: 100%; height: 110px; object-fit: cover; object-position: top; }
+  .thumb .cap { padding: 6px 8px; font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thumb button { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .62); color: #fff; cursor: pointer; display: grid; place-items: center; }
+  .sumbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 22px 0 4px; }
+  .switch { display: inline-flex; align-items: center; gap: 10px; font-size: .88rem; color: var(--muted); cursor: pointer; position: relative; }
+  .switch input { position: absolute; opacity: 0; }
+  .switch .track { width: 38px; height: 22px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; flex: none; }
+  .switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(16px); }
+  .switch input:focus-visible + .track { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .mcard { margin-top: 12px; border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface); }
+  .mcard.nolink { display: none; }
+  #cards.showall .mcard.nolink { display: block; opacity: .75; }
+  .mcard.finished { border-color: var(--good); background: var(--good-soft); }
+  .mhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .mcard textarea { min-height: 96px; font-size: .95rem; padding: 12px; }
+  .mlink { margin-top: 10px; min-height: 28px; }
+  .mfoot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .mfoot .grow { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .mstatus { margin-top: 8px; font-size: .88rem; min-height: 1.2em; }
+  .mstatus.err { margin: 8px 0 0; }
+  .mstatus.ok { color: var(--good); font-weight: 700; }
+  .bulkbar { position: sticky; bottom: 12px; z-index: 5; margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+             background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; box-shadow: 0 8px 30px rgba(0, 0, 0, .18); }
+  .bulkbar .grp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- dataset */
+  .dhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0 10px; }
+  .tile { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .tile b { display: block; font-size: 1.6rem; line-height: 1.1; letter-spacing: -.02em; }
+  .tile span { font-size: .8rem; color: var(--muted); }
+  .tile.bad b { color: var(--bad); } .tile.good b { color: var(--good); }
+  .ratio { height: 8px; border-radius: 999px; overflow: hidden; background: var(--line); display: flex; margin-bottom: 14px; }
+  .ratio i { display: block; height: 100%; }
+  .ratio .r-bad { background: var(--bad); } .ratio .r-good { background: var(--good); }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .fchip { border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: .84rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+  .fchip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row { padding: 12px 2px; border-top: 1px solid var(--line); }
+  .row .r1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row .dom { font-weight: 600; word-break: break-all; }
+  .row .when { margin-left: auto; font-size: .78rem; color: var(--muted); }
+  .row .txt { margin-top: 4px; color: var(--muted); font-size: .88rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  .empty { text-align: center; color: var(--muted); padding: 26px 8px; font-size: .95rem; }
+  .foot { text-align: center; color: var(--muted); font-size: .8rem; padding: 6px 0 24px; }
+
+  /* ---------- toast */
+  #toasts { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 20; display: grid; gap: 8px; width: min(92vw, 420px); pointer-events: none; }
+  .toast { background: var(--text); color: var(--bg); padding: 11px 16px; border-radius: 12px; font-weight: 600; font-size: .92rem; box-shadow: 0 8px 28px rgba(0, 0, 0, .3); animation: pop .2s ease-out; }
+  .toast.bad { background: var(--bad); color: #fff; }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px); } }
+
+  @media (max-width: 560px) {
+    .pad { padding: 16px; }
+    .tab span.long { display: none; }
+    .tiles { gap: 8px; }
+    .tile { padding: 10px; } .tile b { font-size: 1.3rem; }
+    .actions .btn.primary { flex: 1 1 100%; }
+    .codebox { width: 100%; } .codebox input { flex: 1; width: auto; }
+    .bulkbar { bottom: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+</defs></svg>
+
+<header class="top">
+  <div class="brand">
+    <span class="logo"><svg class="ic"><use href="#i-logo"/></svg></span>
+    <span>Le-Jet<small>SMS collection</small></span>
+  </div>
+  <label class="codebox" id="codewrap" hidden>
+    <svg class="ic"><use href="#i-lock"/></svg>
+    <span class="sr">Access code</span>
+    <input id="code" type="password" autocomplete="off" placeholder="Access code">
+  </label>
+</header>
+
+<main>
+  <section class="card" aria-label="Add messages">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-paste" aria-selected="true" aria-controls="panel-paste"><svg class="ic"><use href="#i-text"/></svg><span>Paste <span class="long">a message</span></span></button>
+      <button class="tab" role="tab" id="tab-shots" aria-selected="false" aria-controls="panel-shots"><svg class="ic"><use href="#i-image"/></svg><span>Screenshots</span></button>
+    </div>
+
+    <!-- ===== paste -->
+    <div class="pad" id="panel-paste" role="tabpanel" aria-labelledby="tab-paste">
+      <p class="note"><svg class="ic"><use href="#i-info"/></svg><span>Paste the <b>whole message with its link</b>. Remove names, phone numbers and account numbers first, and <b>never open the link</b>.</span></p>
+      <label class="t" for="sms">Text message</label>
+      <textarea id="sms" spellcheck="false" maxlength="2000" placeholder="Paste the text message here, link included…"></textarea>
+      <div class="meta"><span id="linkChip" aria-live="polite"></span><span class="count" id="count">0 / 2000</span></div>
+
+      <div class="field">
+        <span class="t" id="labelTitle">What is this message?</span>
+        <div id="labelSlot"></div>
+        <p class="hint" style="margin:8px 0 0">Choose what the message really is, not what the web page looks like. A dead page does not change the label.</p>
+      </div>
+
+      <div class="field">
+        <span class="t" id="langTitle">Language of the message</span>
+        <div id="langSlot"></div>
+        <p class="hint" style="margin:8px 0 0">Taglish is a mix of Tagalog and English in the same message.</p>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="addBtn" disabled><svg class="ic"><use href="#i-check"/></svg>Add to dataset</button>
+        <span class="hint" id="addHint" aria-live="polite"></span>
+      </div>
+      <p class="err" id="pasteErr" role="alert"></p>
+      <div id="pasteResult" aria-live="polite"></div>
+    </div>
+
+    <!-- ===== screenshots -->
+    <div class="pad" id="panel-shots" role="tabpanel" aria-labelledby="tab-shots" hidden>
+      <p class="note"><svg class="ic"><use href="#i-info"/></svg><span>Pictures are read on the server and <b>thrown away, never stored</b>. Crop out personal details first. Reading makes mistakes, <b>especially in links</b>, so check every message below before adding it.</span></p>
+      <label class="drop" id="drop" for="files">
+        <svg class="ic"><use href="#i-upload"/></svg>
+        <strong>Drop screenshots here, or tap to choose</strong>
+        <span class="hint">PNG, JPEG or WebP. Up to 6 pictures, 5 MB each. You can also paste a copied image (Ctrl+V).</span>
+      </label>
+      <input id="files" class="sr" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+      <ul class="thumbs" id="thumbs"></ul>
+      <p class="err" id="pickErr" role="alert"></p>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn primary" id="read" disabled><svg class="ic"><use href="#i-image"/></svg>Read screenshots</button>
+        <span class="hint" id="readHint" aria-live="polite"></span>
+      </div>
+
+      <div id="results" hidden>
+        <div class="sumbar">
+          <strong id="sumText"></strong>
+          <label class="switch" id="nolinkbar" hidden>
+            <input type="checkbox" id="shownolink"><span class="track"></span>
+            <span>Show <span id="nolinkcount">0</span> text block(s) without a link</span>
+          </label>
+        </div>
+        <p class="hint" style="margin:0">Fix any misread text, merge a split message into the one above, choose a label, then add it.</p>
+        <div id="cards"></div>
+        <div class="bulkbar" id="bulk">
+          <div class="grp"><span class="hint">Mark all as</span>
+            <button class="segbtn smishing" id="allsmish" type="button"><svg class="ic"><use href="#i-alert"/></svg>Smishing</button>
+            <button class="segbtn legitimate" id="alllegit" type="button"><svg class="ic"><use href="#i-shield-check"/></svg>Legitimate</button>
+          </div>
+          <div class="grp"><span class="hint">Language of all</span>
+            <button class="segbtn lang" id="allen" type="button">English</button>
+            <button class="segbtn lang" id="alltl" type="button">Tagalog</button>
+            <button class="segbtn lang" id="alltg" type="button">Taglish</button>
+          </div>
+          <div class="grp"><span class="hint" id="bulkHint"></span>
+            <button class="btn primary" id="addall" disabled>Add 0 ready</button>
+          </div>
+        </div>
+      </div>
+      <p class="err" id="shotErr" role="alert"></p>
+    </div>
+  </section>
+
+  <section class="card pad" aria-label="Shared dataset">
+    <div class="dhead">
+      <h2>Shared dataset</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn small" id="refresh"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
+        <button class="btn small" id="dl"><svg class="ic"><use href="#i-download"/></svg>Download CSV</button>
+      </div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><b id="n-total">–</b><span>messages</span></div>
+      <div class="tile bad"><b id="n-smish">–</b><span>smishing</span></div>
+      <div class="tile good"><b id="n-legit">–</b><span>legitimate</span></div>
+    </div>
+    <div class="ratio" aria-hidden="true"><i class="r-bad" id="r-bad" style="width:0"></i><i class="r-good" id="r-good" style="width:0"></i></div>
+    <div class="langs" id="langs" aria-label="Messages per language"></div>
+    <div class="filters" role="group" aria-label="Filter the list">
+      <button class="fchip" data-f="all" aria-pressed="true">All</button>
+      <button class="fchip" data-f="smishing" aria-pressed="false">Smishing</button>
+      <button class="fchip" data-f="legitimate" aria-pressed="false">Legitimate</button>
+    </div>
+    <ul class="rows" id="rowsList"></ul>
+    <p class="hint" style="margin:10px 0 0">Newest 50, links shown defanged. The CSV has the real links: open it in a spreadsheet or Python, never click them.</p>
+  </section>
+
+  <p class="foot">Messages added here become part of the group's study dataset.</p>
+</main>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const MAX_FILES = 6, MAX_BYTES = 5 * 1024 * 1024;
+
+function icon(name) {
+  const s = document.createElementNS(NS, "svg"); s.setAttribute("class", "ic"); s.setAttribute("aria-hidden", "true");
+  const u = document.createElementNS(NS, "use"); u.setAttribute("href", "#i-" + name); s.append(u); return s;
+}
+function h(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  kids.flat().forEach((c) => c != null && n.append(c));
+  return n;
+}
+const defang = (s) => String(s).replace(/\./g, "[.]");
+
+// ------------------------------------------------------------------ access code (only if the server asks for one)
+const codeBox = $("code");
+try { codeBox.value = sessionStorage.getItem("code") || ""; } catch (e) {}
+codeBox.addEventListener("change", () => { try { sessionStorage.setItem("code", codeBox.value); } catch (e) {} loadRows(); checkLink(); });
+
+function api(path, opts = {}) {
+  const headers = { "X-Access-Code": codeBox.value, ...(opts.headers || {}) };
+  if (opts.body !== undefined && !(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
+  return fetch(path, { ...opts, headers });
+}
+async function errText(res) {
+  const d = (await res.json().catch(() => ({}))).detail;
+  return typeof d === "string" ? d : "The request was rejected. Check what you entered and try again.";
+}
+function toast(msg, kind) {
+  const t = h("div", { class: "toast" + (kind ? " " + kind : ""), text: msg });
+  $("toasts").append(t); setTimeout(() => t.remove(), 4200);
+}
+function busy(btn, on, label) {
+  if (on) { btn.replaceChildren(h("span", { class: "spin" }), label || "Working…"); btn.disabled = true; }
+  else { btn.replaceChildren(...btn._idle()); }
+}
+
+// ------------------------------------------------------------------ tabs
+function showTab(name) {
+  for (const t of ["paste", "shots"]) {
+    const on = t === name;
+    $("tab-" + t).setAttribute("aria-selected", String(on)); $("tab-" + t).tabIndex = on ? 0 : -1; $("panel-" + t).hidden = !on;
+  }
+  try { sessionStorage.setItem("tab", name); } catch (e) {}
+}
+$("tab-paste").onclick = () => showTab("paste");
+$("tab-shots").onclick = () => showTab("shots");
+try { showTab(sessionStorage.getItem("tab") === "shots" ? "shots" : "paste"); } catch (e) {}
+
+// ------------------------------------------------------------------ label buttons
+const LABELS = [["smishing", "Smishing", "alert"], ["legitimate", "Legitimate", "shield-check"]];
+const LANGS = [["en", "English"], ["tl", "Tagalog"], ["taglish", "Taglish"]];
+const LANG_NAME = { en: "English", tl: "Tagalog", taglish: "Taglish" };
+// a row of toggle buttons; clicking the chosen one again clears it. options: [value, text, iconName?]
+function choiceButtons(options, aria, onChange, cls) {
+  let value = "";
+  const root = h("div", { class: "seg", role: "group", "aria-label": aria });
+  const btns = options.map(([v, text, ic]) => {
+    const b = h("button", { type: "button", class: "segbtn " + (cls || v), "aria-pressed": "false", onclick: () => ctl.set(value === v ? "" : v, true) }, ic ? icon(ic) : null, text);
+    root.append(b); return b;
+  });
+  const ctl = {
+    el: root, get: () => value,
+    set(v, fire) {
+      value = v;
+      btns.forEach((b, i) => { const on = options[i][0] === v; b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); });
+      if (fire && onChange) onChange(v);
+    },
+    lock(x) { btns.forEach((b) => (b.disabled = x)); },
+  };
+  return ctl;
+}
+const labelButtons = (onChange) => choiceButtons(LABELS, "What is this message?", onChange);
+const languageButtons = (onChange) => choiceButtons(LANGS, "Language of the message", onChange, "lang");
+
+// ------------------------------------------------------------------ paste a message
+const pasteLabel = labelButtons(() => refreshAdd());
+$("labelSlot").append(pasteLabel.el);
+const pasteLang = languageButtons(() => refreshAdd());
+$("langSlot").append(pasteLang.el);
+const paste = { link: null, seq: 0, timer: null };
+
+function renderLink(into, state, link, n) {
+  into.replaceChildren();
+  if (state === "empty") return;
+  if (state === "ok" && link) {
+    into.append(h("span", { class: "chip good" }, icon("link"), "Link found", h("span", { class: "mono", text: link })));
+    if (n > 1) into.append(" ", h("span", { class: "hint", text: "(" + n + " links, the first one is used)" }));
+  } else if (state === "auth") into.append(h("span", { class: "chip warn", text: "Enter the access code (top right)" }));
+  else if (state === "offline") into.append(h("span", { class: "chip warn", text: "Could not reach the server" }));
+  else into.append(h("span", { class: "chip warn" }, icon("alert"), "No link found yet. The dataset only holds messages that contain a link."));
+}
+async function checkLink() {
+  const text = $("sms").value.trim(), mine = ++paste.seq;
+  if (!text) { paste.link = null; renderLink($("linkChip"), "empty"); refreshAdd(); return; }
+  let state = "ok", d = { link: null, links_in_message: 0 };
+  try {
+    const res = await api("/api/preview", { method: "POST", body: JSON.stringify({ sms_text: text }) });
+    if (mine !== paste.seq) return;
+    if (res.status === 401) state = "auth"; else if (res.ok) d = await res.json(); else state = "bad";
+  } catch (e) { if (mine !== paste.seq) return; state = "offline"; }
+  paste.link = state === "ok" ? d.link : null;
+  renderLink($("linkChip"), state, d.link, d.links_in_message);
+  refreshAdd();
+}
+function refreshAdd() {
+  const text = $("sms").value.trim();
+  const ready = !!(text && paste.link && pasteLabel.get() && pasteLang.get());
+  $("addBtn").disabled = !ready;
+  $("addHint").textContent = !text ? "Paste a message to start." : !paste.link ? ""
+    : !pasteLabel.get() ? "Choose smishing or legitimate." : !pasteLang.get() ? "Choose the language." : "";
+}
+$("sms").addEventListener("input", () => {
+  $("count").textContent = $("sms").value.length + " / 2000";
+  clearTimeout(paste.timer); paste.timer = setTimeout(checkLink, 400); refreshAdd();
+});
+$("sms").addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !$("addBtn").disabled) $("addBtn").click(); });
+
+$("addBtn")._idle = () => [icon("check"), "Add to dataset"];
+$("addBtn").onclick = async () => {
+  $("pasteErr").textContent = ""; $("pasteResult").replaceChildren();
+  busy($("addBtn"), true, "Inspecting the link… a few seconds");
+  try {
+    const res = await api("/api/submit", { method: "POST", body: JSON.stringify({ sms_text: $("sms").value, label: pasteLabel.get(), language: pasteLang.get() }) });
+    if (!res.ok) { $("pasteErr").textContent = await errText(res); return; }
+    const d = await res.json();
+    showAdded(d);
+    toast("Added " + d.message_id);
+    $("sms").value = ""; $("count").textContent = "0 / 2000"; pasteLabel.set(""); pasteLang.set(""); paste.link = null; renderLink($("linkChip"), "empty");
+    loadRows();
+  } catch (e) { $("pasteErr").textContent = "Could not reach the server."; }
+  finally { busy($("addBtn"), false); refreshAdd(); }
+};
+
+const STATUS = { live: ["good", "Page live"], redirected: ["good", "Redirected"], dead: ["bad", "Page dead"], blocked: ["warn", "Blocked"], timeout: ["warn", "Timed out"] };
+function statusChip(s) { const [k, t] = STATUS[s] || ["", s]; return h("span", { class: "chip " + k, text: t }); }
+
+function showAdded(d) {
+  const box = h("div", { class: "done" },
+    h("div", { class: "row1" }, icon("check"), "Added as " + d.message_id, statusChip(d.fetch_status)),
+    h("span", { class: "mono", text: d.link }));
+  if (d.final_url && d.final_url !== d.link) box.append(h("span", { class: "mono muted", text: "Lands on: " + d.final_url }));
+  if (d.fetch_status !== "live" && d.fetch_status !== "redirected")
+    box.append(h("p", { class: "hint", style: "margin:8px 0 0", text: "The page could not be read (" + d.fail_reason + "), so its page features are -1. The row is saved anyway." }));
+  const grid = h("div", { class: "feat" });
+  for (const [k, v] of Object.entries(d.features)) grid.append(h("div", {}, h("span", { text: k }), h("span", { class: v === -1 ? "na" : "", text: String(v) })));
+  box.append(h("details", {}, h("summary", { text: "The 37 features that were extracted" }), grid));
+  $("pasteResult").replaceChildren(box);
+}
+
+// ------------------------------------------------------------------ screenshots: choosing files
+const picked = [];
+const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+function addFiles(list) {
+  const errs = [];
+  for (const f of list) {
+    const okType = /^image\/(png|jpeg|webp)$/.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name);
+    if (!okType) { errs.push(f.name + ": not a PNG, JPEG or WebP picture."); continue; }
+    if (f.size > MAX_BYTES) { errs.push(f.name + ": larger than 5 MB."); continue; }
+    if (picked.some((p) => p.name === f.name && p.size === f.size && p.lastModified === f.lastModified)) continue;
+    if (picked.length >= MAX_FILES) { errs.push("Only " + MAX_FILES + " pictures at a time."); break; }
+    picked.push(f);
+  }
+  $("pickErr").textContent = errs.join(" ");
+  renderThumbs();
+}
+function renderThumbs() {
+  const ul = $("thumbs");
+  ul.querySelectorAll("img").forEach((i) => { try { URL.revokeObjectURL(i.src); } catch (e) {} });
+  ul.replaceChildren(...picked.map((f, i) => h("li", { class: "thumb" },
+    h("img", { src: URL.createObjectURL(f), alt: f.name }),
+    h("button", { type: "button", "aria-label": "Remove " + f.name, onclick: () => { picked.splice(i, 1); renderThumbs(); } }, icon("x")),
+    h("div", { class: "cap", text: f.name + " · " + kb(f.size) }))));
+  $("read").disabled = picked.length === 0;
+  $("readHint").textContent = picked.length ? picked.length + " of " + MAX_FILES + " selected" : "";
+}
+$("files").addEventListener("change", (e) => { addFiles([...e.target.files]); try { e.target.value = ""; } catch (x) {} });
+const drop = $("drop");
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => addFiles([...(e.dataTransfer ? e.dataTransfer.files : [])]));
+document.addEventListener("paste", (e) => {                              // a copied picture pasted anywhere on the page
+  const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => f.type.startsWith("image/"));
+  if (files.length) { showTab("shots"); addFiles(files); }
+});
+
+// ------------------------------------------------------------------ screenshots: reading and the cards
+const cardsBox = $("cards");
+
+$("read")._idle = () => [icon("image"), "Read screenshots"];
+$("read").onclick = async () => {
+  $("shotErr").textContent = "";
+  if (!picked.length) return;
+  const fd = new FormData();
+  picked.forEach((f) => fd.append("files", f));
+  busy($("read"), true, "Reading… a few seconds per picture");
+  try {
+    const res = await api("/api/screenshots", { method: "POST", body: fd });
+    if (!res.ok) { $("shotErr").textContent = await errText(res); return; }
+    const d = await res.json();
+    cardsBox.replaceChildren();
+    const notes = [];
+    d.images.forEach((img) => {
+      if (img.error) { notes.push(img.name + ": " + img.error); return; }
+      img.messages.forEach((m) => cardsBox.append(makeCard(m, img.name)));
+    });
+    $("shownolink").checked = false; cardsBox.classList.remove("showall");
+    $("shotErr").textContent = notes.join(" ");
+    picked.length = 0; renderThumbs();
+    updateCounts();
+    const first = cardsBox.querySelector(".mcard:not(.nolink)"); if (first && first.scrollIntoView) first.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) { $("shotErr").textContent = "Could not reach the server."; }
+  finally { busy($("read"), false); $("read").disabled = picked.length === 0; }
+};
+
+function makeCard(m, imageName) {
+  const card = h("div", { class: "mcard" });
+  card.dataset.link = m.link ? "1" : "";
+  const label = labelButtons(() => refreshBulk());
+  const lang = languageButtons(() => refreshBulk());
+  const ta = h("textarea", { spellcheck: "false", maxlength: "2000", "aria-label": "Message text" }); ta.value = m.text;
+  const linkLine = h("div", { class: "mlink", "aria-live": "polite" });
+  const status = h("div", { class: "mstatus", "aria-live": "polite" });
+  const up = h("button", { type: "button", class: "btn small ghost" }, icon("up"), "Merge into the one above");
+  const rm = h("button", { type: "button", class: "btn small ghost" }, icon("x"), "Remove");
+  const add = h("button", { type: "button", class: "btn small primary" }, icon("check"), "Add");
+  card.append(
+    h("div", { class: "mhead" }, h("span", { class: "chip" }, icon("image"), imageName), m.direction === "out" ? h("span", { class: "chip warn", text: "looks sent by you" }) : null),
+    ta, linkLine,
+    h("div", { class: "mfoot" }, label.el, lang.el, h("div", { class: "grow" }, up, rm, add)),
+    status);
+
+  function showLink(link) {
+    card.dataset.link = link ? "1" : "";
+    card.classList.toggle("nolink", !link);
+    linkLine.replaceChildren();
+    if (link) linkLine.append(h("span", { class: "chip good" }, icon("link"), h("span", { class: "mono", text: link })), " ", h("span", { class: "hint", text: "check it letter by letter" }));
+    else linkLine.append(h("span", { class: "chip warn", text: "No link found. Fix the text if the link was misread, or remove this card." }));
+    if (card.ctl) updateCounts();
+  }
+  function fail(msg) { status.className = "mstatus err"; status.textContent = msg; return false; }
+  card.ctl = {
+    label, lang, isOpen: () => !card.classList.contains("finished"), hasLink: () => !!card.dataset.link,
+    async add() {
+      status.className = "mstatus"; status.textContent = "";
+      const text = ta.value.trim();
+      if (!text) return fail("The message is empty.");
+      if (!card.dataset.link) return fail("This message has no link.");
+      if (!label.get()) return fail("Choose smishing or legitimate.");
+      if (!lang.get()) return fail("Choose the language.");
+      add.disabled = true;
+      try {
+        const res = await api("/api/submit", { method: "POST", body: JSON.stringify({ sms_text: ta.value, label: label.get(), language: lang.get() }) });
+        if (!res.ok) { add.disabled = false; return fail(await errText(res)); }
+        const d = await res.json();
+        status.className = "mstatus ok"; status.replaceChildren(icon("check"), " Added as " + d.message_id + " · ", statusChip(d.fetch_status));
+        card.classList.add("finished"); [ta, add, rm, up].forEach((x) => (x.disabled = true)); label.lock(true); lang.lock(true);
+        loadRows(); refreshBulk();
+        return true;
+      } catch (e) { add.disabled = false; return fail("Could not reach the server."); }
+    },
+  };
+  card.add = () => card.ctl.add();
+  showLink(m.link);
+  let timer = null;
+  ta.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try { const r = await api("/api/preview", { method: "POST", body: JSON.stringify({ sms_text: ta.value }) }); if (r.ok) showLink((await r.json()).link); } catch (e) {}
+    }, 450);
+  });
+  rm.onclick = () => { card.remove(); updateCounts(); };
+  up.onclick = () => {
+    const prev = card.previousElementSibling;
+    if (!prev || !prev.classList.contains("mcard") || prev.classList.contains("finished")) { fail("There is no open message above to merge into."); return; }
+    const pta = prev.querySelector("textarea");
+    pta.value = (pta.value.trimEnd() + " " + ta.value.trim()).trim();
+    pta.dispatchEvent(new Event("input"));
+    card.remove(); updateCounts();
+  };
+  add.onclick = () => card.add();
+  return card;
+}
+
+function openCards() { return [...cardsBox.querySelectorAll(".mcard")].filter((c) => c.ctl.isOpen() && c.ctl.hasLink()); }
+function updateCounts() {
+  const all = [...cardsBox.querySelectorAll(".mcard")];
+  const hidden = all.filter((c) => c.classList.contains("nolink") && c.ctl.isOpen()).length;
+  const shown = all.length - hidden;
+  $("nolinkcount").textContent = hidden;
+  $("nolinkbar").hidden = hidden === 0;
+  $("results").hidden = all.length === 0;
+  $("sumText").textContent = shown + " message" + (shown === 1 ? "" : "s") + " with a link found";
+  refreshBulk();
+}
+const isReady = (c) => c.ctl.label.get() && c.ctl.lang.get();
+function refreshBulk() {
+  const open = openCards(), ready = open.filter(isReady);
+  const missing = open.length - ready.length;
+  $("addall").textContent = "Add " + ready.length + " ready";
+  $("addall").disabled = ready.length === 0;
+  $("bulkHint").textContent = missing ? missing + " still need a label or language" : "";
+  $("bulk").hidden = open.length === 0;
+}
+$("shownolink").onchange = (e) => cardsBox.classList.toggle("showall", e.target.checked);
+$("allsmish").onclick = () => { openCards().forEach((c) => c.ctl.label.set("smishing")); refreshBulk(); };
+$("alllegit").onclick = () => { openCards().forEach((c) => c.ctl.label.set("legitimate")); refreshBulk(); };
+[["allen", "en"], ["alltl", "tl"], ["alltg", "taglish"]].forEach(([id, v]) => ($(id).onclick = () => { openCards().forEach((c) => c.ctl.lang.set(v)); refreshBulk(); }));
+$("addall").onclick = async () => {
+  $("shotErr").textContent = "";
+  const ready = openCards().filter(isReady);
+  $("addall").disabled = true;
+  let ok = 0, left = 0;
+  for (const c of ready) { if (await c.ctl.add()) ok++; else left++; }
+  toast(ok + " added" + (left ? ", " + left + " need attention" : ""), left ? "bad" : "");
+  refreshBulk();
+};
+
+// ------------------------------------------------------------------ the shared dataset
+let allRows = [], filter = "all";
+async function loadRows() {
+  let res;
+  try { res = await api("/api/rows?limit=50"); } catch (e) { return; }
+  const list = $("rowsList");
+  if (!res.ok) { list.replaceChildren(h("li", { class: "empty", text: res.status === 401 ? "Enter the access code to see the dataset." : "Could not load the dataset." })); return; }
+  const d = await res.json();
+  const s = d.counts.smishing || 0, l = d.counts.legitimate || 0, t = d.total || s + l;
+  $("n-total").textContent = t; $("n-smish").textContent = s; $("n-legit").textContent = l;
+  $("r-bad").style.width = t ? (s / t) * 100 + "%" : "0"; $("r-good").style.width = t ? (l / t) * 100 + "%" : "0";
+  const langs = d.languages || {};
+  $("langs").replaceChildren(...Object.keys(LANG_NAME).map((k) => h("span", { class: "chip", text: LANG_NAME[k] + " " + (langs[k] || 0) })));
+  allRows = d.rows; renderRows();
+}
+function renderRows() {
+  const rows = allRows.filter((r) => filter === "all" || r.label === filter);
+  $("rowsList").replaceChildren(...(rows.length ? rows.map((r) => h("li", { class: "row" },
+    h("div", { class: "r1" },
+      h("span", { class: "chip " + (r.label === "smishing" ? "bad" : "good"), text: r.label }),
+      LANG_NAME[r.language] ? h("span", { class: "chip accent", text: LANG_NAME[r.language] }) : null,
+      h("span", { class: "dom", text: defang(r.link_domain) }), statusChip(r.fetch_status),
+      h("span", { class: "when", text: r.message_id + " · " + r.date_submitted })),
+    h("div", { class: "txt", text: r.sms_preview }))) : [h("li", { class: "empty", text: allRows.length ? "Nothing matches this filter." : "No messages yet. Be the first to add one." })]));
+}
+document.querySelectorAll(".fchip").forEach((b) => (b.onclick = () => {
+  filter = b.dataset.f; document.querySelectorAll(".fchip").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderRows();
+}));
+$("refresh").onclick = loadRows;
+$("dl").onclick = async () => {
+  const res = await api("/api/dataset.csv");
+  if (!res.ok) { toast(await errText(res), "bad"); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await res.blob()); a.download = "lejet_web_submissions.csv"; a.click(); URL.revokeObjectURL(a.href);
+};
+
+// ------------------------------------------------------------------ start-up
+fetch("/api/health").then((r) => r.json()).then((hh) => {
+  if (hh.code_required) $("codewrap").hidden = false;
+  if (hh.screenshots === false) {
+    $("drop").style.opacity = ".5"; $("drop").style.pointerEvents = "none"; $("files").disabled = true;
+    $("shotErr").textContent = "Reading screenshots is not available on this server. Paste the message text instead.";
+  }
+}).catch(() => {}).finally(() => { loadRows(); refreshAdd(); renderThumbs(); });
+</script>
+</body>
+</html>

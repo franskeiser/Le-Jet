@@ -1,0 +1,14 @@
+# Everything the website needs on the server (the lab pipeline + the web layer).
+# No torch / scikit-learn / pandas: the page only extracts features, it does not run the model.
+fastapi==0.161.1
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+dnspython==2.9.0
+lxml==6.1.3
+tldextract==5.4.0
+# reading screenshots: OCR with its models inside the wheel (nothing is downloaded when the site runs)
+rapidocr-onnxruntime==1.4.4
+pillow==13.0.0
+python-multipart==0.0.32
+# random_domain feature (the original nostril is only on GitHub; the PyPI "nostril" is a different, broken package)
+nostril @ git+https://github.com/casics/nostril.git@fbc0c91249283a9fbc9036206391ce1138826fd3

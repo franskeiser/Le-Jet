@@ -590,3 +590,38 @@ def test_h_a_bad_has_url_is_refused():
         model(ids, link, has_url=torch.ones(5))                  # wrong batch
     with pytest.raises(ValueError, match="has_url must be"):
         model(ids, link, has_url=torch.full((8,), 2.0))          # not 0 / 1
+
+
+# ------------------------------------------------------------------ use_average (variant V3, step 5.3)
+def test_without_the_conv_average_the_generator_reads_only_the_link_and_has_512_parameters():
+    model = FiLMTextCNN(embedding(), use_average=False)
+    assert model.generator.in_features == 3 and model.generator.weight.shape == (128, 3)
+    assert trainable(model) == 57664 + (3 * 128 + 128) + 4160 + 130 == 62466                   # 8,192 fewer than E2's 70,658
+    assert trainable(FiLMTextCNN(embedding())) - trainable(model) == 64 * 128 == 8192
+    assert FiLMTextCNN(embedding()).use_average is True                                       # the default is the plan's choice
+
+
+def test_without_the_conv_average_the_same_link_gives_the_same_gamma_and_beta_to_every_message():
+    ids, link = batch()
+    same_link = link[:1].repeat(8, 1)                                                          # eight different messages, one link
+    model = FiLMTextCNN(embedding(), use_average=False)
+    randomize_generator(model)
+    x, average = model.conv_features(ids)
+    gamma, beta = model.film_parameters(same_link, average)
+    assert torch.allclose(gamma, gamma[:1].expand_as(gamma)) and torch.allclose(beta, beta[:1].expand_as(beta))
+    with_average = FiLMTextCNN(embedding(), use_average=True)
+    randomize_generator(with_average)
+    gamma2, _ = with_average.film_parameters(same_link, with_average.conv_features(ids)[1])
+    assert not torch.allclose(gamma2, gamma2[:1].expand_as(gamma2))                           # with the average the words matter
+
+
+def test_without_the_conv_average_it_still_starts_as_the_plain_text_cnn_and_still_trains():
+    ids, link = batch()
+    model = FiLMTextCNN(embedding(), use_average=False)
+    gamma, beta = model.film_parameters(link, model.conv_features(ids)[1])
+    assert torch.equal(gamma, torch.ones_like(gamma)) and torch.equal(beta, torch.zeros_like(beta))
+    torch.optim.Adam(model.parameter_groups(1e-4), lr=1e-3)
+    loss = F.cross_entropy(model(ids, link), torch.zeros(8, dtype=torch.long))
+    loss.backward()
+    assert model.generator.weight.grad.abs().sum() > 0                                         # the link still reaches the generator's weights
+    assert model.film_parameters(link, model.conv_features(ids)[1]) is not None

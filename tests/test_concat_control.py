@@ -18,6 +18,7 @@ from src.unified import film
 from src.unified import fit_model as fm
 from src.unified import link_lane as ll
 from src.unified import text_cnn as tc
+from src.unified.film_inputs import LINK_WIDTH
 
 FRESH = 100
 
@@ -76,6 +77,23 @@ def test_a_wrong_link_shape_is_refused_and_the_embedding_option_works():
     with pytest.raises(ValueError, match="link must be"):
         model(ids, link[:5])
     assert model.embedding.weight.requires_grad and not ConcatTextCNN(embedding(), freeze_embedding=True).embedding.weight.requires_grad
+
+
+def test_a_control_without_has_url_ignores_the_fourth_column_and_one_with_has_url_reads_it():
+    ids, link = batch()
+    has_url = torch.tensor([1., 1., 1., 1., 0., 0., 0., 0.]).unsqueeze(1)
+    four = torch.cat([link, has_url], dim=1)
+    old = ConcatTextCNN(embedding(seed=3)).eval()                                    # link_dim 3: the first pilot's controls
+    with torch.no_grad():
+        assert torch.equal(old(ids, four), old(ids, link))                           # has_url is dropped, as E2 drops it
+    new = ConcatTextCNN(embedding(seed=3), link_dim=LINK_WIDTH).eval()               # link_dim 4: has_url is a link number
+    assert new.dense.in_features == 64 + LINK_WIDTH
+    with torch.no_grad():
+        assert not torch.equal(new(ids, four), new(ids, torch.cat([link, 1 - has_url], dim=1)))
+    with pytest.raises(ValueError, match="link must be"):
+        new(ids, link)                                                                # 3 columns is refused by the 4-wide control
+    with pytest.raises(ValueError, match="link must be"):
+        new(ids, torch.cat([four, has_url], dim=1))                                   # and so are 5
 
 
 @pytest.mark.parametrize("freeze", [False, True])
@@ -139,7 +157,7 @@ def test_the_from_scratch_control_is_a_separate_run_and_needs_no_baseline(output
     assert checkpoint.exists() and fm.read_sidecar(checkpoint)["warm_start"] is None
     assert not fm.checkpoint_path(DATASET, "concat", 42, 0).exists()
     model, _, _, sidecar = cc.load_control(42, 0, pilot=True, warm_start=False)
-    assert sidecar["kind"] == "concat_scratch" and model.dense.in_features == 67
+    assert sidecar["kind"] == "concat_scratch" and model.dense.in_features == 64 + LINK_WIDTH
     assert (outputs / "experiments" / DATASET.stem / "concat_scratch" / "train_summary.csv").exists() is False   # only run_train writes it
     cc.run_train(pilot=True, seeds=[42], folds=[0], warm_start=False, epochs=1)
     assert (outputs / "experiments" / DATASET.stem / "concat_scratch" / "train_summary.csv").exists()

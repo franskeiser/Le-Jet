@@ -1,0 +1,37 @@
+# The website, as an unprivileged user with a locked-down file system. Installed by setup.sh.
+# The app listens ONLY on 127.0.0.1:8000; Caddy (HTTPS) is the only thing facing the internet.
+[Unit]
+Description=Le-Jet link features website
+After=network-online.target nftables.service
+Wants=network-online.target
+
+[Service]
+User=lejetweb
+Group=lejetweb
+WorkingDirectory=/opt/lejet-web
+# Open to anyone with the address. To require a code, put  LEJET_ACCESS_CODE=something  in /etc/lejet-web.env.
+EnvironmentFile=-/etc/lejet-web.env
+Environment=LEJET_OPEN=1 HOME=/var/lib/lejetweb
+Environment=LEJET_DNS=1.1.1.1 LEJET_RDAP_BOOTSTRAP=/opt/lejet-web/rdap-dns.json LEJET_CACHE_DIR=/var/lib/lejetweb
+Environment=LEJET_DATASET=/var/lib/lejetweb/web_submissions.csv
+ExecStart=/opt/lejet-web/venv/bin/python -I -m uvicorn --app-dir /opt/lejet-web webapp.app:app --host 127.0.0.1 --port 8000 --no-server-header
+Restart=always
+RestartSec=5
+# recycled every 6 hours so nothing a hostile page did to the process lingers
+RuntimeMaxSec=21600
+# the screenshot reader (OCR) needs about 1 GiB while it works
+MemoryMax=2500M
+MemorySwapMax=0
+TasksMax=512
+LimitNOFILE=4096
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadWritePaths=/var/lib/lejetweb
+
+[Install]
+WantedBy=multi-user.target

@@ -18,6 +18,7 @@ from src.unified import film
 from src.unified import fit_model as fm
 from src.unified import link_lane as ll
 from src.unified import text_cnn as tc
+from src.unified.film_inputs import LINK_WIDTH
 from src.unified.prepare_web_37 import FEATURES_37
 
 VOCAB = {"<PAD>": 0, "verify": 1, "account": 2, "locked": 3, "<URL>": 4, "your": 5, "parcel": 6}
@@ -139,8 +140,9 @@ def test_part_inputs_line_the_text_up_with_its_link_numbers():
         data = film.part_inputs(42, 0, part, vocab, seq_len, pilot=True)
         n = len(data.message_id)
         assert tuple(data.token_ids.shape) == (n, seq_len) and tuple(data.labels.shape) == (n,)
-        assert tuple(data.link_full.shape) == tuple(data.link_blank.shape) == (n, 3)
+        assert tuple(data.link_full.shape) == tuple(data.link_blank.shape) == (n, LINK_WIDTH)      # [P, u, page_missing, has_url]
         assert (data.link_blank[:, 2] == 1).all()
+        assert set(data.link_full[:, 3].tolist()) <= {0.0, 1.0} and torch.equal(data.link_full[:, 3], data.link_blank[:, 3])
         assert set(data.labels.tolist()) <= {0, 1}
     with torch.no_grad():
         assert tuple(model(data.token_ids, data.link_full).shape) == (n, 2)

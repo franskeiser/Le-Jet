@@ -123,6 +123,9 @@ def load_batch(clean_dir: Path, batch: str, label: str, source: str) -> List[Dic
         if not fetched:                                     # spec: page not fetched => the 12 webpage columns are -1
             for name in WEBPAGE_FEATURES:
                 rec[name] = -1
+        full = r.get("features_full")                       # lab results since 2026-10-14; E2 (src/serving/e2_model.py) needs safe_anchor
+        if full and "safe_anchor" in full:
+            rec["safe_anchor"] = full["safe_anchor"] if fetched else -1
         rec["shortener"] = int(registrable_domain(refang(r["url"])).lower() in KNOWN_SHORTENERS
                                or bool(feats.get("shortened_url_indicator", 0) == 1))
         rec["group"] = group_of(r, refang(r["final_reg_domain"]).lower() if fetched else "")

@@ -36,11 +36,18 @@ def _train(n_domains=30, per_domain=4, seed=0):
 
 def test_tune_returns_a_grid_candidate_and_every_score():
     params, grid = ll.tune(_train(), "domain", seed=42)
-    assert set(params) == set(PARAM_GRID)
-    assert len(grid) == np.prod([len(v) for v in PARAM_GRID.values()])
+    assert set(params) == set(ll.LINK_PARAM_GRID)
+    assert len(grid) == np.prod([len(v) for v in ll.LINK_PARAM_GRID.values()])
     assert grid["f1"].max() == 1.0          # length_url alone separates the classes
     best = grid.sort_values(["f1", "log_loss"], ascending=[False, True]).iloc[0]
-    assert {k: str(v) for k, v in params.items()} == {k: best[k] for k in PARAM_GRID}
+    assert {k: str(v) for k, v in params.items()} == {k: best[k] for k in ll.LINK_PARAM_GRID}
+
+
+def test_link_forest_has_100_trees_and_shares_the_other_settings_with_the_old_grid():
+    assert ll.LINK_PARAM_GRID["n_estimators"] == [100]
+    assert {k: v for k, v in ll.LINK_PARAM_GRID.items() if k != "n_estimators"} == \
+           {k: v for k, v in PARAM_GRID.items() if k != "n_estimators"}
+    assert PARAM_GRID["n_estimators"] == [200, 500]        # the shared grid is untouched
 
 
 PARAMS = {"n_estimators": 50, "max_depth": None, "min_samples_leaf": 1, "max_features": "sqrt"}

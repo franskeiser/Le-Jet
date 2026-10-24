@@ -1,2 +1,4 @@
 2026-10-20T02:39:48 dataset=crowd_pilot_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False models=['CNN-only (baseline)', 'Concatenation (control)', 'E2 (warm start)', 'E2 (from scratch)']
 2026-10-20T02:41:32 dataset=crowd_pilot_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False models=['CNN-only (baseline)', 'Concatenation (control)', 'E2 (warm start)', 'Concatenation (from scratch)', 'E2 (from scratch)']
+2026-10-21T02:47:27 dataset=crowd_pilot_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False models=['CNN-only (baseline)', 'Concatenation (control)', 'E2 (warm start)', 'Concatenation (from scratch)', 'E2 (from scratch)']
+2026-10-21T02:50:07 dataset=crowd_pilot_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False models=['CNN-only (baseline)', 'Concatenation (control)', 'E2 (warm start)', 'Concatenation (from scratch)', 'E2 (from scratch)']

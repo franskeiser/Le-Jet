@@ -1,0 +1,29 @@
+# Outer safety barrier for the website (the lab's gateway nftables, reduced to what one cloud VM needs).
+#
+# The app already refuses private/loopback/metadata addresses before connecting (src/lejet/safety.py), but a
+# hostile domain can change its DNS answer between that check and the real connection ("DNS rebinding").
+# This rule closes that gap at the network level: whatever the app does, the `lejetweb` user can never open a
+# connection to this machine's own services, the Azure/cloud metadata service, or any private network.
+#
+# Loaded by setup.sh (included from /etc/nftables.conf).
+table inet lejet_egress {
+    chain output {
+        type filter hook output priority 0; policy accept;
+
+        # Only for the website's user -- root, SSH, Caddy and apt are untouched.
+        meta skuid != "lejetweb" accept
+
+        # the app answering Caddy on loopback is its job; every OTHER loopback connection is not
+        oifname "lo" tcp sport 8000 accept
+        # ... and name lookups: the system resolver (systemd-resolved) listens on 127.0.0.53, port 53 only
+        oifname "lo" ip daddr 127.0.0.53 udp dport 53 accept
+        oifname "lo" ip daddr 127.0.0.53 tcp dport 53 accept
+        oifname "lo" reject with icmpx type admin-prohibited
+
+        # never reach: private LANs, link-local (cloud metadata 169.254.169.254), carrier NAT,
+        # Azure's special host address 168.63.129.16, multicast, and the IPv6 equivalents
+        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10,
+                   168.63.129.16, 0.0.0.0/8, 224.0.0.0/3 } reject with icmpx type admin-prohibited
+        ip6 daddr { ::1, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 } reject with icmpx type admin-prohibited
+    }
+}

@@ -43,7 +43,11 @@ class ConcatTextCNN(nn.Module):
         return self.dropout_pool(pooled)
 
     def forward(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
-        # Raw logits (batch, 2); no Softmax here (the loss applies it). link: (batch, 3) = [P, u, page_missing].
+        # Raw logits (batch, 2); no Softmax here (the loss applies it). link: (batch, link_dim) = [P, u, page_missing] (link_dim 3), or
+        # [P, u, page_missing, has_url] (link_dim 4, which reads has_url). A control built with link_dim 3 (the first pilot's, trained
+        # before has_url existed) also accepts the pipeline's 4 columns and ignores the last, as E2 does.
+        if link.dim() == 2 and self.link_dim == LINK_DIM and link.shape[1] == LINK_DIM + 1:
+            link = link[:, :LINK_DIM]
         if link.dim() != 2 or link.shape[1] != self.link_dim or link.shape[0] != token_ids.shape[0]:
             raise ValueError(f"link must be (batch, {self.link_dim}) with the same batch as the text, got {tuple(link.shape)}")
         features = torch.cat([self.encode(token_ids, text_keep), link], dim=1)

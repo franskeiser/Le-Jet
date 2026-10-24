@@ -1,6 +1,7 @@
 """HTTP API for the Le-Jet frontend (frontend/src/data/backendClient.js talks to this).
 
-    POST /predict          {"message": "...", "model_id": "fusion_gated"|"cnn_only_baseline", "research": bool}
+    POST /predict          {"message": "...", "model_id": "film_cnn"|"fusion_gated"|"cnn_only_baseline", "research": bool}
+                           (no model_id: the first model of /health's "models", which is film_cnn when the FiLM model is loaded)
     POST /inspect          {"message": "...", "refresh": bool}  -> hands the first link to the isolated lab (a job)
     GET  /inspect/<job>    the job's real steps and timings; when "done" call /predict with the same message
     GET  /evidence/<id>.png   screenshot the lab took of an inspected page (id = 16 hex characters)
@@ -23,7 +24,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from src.features.link_features import extract_links
-from src.serving.lejet_service import MAX_TEXT_CHARS, MODEL_IDS, LejetService, LinkStore
+from src.serving.film_model import FilmModel
+from src.serving.lejet_service import MAX_TEXT_CHARS, LejetService, LinkStore
 from src.serving.live_inspect import ON_DEMAND_CSV, LiveInspector
 
 MAX_BODY = 20_000
@@ -71,7 +73,8 @@ def make_handler(service: LejetService, inspector: LiveInspector):
         def do_GET(self):
             path = self.path.split("?")[0]
             if path == "/health":
-                return self._json(200, {"status": "ok", "seed": service.seed, "models": list(MODEL_IDS),
+                return self._json(200, {"status": "ok", "seed": service.seed, "models": list(service.model_ids),
+                                        "film": service.film.info if service.film else None,
                                         "fusion_dir": getattr(service, "fusion_dir_name", ""),
                                         "inspected_links": len(service.store), "live_lab": inspector.status()})
             job_match = JOB_RE.match(path)
@@ -99,7 +102,7 @@ def make_handler(service: LejetService, inspector: LiveInspector):
             try:
                 body = json.loads(self.rfile.read(length))
                 message = str(body["message"]).strip()
-                model_id = str(body.get("model_id") or MODEL_IDS[0])
+                model_id = str(body.get("model_id") or service.model_ids[0])
             except (ValueError, KeyError, TypeError):
                 return self._json(400, {"error": "send JSON like {\"message\": \"...\"}"})
             if not message:
@@ -143,6 +146,12 @@ def main() -> None:
     parser.add_argument("--fusion-dir", type=Path, default=None,
                         help="folder of the trained head. Default: models/fusion/rf_vec_live (the live-trained one) when it "
                              "is there, otherwise models/fusion/rf_vec. The folder in use is printed at start and shown in /health")
+    parser.add_argument("--film", default="crowd_relevant_synthetic", metavar="DATASET",
+                        help="serve the hybrid CNN–Random Forest model (FiLM) trained on this dataset (models/film/<DATASET>/): the default model when its files exist. "
+                             "Default: crowd_relevant_synthetic, the second synthetic pilot. Use crowd_smishing_v1 for the real run")
+    parser.add_argument("--film-kind", default="film_scratch", help="which checkpoint of the FiLM model (film_scratch = the SOP 2 'proposed' model)")
+    parser.add_argument("--film-fold", type=int, default=0, help="which fold's model (default 0, the fold SOP 2 measured)")
+    parser.add_argument("--no-film", action="store_true", help="do not serve the hybrid CNN–Random Forest model (FiLM); the earlier design answers")
     parser.add_argument("--live", type=Path, default=None, help="live_links.csv, the store of inspected links")
     parser.add_argument("--reuse-stored", action="store_true",
                         help="answer a link that is already in the store without opening it again (default: every link is inspected)")
@@ -150,7 +159,14 @@ def main() -> None:
     args = parser.parse_args()
     fusion_dir = args.fusion_dir or default_fusion_dir(args.seed)
     store = LinkStore(*([args.live] if args.live else []), on_demand_csv=ON_DEMAND_CSV)
-    service = LejetService(seed=args.seed, fusion_dir=fusion_dir, store=store)
+    film = None
+    if not args.no_film:
+        dataset = Path("data") / "processed" / f"{args.film}.csv"
+        if FilmModel.available(dataset, args.film_kind, args.seed, args.film_fold):
+            film = FilmModel(dataset, args.film_kind, args.seed, args.film_fold)
+        else:
+            print(f"Hybrid CNN–RF model (FiLM) not served: files of {args.film_kind} seed {args.seed} fold {args.film_fold} trained on {args.film} are missing.")
+    service = LejetService(seed=args.seed, fusion_dir=fusion_dir, store=store, film=film)
     service.fusion_dir_name = Path(fusion_dir).name
     inspector = LiveInspector(service.store, enabled=not args.no_lab, reuse_stored=args.reuse_stored)
     try:
@@ -159,6 +175,8 @@ def main() -> None:
         raise SystemExit(f"port {args.port} is already in use ({err.strerror}). Another Le-Jet API is probably running: "
                          "stop it first, or use --port.")
     print(f"Model folder: {fusion_dir}")
+    if film:
+        print(f"Hybrid CNN–RF model (FiLM) served: {film.info}" + ("  (trained on SYNTHETIC messages: a rehearsal model)" if film.info["synthetic"] else ""))
     print(f"Le-Jet API at http://127.0.0.1:{args.port}  ({len(service.store)} inspected links in the store; "
           f"live lab: {inspector.status()['note']})  Ctrl+C to stop")
     server.serve_forever()

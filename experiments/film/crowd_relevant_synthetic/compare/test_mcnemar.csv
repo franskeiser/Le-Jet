@@ -1,22 +1,22 @@
 seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
-42,E2 (from scratch),Concatenation (from scratch),60,67,0.5946154859354927,1.0,False
-42,Concatenation (from scratch),CNN-only (baseline),634,136,1.2599797040005874e-77,8.819857928004111e-77,True
-42,E2 (from scratch),CNN-only (baseline),643,152,1.3383635260745968e-72,8.030181156447581e-72,True
-42,E2 (from scratch),"E2 (from scratch, no has_url bypass)",63,65,0.9296139078299845,1.0,False
-42,E2 (from scratch),"CNN-only, text + URL features (from scratch)",218,139,3.414049668820824e-05,0.0001024214900646247,True
-42,Concatenation (from scratch),"CNN-only, text + URL features (from scratch)",219,133,5.316048529180797e-06,2.126419411672319e-05,True
-42,"CNN-only, text + URL features (from scratch)",CNN-only (baseline),622,210,4.609167616342431e-48,2.3045838081712155e-47,True
-123,E2 (from scratch),Concatenation (from scratch),91,88,0.8812234734185153,1.0,False
-123,Concatenation (from scratch),CNN-only (baseline),611,126,3.455989747558676e-77,2.0735938485352052e-76,True
-123,E2 (from scratch),CNN-only (baseline),614,126,7.559436261109059e-78,5.2916053827763414e-77,True
-123,E2 (from scratch),"E2 (from scratch, no has_url bypass)",40,44,0.7436441861052039,1.0,False
-123,E2 (from scratch),"CNN-only, text + URL features (from scratch)",208,147,0.001415983455865277,0.005663933823461108,True
-123,Concatenation (from scratch),"CNN-only, text + URL features (from scratch)",200,142,0.002010650445367307,0.006031951336101921,True
+42,E2 (from scratch),Concatenation (from scratch),71,66,0.732684093591041,1.0,False
+42,Concatenation (from scratch),CNN-only (baseline),617,134,7.598097148362515e-75,5.31866800385376e-74,True
+42,E2 (from scratch),CNN-only (baseline),644,156,3.71703242560578e-71,2.230219455363468e-70,True
+42,E2 (from scratch),"E2 (from scratch, no has_url bypass)",50,45,0.6817425059181855,1.0,False
+42,E2 (from scratch),"CNN-only, text + URL features (from scratch)",229,125,3.529414350984826e-08,1.4117657403939305e-07,True
+42,Concatenation (from scratch),"CNN-only, text + URL features (from scratch)",227,128,1.658610826497129e-07,4.975832479491388e-07,True
+42,"CNN-only, text + URL features (from scratch)",CNN-only (baseline),613,229,3.330451982225988e-41,1.6652259911129941e-40,True
+123,E2 (from scratch),Concatenation (from scratch),72,86,0.3010155381965677,0.6020310763931354,False
+123,Concatenation (from scratch),CNN-only (baseline),612,110,3.003338341282787e-85,2.102336838897951e-84,True
+123,E2 (from scratch),CNN-only (baseline),618,130,7.123280824743456e-77,4.2739684948460734e-76,True
+123,E2 (from scratch),"E2 (from scratch, no has_url bypass)",81,87,0.6997974882614117,0.6997974882614117,False
+123,E2 (from scratch),"CNN-only, text + URL features (from scratch)",204,143,0.0012452879316850643,0.0037358637950551925,True
+123,Concatenation (from scratch),"CNN-only, text + URL features (from scratch)",206,131,5.198727726349041e-05,0.00020794910905396163,True
 123,"CNN-only, text + URL features (from scratch)",CNN-only (baseline),627,200,5.1256677367230094e-52,2.5628338683615046e-51,True
-2024,E2 (from scratch),Concatenation (from scratch),63,65,0.9296139078299845,0.9296139078299845,False
-2024,Concatenation (from scratch),CNN-only (baseline),644,113,4.668038513856212e-91,3.2676269596993485e-90,True
-2024,E2 (from scratch),CNN-only (baseline),662,133,3.7088887313222474e-85,2.2253332387933486e-84,True
-2024,E2 (from scratch),"E2 (from scratch, no has_url bypass)",35,18,0.027008317653722358,0.054016635307444716,False
-2024,E2 (from scratch),"CNN-only, text + URL features (from scratch)",227,113,6.19002649489388e-10,1.969043061945114e-09,True
-2024,Concatenation (from scratch),"CNN-only, text + URL features (from scratch)",232,116,4.922607654862785e-10,1.969043061945114e-09,True
-2024,"CNN-only, text + URL features (from scratch)",CNN-only (baseline),658,243,7.248364901944394e-45,3.624182450972197e-44,True
+2024,E2 (from scratch),Concatenation (from scratch),68,82,0.28845574899076537,0.5769114979815307,False
+2024,Concatenation (from scratch),CNN-only (baseline),635,106,1.0709750207549102e-92,7.496825145284371e-92,True
+2024,E2 (from scratch),CNN-only (baseline),650,135,1.4240810862843195e-81,8.544486517705917e-81,True
+2024,E2 (from scratch),"E2 (from scratch, no has_url bypass)",64,60,0.7877465824023331,0.7877465824023331,False
+2024,E2 (from scratch),"CNN-only, text + URL features (from scratch)",224,121,3.175976176063325e-08,9.527928528189976e-08,True
+2024,Concatenation (from scratch),"CNN-only, text + URL features (from scratch)",232,115,3.254974182912261e-10,1.3019896731649044e-09,True
+2024,"CNN-only, text + URL features (from scratch)",CNN-only (baseline),656,244,2.862549649060779e-44,1.4312748245303895e-43,True

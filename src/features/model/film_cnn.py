@@ -68,6 +68,9 @@ class FiLMTextCNN(nn.Module):
       use_beta            True: the generator gives gamma and beta (D3 default). False: gamma only (variant V1), beta = 0,
                           and the generator has half the outputs (4,352 parameters instead of 8,704).
       bypass_no_link      True: a message with has_url = 0 gets gamma = 1, beta = 0 (default). False: has_url is ignored.
+      use_average         True: the generator reads the link numbers AND the Conv average of the text (default, D4). False: the
+                          link numbers alone (variant V3, step 5.3): the same link then gives the same gamma and beta to every
+                          message, whatever its words; the generator has 64 fewer inputs (-8,192 parameters).
       freeze_embedding    False: the embedding is fine-tuned during training, as in the diagram (D6, changed 2026-10-20).
                           True: it stays at its fastText values (the frozen-embedding check run). The layer you pass in is
                           used as given and its requires_grad is set here, so do not share one layer between two models.
@@ -76,7 +79,7 @@ class FiLMTextCNN(nn.Module):
     def __init__(self, embedding_layer: nn.Embedding, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
                  link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, gamma_mode: str = "bounded",
                  mask_padding: bool = False, average_after_relu: bool = False, use_beta: bool = True,
-                 freeze_embedding: bool = False, bypass_no_link: bool = True):
+                 freeze_embedding: bool = False, bypass_no_link: bool = True, use_average: bool = True):
         super().__init__()
         if gamma_mode not in GAMMA_MODES:
             raise ValueError(f"gamma_mode must be one of {GAMMA_MODES}, got {gamma_mode!r}")
@@ -85,6 +88,7 @@ class FiLMTextCNN(nn.Module):
         self.num_filters, self.kernel_size, self.link_dim = num_filters, kernel_size, link_dim
         self.gamma_mode, self.mask_padding, self.average_after_relu = gamma_mode, mask_padding, average_after_relu
         self.use_beta, self.freeze_embedding, self.bypass_no_link = use_beta, freeze_embedding, bypass_no_link
+        self.use_average = use_average
 
         # Fine-tuned for every model of the study (D6, changed 2026-10-20 from frozen). Its parameters are counted apart from
         # the 70,658 of the layers below (vocabulary size x 300 more), and it has its own optimizer group.
@@ -94,7 +98,7 @@ class FiLMTextCNN(nn.Module):
 
         # One Dense layer: (link numbers + one average per filter) -> a delta_gamma and a beta per filter (delta_gamma only
         # when use_beta is False).
-        self.generator = nn.Linear(link_dim + num_filters, (2 if use_beta else 1) * num_filters)
+        self.generator = nn.Linear(link_dim + (num_filters if use_average else 0), (2 if use_beta else 1) * num_filters)
         nn.init.zeros_(self.generator.weight)
         nn.init.zeros_(self.generator.bias)
 
@@ -141,7 +145,7 @@ class FiLMTextCNN(nn.Module):
                 raise ValueError(f"has_url must be (batch,) of 0 / 1 with the same batch as the text, got {tuple(has_url.shape)}")
             linked = has_url.bool().unsqueeze(1)
             link = torch.where(linked, link, torch.zeros_like(link))      # a no-link row's numbers (even NaN) never reach the generator
-        generated = self.generator(torch.cat([link, average], dim=1))
+        generated = self.generator(torch.cat([link, average], dim=1) if self.use_average else link)
         delta_gamma, beta = generated.chunk(2, dim=1) if self.use_beta else (generated, torch.zeros_like(generated))
         gamma = 1.0 + (torch.tanh(delta_gamma) if self.gamma_mode == "bounded" else delta_gamma)
         if linked is not None:

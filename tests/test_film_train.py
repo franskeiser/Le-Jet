@@ -83,7 +83,7 @@ def test_training_one_cell_saves_the_weights_a_sidecar_and_the_gamma_beta_statis
     sidecar = fm.read_sidecar(checkpoint)
     assert sidecar["kind"] == "film" and sidecar["trainable_without_embedding"] == 70658
     assert sidecar["options"] == {"gamma_mode": "bounded", "mask_padding": False, "average_after_relu": False, "use_beta": True,
-                                  "freeze_embedding": False}
+                                  "freeze_embedding": False, "bypass_no_link": True, "use_average": True}
     assert set(sidecar["sha256"]) == {"vocab.json", "embedding_matrix.npy", checkpoint.name, "link_rf"}
     assert sidecar["warm_start"]["checkpoint"] == "cnn_seed42_fold0.pt"
     recipe = sidecar["recipe"]

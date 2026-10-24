@@ -67,11 +67,12 @@ EXPECTED_TRAINABLE = 70658            # section A5, embedding not included
 
 
 def expected_trainable(embedding_dim: int = 300, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
-                       link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, use_beta: bool = True) -> int:
+                       link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, use_beta: bool = True,
+                       use_average: bool = True) -> int:
     """Trainable parameters of E2 without the embedding: conv + generator + dense + output (section A5)."""
     outputs = (2 if use_beta else 1) * num_filters
     return (embedding_dim * kernel_size * num_filters + num_filters          # conv
-            + (link_dim + num_filters) * outputs + outputs                   # generator
+            + (link_dim + (num_filters if use_average else 0)) * outputs + outputs   # generator
             + num_filters * dense_units + dense_units                        # dense 64
             + dense_units * 2 + 2)                                           # output
 
@@ -220,7 +221,8 @@ def start_matches_baseline(model: FiLMTextCNN, seed: int, fold: int, pilot: bool
 
 def model_options(model: FiLMTextCNN) -> dict:
     return {"gamma_mode": model.gamma_mode, "mask_padding": model.mask_padding, "average_after_relu": model.average_after_relu,
-            "use_beta": model.use_beta, "freeze_embedding": model.freeze_embedding, "bypass_no_link": model.bypass_no_link}
+            "use_beta": model.use_beta, "freeze_embedding": model.freeze_embedding, "bypass_no_link": model.bypass_no_link,
+            "use_average": model.use_average}
 
 
 def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epochs: int = fm.EPOCHS, **options) -> tuple:

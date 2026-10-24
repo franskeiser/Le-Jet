@@ -100,6 +100,17 @@ class TestWithModel:
         assert out["model_id"] == "fusion_gated" and out["url_features"]["has_url"] == 1
         json.dumps(out)                                              # everything must be JSON-serialisable
 
+    def test_timings_say_where_the_time_went_and_add_up(self, service):
+        out = service.predict(f"Your account is locked. Verify now: {LINK}")
+        timings = out["timings"]
+        assert set(timings) == {"link_forest_ms", "text_prep_ms", "model_ms", "explanation_ms", "total_ms", "has_link"}
+        assert timings["has_link"] is True and timings["model_ms"] == out["inference_ms"]
+        assert all(timings[k] >= 0 for k in ("link_forest_ms", "text_prep_ms", "model_ms", "explanation_ms"))
+        parts = timings["link_forest_ms"] + timings["text_prep_ms"] + timings["model_ms"] + timings["explanation_ms"]
+        assert timings["total_ms"] >= parts - 0.05                     # the call also did the routing and the scope check
+        assert service.predict("See you at lunch tomorrow")["timings"]["has_link"] is False
+        assert service.predict("Verify now " + LINK, model_id="cnn_only_baseline")["timings"]["explanation_ms"] < timings["explanation_ms"]
+
     def test_a_stored_link_is_routed_to_the_full_extractor(self, service):
         out = service.predict(f"Verify now {LINK}")
         ins = out["inspection"]

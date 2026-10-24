@@ -13,3 +13,9 @@ nostril @ git+https://github.com/casics/nostril.git@fbc0c91249283a9fbc9036206391
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.14.1
 gensim==4.4.0
+
+# SOP 2 efficiency measurement (src/unified/efficiency.py) and the voting baseline (Jain et al. 2022)
+psutil==7.2.2
+nltk==3.10.3
+imbalanced-learn==0.14.2
+urlextract==1.10.0

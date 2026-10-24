@@ -74,6 +74,9 @@ from src.unified.prepare_web_37 import FEATURES_37, PAGE
 ROOT = Path(__file__).resolve().parents[2]
 TUNE_SPLITS = 3
 OOF_SPLITS = 5
+# The link forest has 100 trees (plan D19): on the pilot, 100 trees match 200 on F1 (0.9137 vs 0.9147) and 500 add
+# nothing. Only the other settings are tuned. rf_extractor.PARAM_GRID is left alone: other pipelines use it.
+LINK_PARAM_GRID = {**PARAM_GRID, "n_estimators": [100]}
 CONTRIBUTIONS = [f"c_{f}" for f in FEATURES_37]
 OUTPUTS = ["P", "u"] + CONTRIBUTIONS
 LANE = OUTPUTS + ["page_missing"]   # the 40 link numbers
@@ -100,7 +103,7 @@ def tune(train: pd.DataFrame, rule: str, seed: int, n_splits: int = TUNE_SPLITS)
     X, y = train[FEATURES_37], labels(train)
     groups = make_groups(train, rule, n_splits).to_numpy()
     folds = list(StratifiedGroupKFold(n_splits, shuffle=True, random_state=seed).split(X, y, groups))
-    candidates = list(ParameterGrid(PARAM_GRID))
+    candidates = list(ParameterGrid(LINK_PARAM_GRID))
     scores = []
     for params in candidates:
         f1s, losses = [], []

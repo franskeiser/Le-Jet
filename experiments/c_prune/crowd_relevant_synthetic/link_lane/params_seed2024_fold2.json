@@ -2,5 +2,5 @@
   "max_depth": null,
   "max_features": 0.5,
   "min_samples_leaf": 1,
-  "n_estimators": 500
+  "n_estimators": 100
 }
