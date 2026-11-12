@@ -15,6 +15,7 @@ Other ids answer "unknown_model" and the page shows them as "not available yet".
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 import threading
@@ -48,6 +49,7 @@ PAGE_COLUMNS = VARIANTS["full"][len(LINK_TEXT_FEATURES):]          # page_rank, 
 LIVE_LINKS = ARTIFACTS_ROOT / "data" / "live" / "live_links.csv"
 DEFAULT_SHOT_DIRS = (Path(r"D:\LeJetData\clean\shots"),)
 SHOT_ID_RE = re.compile(r"^[0-9a-f]{16}$")
+PAGE_SHOT_RE = re.compile(r"^([0-9a-f]{16})_p([1-4])$")      # a linked page of the same site (cloud lab, whole-site mode)
 MAX_TEXT_CHARS = 2000
 
 # Page features worth showing a person (name -> short plain label); -1 means "not available" and is hidden.
@@ -97,23 +99,69 @@ def url_reasons(f: dict, raw_url: str) -> list[str]:
     return out
 
 
+def _png_size(path: Path) -> tuple[int, int]:
+    """(width, height) read from the PNG header; (0, 0) if the file is unreadable. The files were validated on arrival."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(24)
+        if head[:8] == bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) and head[12:16] == b"IHDR":
+            return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+    except OSError:
+        pass
+    return 0, 0
+
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _clean_text(value, limit: int) -> str:
+    """Page-influenced text from the lab's manifest: no control characters, capped."""
+    return _CONTROL_CHARS.sub("", str(value or ""))[:limit]
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 class LinkStore:
     """Links the lab already inspected: features, where the link led, a screenshot if one was taken."""
 
     def __init__(self, csv: Path = LIVE_LINKS, shot_dirs=DEFAULT_SHOT_DIRS, on_demand_csv: Path | None = None):
         self.rows: dict[str, dict] = {}
         self.shot_dirs = [Path(d) for d in shot_dirs]
-        self._shots: dict[str, Path] = {}
+        # EVERY picture the lab ever took of a link (one per batch folder), and the linked-page pictures by batch folder.
+        # Which one is shown is decided per link by `_pick`: the picture of the batch the stored row describes, else an
+        # EARLIER one, which the page must label as earlier (it was not taken during that check).
+        self._shots: dict[str, list[Path]] = {}
+        self._pages: dict[str, dict[str, dict[int, Path]]] = {}
+        self._batch_of: dict[str, str] = {}                  # link_id -> batch_id of its stored row
         self._lock = threading.Lock()
         for path in (csv, on_demand_csv):                    # on-demand rows come from live inspections in the demo
             if path and Path(path).exists():
                 frame = pd.read_csv(path, keep_default_na=False, dtype={"link_id": str})
                 self.rows.update({r["key"]: r for r in frame.to_dict("records")})
+        self._index_rows()
         for shot_dir in self.shot_dirs:
             if shot_dir.exists():
                 for png in shot_dir.glob("*/*.png"):
-                    if SHOT_ID_RE.match(png.stem):
-                        self._shots.setdefault(png.stem, png)
+                    self._register(png)
+
+    def _index_rows(self) -> None:
+        self._batch_of = {str(r.get("link_id", "")): str(r.get("batch_id", "")) for r in self.rows.values()}
+
+    def _register(self, png: Path) -> None:
+        """Remember one picture: a landing page (<id>.png) or a linked page (<id>_p<n>.png), by its batch folder."""
+        if SHOT_ID_RE.match(png.stem):
+            known = self._shots.setdefault(png.stem, [])
+            if png not in known:
+                known.append(png)
+            return
+        m = PAGE_SHOT_RE.match(png.stem)
+        if m:
+            self._pages.setdefault(m.group(1), {}).setdefault(png.parent.name, {})[int(m.group(2))] = png
 
     def add(self, record: dict, csv: Path, shots_dir: Path | None = None) -> None:
         """Keep one freshly inspected link: in memory now, and in the on-demand file for the next start.
@@ -127,16 +175,85 @@ class LinkStore:
             frame.to_csv(csv, index=False)
             fresh = pd.read_csv(csv, keep_default_na=False, dtype={"link_id": str})
             self.rows[record["key"]] = fresh[fresh["key"] == record["key"]].to_dict("records")[-1]
+            self._index_rows()
             if shots_dir and Path(shots_dir).exists():
                 for png in Path(shots_dir).glob("*.png"):
-                    if SHOT_ID_RE.match(png.stem):
-                        self._shots[png.stem] = png
+                    self._register(png)
 
     def get(self, normalised_link: str) -> dict | None:
         return self.rows.get(link_key(normalised_link))
 
-    def shot_path(self, link_id: str) -> Path | None:
-        return self._shots.get(link_id) if SHOT_ID_RE.match(link_id or "") else None
+    def _pick(self, link_id: str) -> tuple[Path | None, bool]:
+        """(landing-page picture, is it from the SAME check the stored row describes?). The row's own batch wins; otherwise the
+        newest earlier picture is returned with current = False. A link without a stored row has nothing to compare with."""
+        if not SHOT_ID_RE.match(link_id or ""):
+            return None, False
+        paths = self._shots.get(link_id, [])
+        if not paths:
+            return None, False
+        want = self._batch_of.get(link_id)
+        if not want:
+            return max(paths, key=_mtime), True
+        for path in reversed(paths):
+            if path.parent.name == want:
+                return path, True
+        return max(paths, key=_mtime), False
+
+    def _pages_for(self, link_id: str) -> dict[int, Path]:
+        """Linked-page pictures from the same batch folder as the chosen landing-page picture (never mixed across checks)."""
+        main, _ = self._pick(link_id)
+        return self._pages.get(link_id, {}).get(main.parent.name, {}) if main else {}
+
+    def shot_path(self, link_id: str, page: int = 0) -> Path | None:
+        """The landing-page picture (page 0) or one of the linked pages (1..4)."""
+        if page == 0:
+            return self._pick(link_id)[0]
+        return self._pages_for(link_id).get(page)
+
+    def page_count(self, link_id: str) -> int:
+        """How many linked-page pictures exist besides the landing page."""
+        return len(self._pages_for(link_id))
+
+    def _manifest_entry(self, folder: Path, link_id: str) -> dict:
+        """The lab's shots.jsonl line for this link (title, final address, linked pages), or {} for older batches without one."""
+        try:
+            for line in (folder / "shots.jsonl").read_text(encoding="utf-8").splitlines():
+                rec = json.loads(line)
+                if isinstance(rec, dict) and rec.get("url_id") == link_id:
+                    return rec
+        except (OSError, ValueError):
+            pass
+        return {}
+
+    def shot_items(self, link_id: str) -> list[dict]:
+        """One entry per picture of the chosen check: n = 0 is the landing page, 1..4 the other pages of the same site.
+        Each has the page title, its (already defanged) address, the picture size and whether the page was cut."""
+        main, _ = self._pick(link_id)
+        if main is None:
+            return []
+        meta = self._manifest_entry(main.parent, link_id)
+        pages_meta = {pg.get("n"): pg for pg in meta.get("pages", []) if isinstance(pg, dict)}
+
+        def item(n: int, path: Path, m: dict) -> dict:
+            width, height = _png_size(path)
+            return {"n": n, "title": _clean_text(m.get("title"), 120),
+                    "url": _clean_text(m.get("final_url" if n == 0 else "url"), 300),
+                    "width": width, "height": height, "truncated": bool(m.get("truncated", False))}
+
+        items = [item(0, main, meta)]
+        for n, path in sorted(self._pages_for(link_id).items()):
+            items.append(item(n, path, pages_meta.get(n, {})))
+        return items
+
+    def shot_info(self, link_id: str) -> dict:
+        """What the page needs to label the picture honestly: is there one, was it taken during this check, and when."""
+        path, current = self._pick(link_id)
+        if path is None:
+            return {"has_screenshot": False, "screenshot_current": False, "screenshot_taken": "", "screenshot_pages": 0,
+                    "screenshot_items": []}
+        taken = time.strftime("%Y-%m-%d", time.localtime(_mtime(path)))
+        return {"has_screenshot": True, "screenshot_current": current, "screenshot_taken": "" if current else taken,
+                "screenshot_pages": self.page_count(link_id), "screenshot_items": self.shot_items(link_id)}
 
     def has_shot(self, link_id: str) -> bool:
         return self.shot_path(link_id) is not None
@@ -216,7 +333,7 @@ class LejetService:
             return info
         info.update({"link_id": stored["link_id"], "fetch_status": stored.get("fetch_status", ""),
                      "batch": stored.get("batch_id", ""), "visited_at": stored.get("visited_at", ""),
-                     "has_screenshot": self.store.has_shot(stored["link_id"])})
+                     **self.store.shot_info(stored["link_id"])})
         if int(stored.get("page_fetched", 0)) == 1:
             facts = [{"feature": k, "label": PAGE_FACTS[k], "value": row[k]}
                      for k in PAGE_FACTS if row.get(k, -1) != -1]
@@ -364,6 +481,6 @@ class LejetService:
                                            scored["forest"], scored["page_used"]),
         }
 
-    def evidence_png(self, link_id: str) -> bytes | None:
-        path = self.store.shot_path(link_id)
+    def evidence_png(self, link_id: str, page: int = 0) -> bytes | None:
+        path = self.store.shot_path(link_id, page)
         return path.read_bytes() if path else None

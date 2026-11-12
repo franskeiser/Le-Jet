@@ -5,6 +5,7 @@
     POST /inspect          {"message": "...", "refresh": bool}  -> hands the first link to the isolated lab (a job)
     GET  /inspect/<job>    the job's real steps and timings; when "done" call /predict with the same message
     GET  /evidence/<id>.png   screenshot the lab took of an inspected page (id = 16 hex characters)
+    GET  /evidence/<id>_p<n>.png   (n = 1..4) the lab's picture of another page of the same site
     GET  /health           what is loaded (model seed, how many inspected links are in the store, lab status)
 
 Safety: this server never opens, fetches or resolves a link. /inspect only hands the link to the lab's
@@ -38,7 +39,7 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
 
 ALLOWED_ORIGINS = {f"http://{host}:{port}" for host in ("localhost", "127.0.0.1") for port in (5050, 5173, 4173, 3000, 8080)}
-EVIDENCE_RE = re.compile(r"^/evidence/([0-9a-f]{16})\.png$")
+EVIDENCE_RE = re.compile(r"^/evidence/([0-9a-f]{16})(?:_p([1-4]))?\.png$")    # _p1.._p4 = pages of the same site
 JOB_RE = re.compile(r"^/inspect/([0-9a-f]{12})$")
 
 
@@ -83,7 +84,7 @@ def make_handler(service: LejetService, inspector: LiveInspector):
                 return self._json(200, job.view()) if job else self._json(404, {"error": "no such job"})
             match = EVIDENCE_RE.match(path)
             if match:
-                png = service.evidence_png(match.group(1))
+                png = service.evidence_png(match.group(1), int(match.group(2) or 0))
                 if png is None:
                     return self._json(404, {"error": "no screenshot"})
                 return self._send(200, png, "image/png")

@@ -10,6 +10,8 @@ One job at a time (there is one analysis VM). Jobs report real steps and real ti
 """
 from __future__ import annotations
 
+import json
+import os
 import queue
 import re
 import secrets
@@ -31,6 +33,24 @@ SECRETS_ENV = LAB / "secrets" / ".env"
 ON_DEMAND_CSV = ARTIFACTS_ROOT / "data" / "live" / "on_demand_links.csv"
 VBOXMANAGE = Path(r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe")
 POWERSHELL = "powershell.exe"
+# Which lab opens the links: "azure" = the cloud VM (scripts/run_live_azure.ps1, whole-page screenshots, no VirtualBox needed on
+# this PC), "local" = the two VirtualBox VMs. LEJET_LAB chooses; without it, azure is used when ~/.ssh/config has the host alias.
+AZURE_HOST = os.environ.get("LEJET_LAB_HOST", "lejet-azure")
+
+
+def _azure_configured() -> bool:
+    try:
+        text = (Path.home() / ".ssh" / "config").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return re.search(rf"(?im)^\s*Host\s+(?:.*\s)?{re.escape(AZURE_HOST)}(?:\s.*)?$", text) is not None
+
+
+def lab_backend() -> str:
+    choice = os.environ.get("LEJET_LAB", "").strip().lower()
+    if choice in ("azure", "local"):
+        return choice
+    return "azure" if _azure_configured() else "local"
 JOB_TIMEOUT_S = 15 * 60
 MAX_QUEUED = 3
 HEADER = re.compile(r"^== (\S+)\s+(.*)$")
@@ -62,6 +82,7 @@ class Job:
         self.error = ""
         self.started = time.time()
         self.finished: float | None = None
+        self.archive: dict | None = None                     # an ARCHIVED copy (never live) when the lab could not open the page
         self.steps = [{"id": sid, "label": label, "state": "pending", "seconds": None} for sid, label, _ in STEPS]
         self._t0: dict[str, float] = {}
 
@@ -93,7 +114,7 @@ class Job:
         from src.lejet.safety import defang_url
         end = self.finished or time.time()
         return {"job_id": self.id, "state": self.state, "cached": self.cached, "error": self.error,
-                "link": defang_url(self.link), "elapsed_seconds": round(end - self.started, 1),
+                "link": defang_url(self.link), "archive": self.archive, "elapsed_seconds": round(end - self.started, 1),
                 "steps": [dict(s) for s in self.steps]}
 
 
@@ -101,7 +122,9 @@ class LiveInspector:
     def __init__(self, store, enabled: bool = True, reuse_stored: bool = False):
         self.store = store
         self.reuse_stored = reuse_stored                       # False: EVERY link is opened in the lab, even a stored one
-        self.enabled = enabled and (SCRIPTS / "run_batch.ps1").exists()
+        self.backend = lab_backend()
+        runner = "run_live_azure.ps1" if self.backend == "azure" else "run_batch.ps1"
+        self.enabled = enabled and (SCRIPTS / runner).exists()
         self.jobs: dict[str, Job] = {}
         self.queue: "queue.Queue[Job]" = queue.Queue()
         self._worker: threading.Thread | None = None
@@ -119,6 +142,15 @@ class LiveInspector:
             return False, "Live inspection is switched off."
         at, ok, why = self._ready_cache
         if time.time() - at < 15:
+            return ok, why
+        if self.backend == "azure":
+            try:
+                ping = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", AZURE_HOST, "true"],
+                                      capture_output=True, text=True, timeout=15)
+                ok, why = (True, "The cloud lab is up.") if ping.returncode == 0 else                     (False, "The cloud lab does not answer: is the Azure VM running, and is your IP allowed on port 22?")
+            except (OSError, subprocess.SubprocessError):
+                ok, why = False, "The cloud lab could not be checked."
+            self._ready_cache = (time.time(), ok, why)
             return ok, why
         try:
             vms = subprocess.run([str(VBOXMANAGE), "list", "runningvms"], capture_output=True, text=True,
@@ -197,21 +229,28 @@ class LiveInspector:
         log = REPORTS / f"{job.batch}.log"
         job.advance_to("check")
 
-        # the fast runner (one ssh call, background isolation gate) when the VM has the live helper; otherwise the batch runner
-        code, lines = (self._stream("run_live.ps1", url_file, job, log, extra=[])
-                       if (SCRIPTS / "run_live.ps1").exists() else (4, []))
-        if code == 4:
-            code, lines = self._stream("run_batch.ps1", url_file, job, log, extra=["-Screenshots"])
+        if self.backend == "azure":
+            # the cloud lab: one ssh call does fetch + whole-page screenshots + export; same host-side validation
+            code, lines = self._stream("run_live_azure.ps1", url_file, job, log, extra=[])
+            if code in (3, 4):
+                raise RuntimeError("The cloud lab is busy or its safety check is not passing. Try again in a minute.")
+        else:
+            # the fast runner (one ssh call, background isolation gate) when the VM has the live helper; otherwise the batch runner
+            code, lines = (self._stream("run_live.ps1", url_file, job, log, extra=[])
+                           if (SCRIPTS / "run_live.ps1").exists() else (4, []))
+            if code == 4:
+                code, lines = self._stream("run_batch.ps1", url_file, job, log, extra=["-Screenshots"])
         if code != 0:
             blob = "\n".join(lines)
-            if "VALIDATION FAILED" in blob:
-                self._recover_validation(job, push)
+            if "VALIDATION FAILED" in blob and self.backend == "local":
+                self._recover_validation(job, push)           # (repairs the older VirtualBox build's output; the cloud lab needs no repair)
             elif "No usable" in blob or "rejected" in blob and '"kept": 0' in blob:
                 raise RuntimeError("The lab refused this link (not a plain web address).")
             else:
                 raise RuntimeError("The lab run did not finish. Nothing was added.")
         job.advance_to("rank")
         self._rank_and_store(job)
+        self._look_for_archive(job)
         job.end("rank")
 
     def _stream(self, script: str, url_file: Path, job: Job, log: Path, extra: list) -> tuple[int, list]:
@@ -261,6 +300,29 @@ class LiveInspector:
         if pulled.returncode != 0:
             # the screenshot is optional evidence: the verdict does not need it
             pass
+
+    def _lab_could_not_open(self, job: Job) -> bool:
+        """Did the lab's own manifest say it could not open the page (reach = dead, or no picture at all)?"""
+        manifest = CLEAN_DIR / "shots" / job.batch / "shots.jsonl"
+        try:
+            lines = manifest.read_text(encoding="utf-8").splitlines()
+            rec = json.loads(lines[0])
+        except (OSError, ValueError, IndexError):
+            return True                                              # no manifest: no screenshot came back
+        return not rec.get("ok") or rec.get("reach") == "dead"
+
+    def _look_for_archive(self, job: Job) -> None:
+        """Only when the page could not be opened live, and only if the person switched the fallback on."""
+        from src.serving import archive_fallback
+        if not archive_fallback.enabled() or not self._lab_could_not_open(job):
+            return
+        try:
+            found = archive_fallback.find(job.link)
+        except Exception:                                            # an archive problem must never fail the inspection
+            return
+        if found:
+            job.archive = {"source": found["source"], "url": _plain(found["url"], 300), "taken": _plain(found["taken"], 40),
+                           "note": "ARCHIVED copy, not the live page"}
 
     def _rank_and_store(self, job: Job) -> None:
         clean = CLEAN_DIR / f"{job.batch}.clean.jsonl"

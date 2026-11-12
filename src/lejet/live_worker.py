@@ -84,7 +84,8 @@ class LiveWorker:
     def __init__(self, pipeline: Any, shots: Any, *, settings: Optional[Settings] = None, spool: str = SPOOL,
                  input_path: str = INPUT, out_dir: str = OUT, token: str = DEFAULT_TOKEN,
                  token_max_age: int = TOKEN_MAX_AGE, extras: Optional[Dict[str, Any]] = None,
-                 allow_loopback: bool = False, snapshot_name: str = ""):
+                 allow_loopback: bool = False, snapshot_name: str = "", shot_deadline: float = SHOT_DEADLINE_S):
+        self.shot_deadline = shot_deadline                     # the cloud lab's whole-site mode needs longer than 150 s
         self.pipeline, self.shots = pipeline, shots
         self.settings = settings or Settings()
         self.spool, self.input_path, self.out_dir = spool, input_path, out_dir
@@ -166,7 +167,7 @@ class LiveWorker:
             os.makedirs(png_dir, exist_ok=True)
             self.shots.out_dir = png_dir                        # the shared browser stays; only the folder changes
             try:
-                results = await asyncio.wait_for(self.shots.run([(url_id, target[0], target[1])], None), SHOT_DEADLINE_S)
+                results = await asyncio.wait_for(self.shots.run([(url_id, target[0], target[1])], None), self.shot_deadline)
             except asyncio.TimeoutError:
                 results = None                                  # no picture; the fetched data is still worth exporting
             if results is not None:

@@ -1,0 +1,6 @@
+[Unit]
+Description=Le-Jet Azure lab safety gate (writes /run/lejet-preflight-ok only while every check passes)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lejet-azure-gate

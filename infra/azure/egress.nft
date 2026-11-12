@@ -1,0 +1,35 @@
+# Outer safety barrier for the screenshot lab that SHARES the Azure VM with the SMS collection website.
+# (Same idea as webapp/deploy/egress.nft, which guards the website's own user `lejetweb`; this table guards `fetcher`.)
+#
+# The program already refuses private / loopback / metadata addresses before it connects (guard_proxy.py), but a
+# hostile domain can change its DNS answer between that check and the real connection ("DNS rebinding"), and
+# Chromium runs the page's JavaScript. This rule closes the gap at the network level: whatever the browser does,
+# the `fetcher` user can never open a connection to this machine's own services (the website, SSH), the Azure
+# metadata service (169.254.169.254), the Azure host address (168.63.129.16) or any private network.
+#
+# Loaded by setup_shot_vm.sh (included from /etc/nftables.conf). infra/azure/gate.sh proves it still works.
+# The restrictions are in a sub-chain entered only for packets owned by `fetcher` (a positive `skuid` test): packets made by the
+# kernel itself have no owner and must never be caught by a "not fetcher" test (see the note in egress-vpn.nft).
+table inet lejet_shot_egress {
+    chain output {
+        type filter hook output priority 0; policy accept;
+        meta skuid "fetcher" jump fetcher_only
+    }
+
+    chain fetcher_only {
+        # name lookups through the local stub resolver (systemd-resolved: 127.0.0.53, port 53 only)
+        oifname "lo" ip daddr 127.0.0.53 udp dport 53 accept
+        oifname "lo" ip daddr 127.0.0.53 tcp dport 53 accept
+        # Chromium talks to its own guard proxy on loopback (a random high port). The website (Caddy 80/443, app 8000),
+        # SSH (22) and every other system port are refused
+        oifname "lo" tcp dport 1-8999 reject with tcp reset
+        oifname "lo" udp dport 1-1023 reject with icmpx type admin-prohibited
+        oifname "lo" accept
+
+        # never reach: private LANs, link-local (cloud metadata), carrier NAT, the Azure host address, multicast, ...
+        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10,
+                   168.63.129.16, 0.0.0.0/8, 224.0.0.0/3 } reject with icmpx type admin-prohibited
+        ip6 daddr { ::1, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 } reject with icmpx type admin-prohibited
+        # (the VM sees only its private 10.x address; its public one is Azure NAT, so the website is unreachable too)
+    }
+}
