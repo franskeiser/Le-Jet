@@ -1,4 +1,4 @@
 # /etc/sudoers.d/92-lejet-azure -- written by setup_shot_vm.sh (__SSH_USER__ is replaced by the SSH login user).
-# The SSH user may run exactly these two root-owned commands without a password, and nothing else through this file.
+# The SSH user may run exactly these three root-owned commands without a password, and nothing else through this file.
 # Both validate their own input (batch id, one-line URL file) and never take a path or an option from the caller.
-__SSH_USER__ ALL=(root) NOPASSWD: /usr/local/sbin/lejet-azure-live [A-Za-z0-9_-]*, /usr/local/sbin/lejet-azure-gate
+__SSH_USER__ ALL=(root) NOPASSWD: /usr/local/sbin/lejet-azure-live [A-Za-z0-9_-]*, /usr/local/sbin/lejet-azure-features [A-Za-z0-9_-]*, /usr/local/sbin/lejet-azure-gate

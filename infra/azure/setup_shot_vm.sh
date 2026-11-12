@@ -68,6 +68,7 @@ systemctl enable nftables >/dev/null 2>&1 || true
 
 echo "== 7/8 helper, gate, timer, sudoers"
 install -o root -g root -m 755 "$SRC/infra/azure/lejet-azure-live.sh" /usr/local/sbin/lejet-azure-live
+install -o root -g root -m 755 "$SRC/infra/azure/lejet-azure-features.sh" /usr/local/sbin/lejet-azure-features
 install -o root -g root -m 755 "$SRC/infra/azure/gate.sh" /usr/local/sbin/lejet-azure-gate
 install -m 644 "$SRC/infra/azure/systemd/lejet-azure-gate.service" /etc/systemd/system/
 install -m 644 "$SRC/infra/azure/systemd/lejet-azure-gate.timer" /etc/systemd/system/
