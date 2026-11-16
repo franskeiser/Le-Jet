@@ -107,6 +107,7 @@ def test_url_id_matches_the_lab():
     ({"fail_reason": "dns_nxdomain"}, "dead"),
     ({"fail_reason": "connect_timeout"}, "timeout"),
     ({"fail_reason": "challenge_page"}, "blocked"),
+    ({"fail_reason": "app_store_redirect"}, "app_store"),
 ])
 def test_fetch_status(rec, expected):
     assert bcd.fetch_status(rec) == expected

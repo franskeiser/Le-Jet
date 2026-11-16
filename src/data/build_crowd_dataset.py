@@ -180,6 +180,8 @@ def fetch_status(rec: dict) -> str:
         return "redirected" if rec.get("final_differs") else "live"
     if "timeout" in reason:
         return "timeout"
+    if reason == "app_store_redirect":
+        return "app_store"
     if reason in ("rejected_url", "port_blocked", "redirect_to_blocked", "challenge_page", "blocked_or_empty"):
         return "blocked"
     return "dead"

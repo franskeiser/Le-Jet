@@ -200,7 +200,8 @@ def selectable(row: Dict[str, Any]) -> bool:
 
 
 # Nothing to photograph: refused by the safety gate, or the name does not exist in DNS at all.
-SKIP_REASONS = frozenset({"rejected_url", "port_blocked", "redirect_to_blocked", "dns_nxdomain", "dns_no_answer"})
+SKIP_REASONS = frozenset({"rejected_url", "port_blocked", "redirect_to_blocked", "app_store_redirect",
+                          "dns_nxdomain", "dns_no_answer"})
 # The HTTP stage reached a server and got an answer: the browser should start where that answer was.
 _ANSWERED = frozenset({"http_4xx", "http_5xx", "challenge_page", "parked_or_default_page", "blocked_or_empty",
                        "non_html", "too_large"})

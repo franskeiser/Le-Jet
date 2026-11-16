@@ -56,6 +56,7 @@ _FETCH_STATUS = {
     "parked_or_default_page": "blocked", "blocked_or_empty": "blocked", "non_html": "blocked", "too_large": "blocked",
     "read_timeout": "timeout", "connect_timeout": "timeout", "render_timeout": "timeout",
     "rejected_url": "not_attempted", "port_blocked": "not_attempted", "redirect_to_blocked": "not_attempted",
+    "app_store_redirect": "app_store",
 }   # everything else (dns_*, connect_refused, tls_error, too_many_redirects, ...) = "dead"
 
 

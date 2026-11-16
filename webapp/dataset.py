@@ -114,6 +114,8 @@ def fetch_status(fail_reason: str, final_differs: Any) -> str:
         return "redirected" if final_differs else "live"
     if "timeout" in fail_reason:
         return "timeout"
+    if fail_reason == "app_store_redirect":
+        return "app_store"                    # a smart link that hands off to the Play Store / App Store app
     if fail_reason in ("rejected_url", "port_blocked", "redirect_to_blocked", "challenge_page", "blocked_or_empty"):
         return "blocked"
     return "dead"

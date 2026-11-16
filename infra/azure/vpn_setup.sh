@@ -43,13 +43,27 @@ load_nft() {         # $1 = file in infra/azure; $2 = VPN endpoint "IP:port" (fi
   nft delete table inet lejet_shot_egress 2>/dev/null || true
   nft -f /etc/lejet-shot-egress.nft
 }
+keep_vpn_rule() {    # systemd-networkd may delete routing rules it did not create, which would silently drop the fetcher rule
+  local f=/etc/systemd/networkd.conf.d/10-lejet-keep-rules.conf tmp
+  tmp="$(mktemp)"
+  printf '%s\n' \
+    '# Le-Jet: keep the policy rule that sends user fetcher into the VPN tunnel (wg-quick adds it; networkd must not delete it)' \
+    '[Network]' \
+    'ManageForeignRoutingPolicyRules=no' > "$tmp"
+  if ! cmp -s "$tmp" "$f"; then
+    install -d -m 755 /etc/systemd/networkd.conf.d
+    install -o root -g root -m 644 "$tmp" "$f"
+    systemctl is-active --quiet systemd-networkd && systemctl restart systemd-networkd || true   # a restart keeps links and addresses
+  fi
+  rm -f "$tmp"
+}
 web_state() { systemctl is-active lejet-web.service 2>/dev/null || echo "not-installed"; }
 
 case "$ACTION" in
 remove)
   systemctl disable --now "wg-quick@$IFACE" 2>/dev/null || true
   ip link del "$IFACE" 2>/dev/null || true
-  rm -f "$CONF" /etc/lejet/vpn.env /etc/lejet/vpn.expect
+  rm -f "$CONF" /etc/lejet/vpn.env /etc/lejet/vpn.expect /etc/systemd/networkd.conf.d/10-lejet-keep-rules.conf
   install_pieces
   load_nft egress.nft
   /usr/local/sbin/lejet-azure-gate || true
@@ -71,6 +85,7 @@ LEJET_VPN_EXIT_COUNTRY=%s
     chmod 644 /etc/lejet/vpn.env
   fi
   install_pieces
+  keep_vpn_rule
   load_nft egress-vpn.nft "$ENDP"
   systemctl restart "wg-quick@$IFACE"
   sleep 2
@@ -130,6 +145,7 @@ install_pieces
 load_nft egress-vpn.nft "$ENDP"
 
 echo "== 5/6 bring the tunnel up (and at every boot)"
+keep_vpn_rule
 systemctl disable --now "wg-quick@$IFACE" 2>/dev/null || true
 ip link del "$IFACE" 2>/dev/null || true
 systemctl enable --now "wg-quick@$IFACE" >/dev/null

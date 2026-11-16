@@ -90,6 +90,16 @@ def test_every_hop_target_goes_through_the_gate_again(server, path):
     assert [p for p, _ in server.hits] == [path]
 
 
+def test_app_store_handoff_is_labelled_not_blocked(server):
+    r = fetch(server, "/to-market")
+    assert r.fail_reason == "app_store_redirect"
+    assert r.chain_complete is True
+    assert len(r.hops) == 1                                  # we never tried to open market://
+    assert [p for p, _ in server.hits] == ["/to-market"]
+    assert r.final_url.endswith("/to-market")                # last real web address stays the final_url
+    assert any(e.startswith("app_store_target:market://details?id=com.example.loan") for e in r.errors)
+
+
 def test_meta_refresh_is_followed_like_a_redirect(server):
     r = fetch(server, "/page/meta_refresh")
     assert r.fail_reason == "none"

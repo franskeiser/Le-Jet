@@ -61,6 +61,7 @@ WHY = {
     "read_timeout": "server too slow",
     "too_many_redirects": "redirect loop / too many redirects",
     "redirect_to_blocked": "redirected to a place the lab refuses to visit",
+    "app_store_redirect": "hands off to the Play Store / App Store app (not a web page)",
     "rejected_url": "refused by the lab's safety rules",
     "port_blocked": "refused by the lab's safety rules (port)",
     "internal_error": "lab error",

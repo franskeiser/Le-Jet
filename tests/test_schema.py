@@ -55,7 +55,8 @@ def test_fail_reasons_cover_the_plan_taxonomy():
             "challenge_page", "parked_or_default_page", "render_timeout", "render_crash",
             "blocked_or_empty", "internal_error", "none"}
     assert plan <= set(schema.FAIL_REASONS)
-    assert "read_timeout" in schema.FAIL_REASONS          # the one documented addition
+    assert "read_timeout" in schema.FAIL_REASONS          # documented addition
+    assert "app_store_redirect" in schema.FAIL_REASONS    # documented addition (Play/App Store hand-off)
 
 
 def test_status_for():

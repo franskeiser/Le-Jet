@@ -84,6 +84,20 @@ lines such as PostUp are ignored). The safety gate checks every 4 minutes that t
 reports the traffic as coming from a Mullvad exit (and from the expected country, if set); if not, no link is opened. Names the
 browser visits are looked up through the tunnel too.
 
+**If the gate fails with an empty exit country** (journal: `gate: FAIL fetcher does not leave through a Mullvad exit (unreadable)`
+and `exit country is '', expected 'Philippines'`, with DNS lookups from `fetcher` timing out) while `wg show lejet-vpn` still shows
+a recent handshake: the policy rule that sends `fetcher` into the tunnel has gone missing, so its traffic hits the kill-switch.
+Check with `ip rule | grep 11100` (expected: `from all uidrange 995-995 lookup 51821`). Put it back with no key needed:
+
+```
+ssh lejet-azure "sudo -n bash ~/lejet-src/infra/azure/vpn_setup.sh refresh Philippines"
+```
+
+It reloads the firewall, restarts the tunnel (which re-adds the rule), re-runs the gate and ends with
+`gate: all checks passed: token written`. This happened once (found 2026-11-16). `vpn_setup.sh` now also writes
+`/etc/systemd/networkd.conf.d/10-lejet-keep-rules.conf` (`ManageForeignRoutingPolicyRules=no`) so `systemd-networkd` cannot delete
+the rule; the cause was not proven, so if it vanishes again, look for something else that edits routing rules.
+
 ## Safety (why phishing pages are not dangerous to the website)
 
 - The page-opening program runs as user `fetcher`: no login, no sudo, cannot read `/var/lib/lejetweb` (the dataset CSV) and

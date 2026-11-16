@@ -465,7 +465,7 @@ $("addBtn").onclick = async () => {
   finally { busy($("addBtn"), false); refreshAdd(); }
 };
 
-const STATUS = { live: ["good", "Page live"], redirected: ["good", "Redirected"], dead: ["bad", "Page dead"], blocked: ["warn", "Blocked"], timeout: ["warn", "Timed out"] };
+const STATUS = { live: ["good", "Page live"], redirected: ["good", "Redirected"], dead: ["bad", "Page dead"], blocked: ["warn", "Blocked"], timeout: ["warn", "Timed out"], app_store: ["", "App store link"] };
 function statusChip(s) { const [k, t] = STATUS[s] || ["", s]; return h("span", { class: "chip " + k, text: t }); }
 
 function showAdded(d) {
