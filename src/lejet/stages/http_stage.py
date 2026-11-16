@@ -264,6 +264,7 @@ class HttpStage:
                     return
                 if location.split(":", 1)[0].strip().lower() in APP_STORE_SCHEMES and ":" in location:
                     # The chain ended at an app-store hand-off. Stop here, label it, keep the target as a note.
+                    res.redirects += 1                      # the link DID redirect once (nb_redirection stays as before)
                     res.fail_reason, res.chain_complete = "app_store_redirect", True
                     res.errors.append("app_store_target:" + location.strip()[:APP_TARGET_NOTE_LEN])
                     return
