@@ -1,4 +1,5 @@
-r"""Build the single final training dataset: the website CSV + ISDA, in the website's 50-column layout (+ source, source_id).
+r"""Build the single final training dataset: the website CSV + ISDA. Output: the 46-column TRAINING file (only columns the FiLM
+pipeline reads, see TRAIN_COLUMNS) and <out>.extra_columns.csv (OLD two-file layout; scripts/build_final_from_master.py now writes ONE 56-column file).
 
     .venv\Scripts\python.exe scripts/build_final_dataset.py --site <site_dataset.csv> --isda <isda_features_labeled.csv>
                               --out <final.csv> [--synthetic <synthetic_smishing_v3.csv>] [--legit-bulk <combined_messages.csv>]
@@ -34,6 +35,24 @@ from lejet import urlnorm                                    # noqa: E402
 
 MISSING = dataset.MISSING
 COLUMNS = dataset.COLUMNS + ["source", "source_id", "dup_group"]
+# The TRAINING file keeps only what the FiLM pipeline reads (checked by searching src/ for every column name, 2026-11-21):
+#   message_id, sms_text, label          the message and its class
+#   source                               real vs synthetic, for the "real messages only" headline (compare_models.py)
+#   has_url                              1 if the message has a link (a model input, D11)
+#   link_domain, template_id, dup_group  what the splits group by (split_crowd.py)
+#   page_fetched                         page_missing for the link lane
+#   the 37 link / page features          what the Link RF reads
+TRAIN_COLUMNS = (["message_id", "sms_text", "label", "source", "has_url", "link_domain", "template_id", "dup_group", "page_fetched"]
+                 + dataset.FEATURES_37)
+# everything else is NOT read by any training code; it goes to a side file keyed by message_id, so nothing is lost
+EXTRA_COLUMNS = ["message_id", "source_id", "language", "link", "final_url", "fetch_status", "link_shortened", "date_submitted",
+                 "label_verified_by", "category", "categories_all"]      # category / categories_all: draft by rules (scripts/financial_category.py)
+assert set(TRAIN_COLUMNS) | set(EXTRA_COLUMNS) == set(COLUMNS) | {"has_url", "category", "categories_all"}
+# THE final dataset is ONE file with every column (56). The training code reads only the TRAIN_COLUMNS by name and ignores the rest.
+FULL_COLUMNS = (["message_id", "source", "source_id", "sms_text", "label", "language", "category", "categories_all",
+                 "has_url", "link", "final_url", "link_domain", "link_shortened", "template_id", "dup_group",
+                 "page_fetched", "fetch_status", "date_submitted", "label_verified_by"] + dataset.FEATURES_37)
+assert len(FULL_COLUMNS) == 56 and set(FULL_COLUMNS) == set(TRAIN_COLUMNS) | set(EXTRA_COLUMNS)
 NEAR_DUP_SIMILARITY = 0.90          # character 3-5-gram cosine similarity of the text with links and digits blanked
 PRIORITY = {"web_group": 0, "isda": 1, "web_legit_lab": 2, "web_synthetic": 3}      # which copy of a repeated message is kept
 GUARD = re.compile(r"^'(?=[=+\-@\s])")
@@ -91,7 +110,7 @@ def language_of(text: str) -> str:
     return {"english": "en", "tagalog": "tl", "taglish": "taglish"}[lang_detect.classify3(text)]
 
 
-def clean_site(site: pd.DataFrame, synthetic: set, bulk: set, stats) -> list:
+def clean_site(site: pd.DataFrame, synthetic: set, bulk: set, stats, drop_junk: bool = True) -> list:
     out = []
     for _, r in site.iterrows():
         row = {c: r[c] for c in dataset.COLUMNS}
@@ -102,10 +121,10 @@ def clean_site(site: pd.DataFrame, synthetic: set, bulk: set, stats) -> list:
             elif GUARD.match(v):
                 row[c] = v[1:]
         row["sms_text"] = text = unguard(row["sms_text"])
-        if host_of(row["link"]) == SITE_HOST or SITE_HOST in text:
+        if drop_junk and (host_of(row["link"]) == SITE_HOST or SITE_HOST in text):
             stats["dropped: test row (the site's own address)"] += 1
             continue
-        if row["link"] != str(MISSING) and letters_outside_links(text) < 3:
+        if drop_junk and row["link"] != str(MISSING) and letters_outside_links(text) < 3:
             stats["dropped: message is only a link"] += 1
             continue
         row["source"] = "web_synthetic" if text in synthetic else ("web_legit_lab" if text in bulk else "web_group")
@@ -195,9 +214,12 @@ def main() -> int:
     for c in COLUMNS:
         if df[c].astype(str).str.strip().eq("").any():
             raise SystemExit(f"blank cell in column {c}")
-    df.to_csv(a.out, index=False, encoding="utf-8", lineterminator="\n")
+    df["has_url"] = (df.link.astype(str) != str(MISSING)).astype(int)       # (a missing link is the number -1 in ISDA rows, "-1" in site rows)
+    df[TRAIN_COLUMNS].to_csv(a.out, index=False, encoding="utf-8", lineterminator="\n")
+    df[EXTRA_COLUMNS].to_csv(str(a.out).replace(".csv", ".extra_columns.csv"), index=False, encoding="utf-8", lineterminator="\n")
 
-    summary = {"built": datetime.datetime.now().isoformat(timespec="seconds"), "rows": len(df), "columns": len(df.columns),
+    summary = {"built": datetime.datetime.now().isoformat(timespec="seconds"), "rows": len(df), "columns": len(TRAIN_COLUMNS), "extra_columns_file": EXTRA_COLUMNS,
+               "has_url": df.has_url.value_counts().to_dict(),
                "label": df.label.value_counts().to_dict(), "language": df.language.value_counts().to_dict(),
                "source_by_label": {f"{s}|{l}": int(n) for (s, l), n in df.groupby(["source", "label"]).size().items()},
                "fetch_status_by_label": {f"{s}|{l}": int(n) for (s, l), n in df.groupby(["fetch_status", "label"]).size().items()},

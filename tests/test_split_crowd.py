@@ -61,3 +61,28 @@ def test_seq_len_is_95th_percentile():
     texts = pd.Series(["one two three"] * 19 + [" ".join(["w"] * 40)])
     # Sorted, the 95th percentile sits 5% of the way from 3 to 40: 4.85, rounded up.
     assert sc.seq_len(texts) == 5
+
+
+def test_no_link_messages_are_not_one_group():
+    """A message with no link has link_domain -1; the 'domain -1' must not tie all of them into one giant group."""
+    df = pd.DataFrame({"message_id": [f"m{i}" for i in range(6)], "link_domain": ["-1"] * 4 + ["a", "a"],
+                       "template_id": ["t1", "t2", "t3", "t4", "t5", "t6"]})
+    g = sc.joined_groups(df)
+    assert g.iloc[:4].nunique() == 4          # four no-link messages, four groups
+    assert g.iloc[4] == g.iloc[5]             # the same domain still joins
+    assert sc.make_groups(df, "domain").iloc[:4].nunique() == 4
+
+
+def test_no_link_messages_with_one_template_stay_together():
+    df = pd.DataFrame({"message_id": ["m0", "m1", "m2"], "link_domain": ["-1"] * 3, "template_id": ["t1", "t1", "t2"]})
+    g = sc.joined_groups(df)
+    assert g.iloc[0] == g.iloc[1] and g.iloc[0] != g.iloc[2]
+
+
+def test_dup_group_joins_rows_with_different_domain_and_template():
+    df = pd.DataFrame({"message_id": ["m0", "m1", "m2"], "link_domain": ["a", "b", "c"], "template_id": ["t1", "t2", "t3"],
+                       "dup_group": ["g1", "g1", "g2"]})
+    g = sc.joined_groups(df)
+    assert g.iloc[0] == g.iloc[1] and g.iloc[0] != g.iloc[2]
+    without = sc.joined_groups(df.drop(columns="dup_group"))
+    assert without.nunique() == 3             # the column is what joins them

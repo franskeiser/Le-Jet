@@ -1,0 +1,16 @@
+seed,fold,vocab_size,train_word_types,vocab_is_exactly_train_words,val_word_types,val_types_not_in_vocab,val_occurrences_not_in_vocab_pct,test_word_types,test_types_not_in_vocab,test_occurrences_not_in_vocab_pct,matrix_shape,matrix_rows_match_vocab,pad_row_is_zero,no_nan,rows_all_zero_besides_pad
+42,0,8809,8807,True,2995,886,8.09,4292,1584,8.26,8809x300,True,True,True,1
+42,1,8896,8894,True,2929,892,7.07,4232,1490,7.4,8896x300,True,True,True,0
+42,2,8855,8853,True,3100,948,7.42,4144,1490,7.89,8855x300,True,True,True,1
+42,3,8983,8981,True,2931,844,6.3,4045,1431,8.46,8983x300,True,True,True,1
+42,4,8999,8997,True,2932,844,7.56,4122,1449,7.56,8999x300,True,True,True,1
+123,0,8720,8718,True,2612,909,9.06,4351,1635,7.97,8720x300,True,True,True,1
+123,1,8829,8827,True,3009,891,7.15,4314,1569,8.56,8829x300,True,True,True,1
+123,2,9143,9141,True,2893,808,6.56,4032,1326,7.67,9143x300,True,True,True,1
+123,3,8962,8960,True,2897,878,8.07,4020,1434,8.07,8962x300,True,True,True,1
+123,4,8922,8920,True,2947,876,8.33,4154,1485,7.22,8922x300,True,True,True,0
+2024,0,8886,8884,True,2943,876,8.02,4252,1516,7.18,8886x300,True,True,True,1
+2024,1,9001,8999,True,2847,871,7.32,4105,1417,7.95,9001x300,True,True,True,1
+2024,2,8836,8834,True,3020,910,7.12,4227,1554,8.82,8836x300,True,True,True,1
+2024,3,8900,8898,True,2995,891,7.95,4124,1493,8.38,8900x300,True,True,True,1
+2024,4,9026,9024,True,2818,770,6.12,4206,1472,7.07,9026x300,True,True,True,0

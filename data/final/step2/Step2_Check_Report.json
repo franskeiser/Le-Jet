@@ -1,0 +1,40 @@
+{
+  "rows": 6716,
+  "text": {
+    "empty_after_cleaning": 0,
+    "median_tokens": 21.0,
+    "p95_tokens": 32.0,
+    "truncated_at_50": 62,
+    "has_url_but_no_<URL>_token": 1,
+    "<URL>_token_but_has_url_0": 0
+  },
+  "checks": {
+    "message_id unique": true,
+    "same ids in every file": true,
+    "every label is smishing or legitimate": true,
+    "no URL -> has_url 0 and all 37 features -1": true,
+    "URL, page not loaded -> page-content features -1": true,
+    "page loaded -> has_url 1": true,
+    "URL rows always have the 19 offline URL features": true,
+    "every link appears in its own message text": true
+  },
+  "counts": {
+    "with_url": 5828,
+    "without_url": 888,
+    "accessible": 3624,
+    "inaccessible": 2204
+  },
+  "url_feature_recomputation": {
+    "rows_checked": 5828,
+    "extractor_errors": 0,
+    "rows_with_any_difference": 0,
+    "share_identical": 1.0,
+    "differences_by_feature": {}
+  },
+  "link_found_in_its_own_message": {
+    "rows_checked": 5828,
+    "not_found": 0,
+    "message_ids": []
+  },
+  "known_issue": "Links that are a raw IP address (http://8.209.246.69/) are not recognised by the text masker, so they stay in the text as number tokens: 1 message(s). The link finder is src/features/link_features.extract_links."
+}

@@ -43,8 +43,17 @@ GROUP_RULES = ("domain+template", "domain")
 PARTS = ("train", "val", "test")
 
 
+def domain_nodes(df: pd.DataFrame) -> pd.Series:
+    """One node per link domain. A message with no link has link_domain -1 ("not applicable", not a domain): it must not
+    be grouped with the other no-link messages, so it gets a node of its own (its template / near-duplicate group may still join it)."""
+    domain = df["link_domain"].astype(str)
+    ids = df["message_id"].astype(str) if "message_id" in df.columns else pd.Series(df.index.astype(str), index=df.index)
+    return pd.Series(np.where(domain == "-1", "n:" + ids, "d:" + domain), index=df.index)
+
+
 def joined_groups(df: pd.DataFrame) -> pd.Series:
-    """Union-find over link_domain and template_id: rows linked by either share a group."""
+    """Union-find over link_domain, template_id and (when the dataset has it) dup_group: rows linked by any of them share a group.
+    dup_group = messages whose wording is at least 90% alike once links and digits are ignored (scripts/build_final_dataset.py)."""
     parent: Dict[str, str] = {}
 
     def find(x: str) -> str:
@@ -54,16 +63,19 @@ def joined_groups(df: pd.DataFrame) -> pd.Series:
             x = parent[x]
         return x
 
-    domains = "d:" + df["link_domain"].astype(str)
+    domains = domain_nodes(df)
     templates = "t:" + df["template_id"].astype(str)
-    for d, t in zip(domains, templates):
+    dups = ("g:" + df["dup_group"].astype(str)) if "dup_group" in df.columns else None
+    for i, (d, t) in enumerate(zip(domains, templates)):
         parent[find(d)] = find(t)
-    return domains.map(find)
+        if dups is not None:
+            parent[find(dups.iloc[i])] = find(t)
+    return templates.map(find)
 
 
 def make_groups(df: pd.DataFrame, rule: str, n_folds: int = CROWD_N_FOLDS) -> pd.Series:
     if rule == "domain":
-        return "d:" + df["link_domain"].astype(str)
+        return domain_nodes(df)
     if rule != "domain+template":
         raise ValueError(f"unknown group rule {rule!r}")
     groups = joined_groups(df)
@@ -107,9 +119,15 @@ def check_fold(df: pd.DataFrame, part: np.ndarray, groups: pd.Series) -> Dict[st
     for a, b in [("train", "val"), ("train", "test"), ("val", "test")]:
         assert not set(groups[part == a]) & set(groups[part == b]), f"a group is in both {a} and {b}"
     train_templates = set(by_part["train"]["template_id"])
-    train_domains = set(by_part["train"]["link_domain"])
+    train_domains = set(by_part["train"]["link_domain"]) - {-1, "-1"}
     test = by_part["test"]
+    extra: Dict[str, object] = {}
+    if "dup_group" in df.columns:
+        extra["test_rows_with_train_dup_group"] = int(test["dup_group"].isin(set(by_part["train"]["dup_group"])).sum())
+    if "has_url" in df.columns:
+        extra["no_link_rows"] = {p: int((by_part[p]["has_url"] == 0).sum()) for p in PARTS}
     return {
+        **extra,
         "rows": {p: len(by_part[p]) for p in PARTS},
         "smishing_share": {p: round(float((by_part[p]["label"] == "smishing").mean()), 4) for p in PARTS},
         "seq_len_l": seq_len(by_part["train"]["sms_text"]),
