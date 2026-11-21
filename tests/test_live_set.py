@@ -175,6 +175,7 @@ def test_fetch_status_follows_the_spec():
     assert bls.fetch_status("none", 0) == "live" and bls.fetch_status("none", 2) == "redirected"
     assert bls.fetch_status("http_4xx", 0) == "blocked" and bls.fetch_status("connect_timeout", 0) == "timeout"
     assert bls.fetch_status("dns_nxdomain", 0) == "dead" and bls.fetch_status("rejected_url", 0) == "not_attempted"
+    assert bls.fetch_status("app_store_redirect", 1) == "app_store"
 
 
 def test_page_rank_comes_from_the_lookup_and_is_minus_one_when_missing(tmp_path):

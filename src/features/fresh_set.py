@@ -19,7 +19,7 @@ RECORD_COLUMNS = [
 ]
 REQUIRED_COLUMNS = MESSAGE_COLUMNS + ["has_url"] + EXTRACTOR_INPUTS + RECORD_COLUMNS
 NUMERIC_COLUMNS = EXTRACTOR_INPUTS + ["has_url", "page_fetched", "n_redirects"]
-FETCH_STATUSES = {"live", "redirected", "dead", "blocked", "timeout", "not_attempted"}
+FETCH_STATUSES = {"live", "redirected", "dead", "blocked", "timeout", "not_attempted", "app_store"}
 LABELS = {"smishing", "legitimate"}
 
 

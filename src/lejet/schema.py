@@ -108,7 +108,7 @@ FAIL_REASONS = (
     "rejected_url", "port_blocked",
     "dns_nxdomain", "dns_timeout", "dns_servfail", "dns_no_answer",
     "connect_refused", "connect_timeout", "read_timeout", "tls_error",
-    "http_4xx", "http_5xx", "too_many_redirects", "redirect_to_blocked",
+    "http_4xx", "http_5xx", "too_many_redirects", "redirect_to_blocked", "app_store_redirect",
     "non_html", "too_large", "challenge_page", "parked_or_default_page",
     "render_timeout", "render_crash", "blocked_or_empty", "internal_error",
 )

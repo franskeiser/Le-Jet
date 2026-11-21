@@ -1,0 +1,1 @@
+2026-10-21T03:31:37 dataset=crowd_pilot_synthetic.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=False shuffles=5 min_share=0.2 models=['CNN-only (baseline)', 'E2 (from scratch)', 'Concatenation (from scratch)', 'E2 without the Conv average (V3)', 'E2 reading the 37 contributions (V2)', 'E2 without u (V5)']

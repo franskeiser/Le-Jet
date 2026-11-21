@@ -1,0 +1,39 @@
+# Same barrier as egress.nft, PLUS the VPN kill-switch. Installed by vpn_setup.sh in place of egress.nft while the Mullvad
+# tunnel (interface lejet-vpn) is in use. Rule of thumb: user `fetcher` may only talk to loopback (its own guard proxy and the
+# name-lookup stub) or through the tunnel. If the tunnel is down there is NO other way out: nothing can leave with the VM's
+# real (Japan, cloud) address. SSH, Caddy and the website are other users/processes and are not affected.
+#
+# NOTE on the structure: the restrictions live in a sub-chain that is entered ONLY for packets owned by user fetcher
+# (`meta skuid "fetcher" jump ...`). Packets made by the kernel itself (the WireGuard handshake, for example) have no owner:
+# a negative test (`skuid != fetcher`) does not match them, so they would fall into the kill-switch and be rejected, and the
+# tunnel could never start. With the positive test they simply skip the sub-chain and are accepted by the chain's policy.
+table inet lejet_shot_egress {
+    chain output {
+        type filter hook output priority 0; policy accept;
+        meta skuid "fetcher" jump fetcher_only
+    }
+
+    chain fetcher_only {
+        # name lookups through the local stub resolver (systemd-resolved: 127.0.0.53, port 53 only)
+        oifname "lo" ip daddr 127.0.0.53 udp dport 53 accept
+        oifname "lo" ip daddr 127.0.0.53 tcp dport 53 accept
+        # Chromium talks to its own guard proxy on loopback (a random high port); the website, SSH and every other system port are refused
+        oifname "lo" tcp dport 1-8999 reject with tcp reset
+        oifname "lo" udp dport 1-1023 reject with icmpx type admin-prohibited
+        oifname "lo" accept
+
+        # The tunnel's own packets: WireGuard sends the lab user's data to the VPN server inside UDP packets that still carry the
+        # lab user's owner id, and they leave over the real network card. Allow exactly that: from the tunnel's fixed local port
+        # to the VPN server's address and port, nothing else (vpn_setup.sh fills in the three placeholders).
+        ip daddr __WG_ENDPOINT__ udp sport __WG_LISTEN__ udp dport __WG_PORT__ accept
+
+        # KILL-SWITCH: everything else must leave through the VPN tunnel interface, nothing else (also stops IPv6)
+        oifname != "lejet-vpn" reject with icmpx type admin-prohibited
+
+        # never reach: private LANs, link-local (cloud metadata), carrier NAT, the Azure host address, multicast, ...
+        # (even through the tunnel)
+        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10,
+                   168.63.129.16, 0.0.0.0/8, 224.0.0.0/3 } reject with icmpx type admin-prohibited
+        ip6 daddr { ::1, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 } reject with icmpx type admin-prohibited
+    }
+}

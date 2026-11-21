@@ -75,6 +75,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 return self._redirect("http://10.0.0.5/secret")
             if path == "/to-ftp":
                 return self._redirect("ftp://example.com/x")
+            if path == "/to-market":      # what a OneLink sends an Android phone to
+                return self._redirect("market://details?id=com.example.loan&referrer=af_tranid%3Dabc")
             if path == "/to-port":
                 return self._redirect("http://example.com:8080/")
             if path == "/to-metadata":

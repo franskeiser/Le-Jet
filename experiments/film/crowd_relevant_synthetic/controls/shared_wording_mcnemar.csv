@@ -1,0 +1,22 @@
+seed,n,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,1492,E2 (from scratch),CNN-only (baseline),541,80,5.1569192510741e-85,3.60984347575187e-84,True
+42,1492,E2 (from scratch),"E2 (from scratch, no has_url bypass)",19,11,0.20048842206597334,0.8019536882638933,False
+42,1492,E2 (from scratch),Concatenation (from scratch),27,20,0.38169339766321275,1.0,False
+42,1492,E2 (from scratch),"CNN-only, text + URL features (from scratch)",87,55,0.00904324671420593,0.054259480285235584,False
+42,1492,E2 (from scratch),E2 without the Conv average (V3),18,19,1.0,1.0,False
+42,1492,E2 (from scratch),E2 reading the 37 contributions (V2),53,31,0.021383189937144585,0.10691594968572292,False
+42,1492,E2 (from scratch),E2 without u (V5),33,25,0.358143301806138,1.0,False
+123,1492,E2 (from scratch),CNN-only (baseline),533,65,2.2005529630315582e-92,1.5403870741220907e-91,True
+123,1492,E2 (from scratch),"E2 (from scratch, no has_url bypass)",42,33,0.3556992390814873,1.0,False
+123,1492,E2 (from scratch),Concatenation (from scratch),33,36,0.8099490529189248,1.0,False
+123,1492,E2 (from scratch),"CNN-only, text + URL features (from scratch)",83,75,0.577742835865374,1.0,False
+123,1492,E2 (from scratch),E2 without the Conv average (V3),29,42,0.1539127693264563,0.7695638466322816,False
+123,1492,E2 (from scratch),E2 reading the 37 contributions (V2),60,38,0.03336002889694201,0.20016017338165204,False
+123,1492,E2 (from scratch),E2 without u (V5),29,21,0.3222363203575469,1.0,False
+2024,1492,E2 (from scratch),CNN-only (baseline),562,72,4.46730085125014e-95,3.1271105958750977e-94,True
+2024,1492,E2 (from scratch),"E2 (from scratch, no has_url bypass)",20,26,0.4613911821367651,1.0,False
+2024,1492,E2 (from scratch),Concatenation (from scratch),29,35,0.5323087760278422,1.0,False
+2024,1492,E2 (from scratch),"CNN-only, text + URL features (from scratch)",70,56,0.24670624718941742,1.0,False
+2024,1492,E2 (from scratch),E2 without the Conv average (V3),27,23,0.6718110337653656,1.0,False
+2024,1492,E2 (from scratch),E2 reading the 37 contributions (V2),49,40,0.3965701581455168,1.0,False
+2024,1492,E2 (from scratch),E2 without u (V5),35,29,0.5323087760278422,1.0,False

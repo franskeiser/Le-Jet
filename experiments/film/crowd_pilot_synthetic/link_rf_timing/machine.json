@@ -1,0 +1,18 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD",
+  "machine": "AMD64",
+  "cpu_count": 16,
+  "python": "3.13.15",
+  "numpy": "2.4.2",
+  "pandas": "3.0.1",
+  "scikit_learn": "1.8.0",
+  "threads": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "n_timed": 200,
+  "warmup": 50,
+  "batch_size": 1
+}

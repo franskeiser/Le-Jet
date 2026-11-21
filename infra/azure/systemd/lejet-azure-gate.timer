@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-run the Le-Jet Azure lab safety gate every 4 minutes
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=4min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,16 @@
+seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,E2 (from scratch),Concatenation (from scratch),71,66,0.732684093591041,1.0,False
+42,E2 (from scratch),CNN-only (baseline),644,156,3.71703242560578e-71,1.85851621280289e-70,True
+42,E2 (from scratch),E2 without the Conv average (V3),55,52,0.846802075189195,1.0,False
+42,E2 (from scratch),E2 reading the 37 contributions (V2),93,76,0.2182936219850502,0.8731744879402008,False
+42,E2 (from scratch),E2 without u (V5),70,68,0.9322024875049745,1.0,False
+123,E2 (from scratch),Concatenation (from scratch),72,86,0.3010155381965677,0.903046614589703,False
+123,E2 (from scratch),CNN-only (baseline),618,130,7.123280824743456e-77,3.561640412371728e-76,True
+123,E2 (from scratch),E2 without the Conv average (V3),76,83,0.6343339062839166,1.0,False
+123,E2 (from scratch),E2 reading the 37 contributions (V2),108,84,0.09668353137621165,0.3867341255048466,False
+123,E2 (from scratch),E2 without u (V5),60,59,1.0,1.0,False
+2024,E2 (from scratch),Concatenation (from scratch),68,82,0.28845574899076537,0.8257600032071736,False
+2024,E2 (from scratch),CNN-only (baseline),650,135,1.4240810862843195e-81,7.120405431421598e-81,True
+2024,E2 (from scratch),E2 without the Conv average (V3),67,54,0.2752533344023912,0.8257600032071736,False
+2024,E2 (from scratch),E2 reading the 37 contributions (V2),81,86,0.7570261671839611,0.8257600032071736,False
+2024,E2 (from scratch),E2 without u (V5),79,59,0.10545402577641194,0.42181610310564777,False

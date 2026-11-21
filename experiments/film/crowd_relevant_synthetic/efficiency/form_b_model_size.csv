@@ -1,0 +1,61 @@
+model,seed,fold,component,file,size_mb
+concat,123,0,weights,concat_scratch_seed123_fold0.pt,6.3085
+concat,123,0,configuration,concat_scratch_seed123_fold0.json,0.0014
+concat,123,0,vocabulary,vocab.json,0.0547
+concat,123,0,Link RF,link_rf_seed123_fold0.joblib,5.489
+raw_cnn,123,0,weights,cnn_raw_seed123_fold0.pt,6.334
+raw_cnn,123,0,configuration,cnn_raw_seed123_fold0.json,0.0014
+raw_cnn,123,0,vocabulary,vocab.json,0.0547
+proposed_contrib,2024,0,weights,film_scratch_seed2024_fold0.pt,6.3332
+proposed_contrib,2024,0,configuration,film_scratch_seed2024_fold0.json,0.0019
+proposed_contrib,2024,0,vocabulary,vocab.json,0.0542
+proposed_contrib,2024,0,Link RF,link_rf_seed2024_fold0.joblib,2.3772
+voting,2024,0,TF-IDF vectorizer + KNN/RF/ExtraTrees vote,voting_seed2024_fold0.joblib,20.3815
+proposed,42,0,weights,film_scratch_seed42_fold0.pt,6.3595
+proposed,42,0,configuration,film_scratch_seed42_fold0.json,0.0018
+proposed,42,0,vocabulary,vocab.json,0.0545
+proposed,42,0,Link RF,link_rf_seed42_fold0.joblib,2.8024
+raw_cnn,42,0,weights,cnn_raw_seed42_fold0.pt,6.3523
+raw_cnn,42,0,configuration,cnn_raw_seed42_fold0.json,0.0014
+raw_cnn,42,0,vocabulary,vocab.json,0.0545
+concat,2024,0,weights,concat_scratch_seed2024_fold0.pt,6.3005
+concat,2024,0,configuration,concat_scratch_seed2024_fold0.json,0.0014
+concat,2024,0,vocabulary,vocab.json,0.0542
+concat,2024,0,Link RF,link_rf_seed2024_fold0.joblib,2.3772
+proposed,2024,0,weights,film_scratch_seed2024_fold0.pt,6.3332
+proposed,2024,0,configuration,film_scratch_seed2024_fold0.json,0.0019
+proposed,2024,0,vocabulary,vocab.json,0.0542
+proposed,2024,0,Link RF,link_rf_seed2024_fold0.joblib,2.3772
+cnn_only,42,0,weights,cnn_seed42_fold0.pt,6.3256
+cnn_only,42,0,configuration,cnn_seed42_fold0.json,0.0011
+cnn_only,42,0,vocabulary,vocab.json,0.0545
+concat,42,0,weights,concat_scratch_seed42_fold0.pt,6.3268
+concat,42,0,configuration,concat_scratch_seed42_fold0.json,0.0013
+concat,42,0,vocabulary,vocab.json,0.0545
+concat,42,0,Link RF,link_rf_seed42_fold0.joblib,2.8024
+cnn_only,2024,0,weights,cnn_seed2024_fold0.pt,6.2993
+cnn_only,2024,0,configuration,cnn_seed2024_fold0.json,0.0011
+cnn_only,2024,0,vocabulary,vocab.json,0.0542
+rf_only,123,0,Link RF,link_rf_seed123_fold0.joblib,5.489
+cnn_only,123,0,weights,cnn_seed123_fold0.pt,6.3073
+cnn_only,123,0,configuration,cnn_seed123_fold0.json,0.0011
+cnn_only,123,0,vocabulary,vocab.json,0.0547
+raw_cnn,2024,0,weights,cnn_raw_seed2024_fold0.pt,6.3261
+raw_cnn,2024,0,configuration,cnn_raw_seed2024_fold0.json,0.0014
+raw_cnn,2024,0,vocabulary,vocab.json,0.0542
+rf_only,42,0,Link RF,link_rf_seed42_fold0.joblib,2.8024
+proposed_contrib,42,0,weights,film_scratch_seed42_fold0.pt,6.3595
+proposed_contrib,42,0,configuration,film_scratch_seed42_fold0.json,0.0018
+proposed_contrib,42,0,vocabulary,vocab.json,0.0545
+proposed_contrib,42,0,Link RF,link_rf_seed42_fold0.joblib,2.8024
+proposed_contrib,123,0,weights,film_scratch_seed123_fold0.pt,6.3412
+proposed_contrib,123,0,configuration,film_scratch_seed123_fold0.json,0.0019
+proposed_contrib,123,0,vocabulary,vocab.json,0.0547
+proposed_contrib,123,0,Link RF,link_rf_seed123_fold0.joblib,5.489
+rf_only,2024,0,Link RF,link_rf_seed2024_fold0.joblib,2.3772
+proposed,123,0,weights,film_scratch_seed123_fold0.pt,6.3412
+proposed,123,0,configuration,film_scratch_seed123_fold0.json,0.0019
+proposed,123,0,vocabulary,vocab.json,0.0547
+proposed,123,0,Link RF,link_rf_seed123_fold0.joblib,5.489
+voting,123,0,TF-IDF vectorizer + KNN/RF/ExtraTrees vote,voting_seed123_fold0.joblib,19.7987
+voting,42,0,TF-IDF vectorizer + KNN/RF/ExtraTrees vote,voting_seed42_fold0.joblib,19.5335

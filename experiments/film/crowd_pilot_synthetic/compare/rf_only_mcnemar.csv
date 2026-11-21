@@ -1,0 +1,16 @@
+seed,model_a,model_b,b,c,p_exact,p_holm,significant_0.05
+42,CNN-only (baseline),RF-only (Link RF),83,172,2.6052226968592773e-08,1.3026113484296387e-07,True
+42,Concatenation (control),RF-only (Link RF),78,69,0.509501588634987,1.0,False
+42,Concatenation (from scratch),RF-only (Link RF),78,74,0.8078463096035287,1.0,False
+42,E2 (from scratch),RF-only (Link RF),76,38,0.00047518532594190946,0.0019007413037676378,True
+42,E2 (warm start),RF-only (Link RF),75,75,1.0,1.0,False
+123,CNN-only (baseline),RF-only (Link RF),84,163,5.612555999323107e-07,1.6837667997969322e-06,True
+123,Concatenation (control),RF-only (Link RF),78,64,0.27524996897157333,0.5504999379431467,False
+123,Concatenation (from scratch),RF-only (Link RF),82,27,1.260771532171773e-07,5.043086128687092e-07,True
+123,E2 (from scratch),RF-only (Link RF),79,16,3.4675436577962654e-11,1.7337718288981327e-10,True
+123,E2 (warm start),RF-only (Link RF),80,68,0.3659440738175885,0.5504999379431467,False
+2024,CNN-only (baseline),RF-only (Link RF),85,160,1.9053976149343633e-06,7.621590459737453e-06,True
+2024,Concatenation (control),RF-only (Link RF),83,107,0.09493839319796088,0.18987678639592176,False
+2024,Concatenation (from scratch),RF-only (Link RF),82,70,0.3723320515452932,0.3723320515452932,False
+2024,E2 (from scratch),RF-only (Link RF),79,22,1.012134755360389e-08,5.060673776801945e-08,True
+2024,E2 (warm start),RF-only (Link RF),79,43,0.001428061713579551,0.004284185140738653,True

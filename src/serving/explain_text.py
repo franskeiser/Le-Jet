@@ -109,6 +109,8 @@ def _merge_windows(windows: list[tuple[float, int, int]], max_groups: int) -> li
 def _logits_from_cnn_features(model, cnn_features: torch.Tensor, url_tensor: torch.Tensor) -> torch.Tensor:
     # Re-runs everything AFTER the encoder for whichever of the three serving models this
     # is, so the gradient flows back to cnn_features. Must mirror each model's forward().
+    if hasattr(model, 'logits_from_pooled'):
+        return model.logits_from_pooled(cnn_features)          # the FiLM model (src/serving/film_model.py): the link is already inside the pooling
     if not hasattr(model, 'encoder'):
         return model.temp_head(cnn_features)                   # TextEncoder (CNN-only baseline)
     if hasattr(model, 'cnn_gates'):

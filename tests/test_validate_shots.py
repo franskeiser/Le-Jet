@@ -268,3 +268,37 @@ def test_the_gallery_is_inert_and_escapes_everything():
     assert "Content-Security-Policy" in page and "img-src 'self'" in page and "default-src 'none'" in page
     assert f"{A}.png" in page and f"{B}.png" not in page
     assert "1 pages without one" in page
+
+
+# ---------------------------------------------------------------------------------------
+# text_head: the start of the page's visible text (whole-site mode), optional, page-controlled
+# ---------------------------------------------------------------------------------------
+def _site_line(**kw):
+    rec = {"url_id": A, "ok": False, "error": "navigation_error", "bytes": 0, "sha256": "", "width": 0, "height": 0, "partial": False,
+           "blocked_requests": 0, "ms": 5, "final_url": "", "title": "", "text_chars": -1, "rescued": False,
+           "reach": "dead", "reason": "other", "truncated": False, "attempts": 1, "pages": []}
+    rec.update(kw)
+    return rec
+
+
+def test_text_head_is_optional_in_a_whole_site_line():
+    assert vs.check_manifest_line(_site_line()) is None                                  # an older lab build sends none
+    assert vs.check_manifest_line(_site_line(text_head="This page has been removed.")) is None
+    assert vs.check_manifest_line(_site_line(text_head="")) is None
+
+
+@pytest.mark.parametrize("bad", ["x" * 401, "bell" + chr(7) + "char", "nul" + chr(0), "bidi" + chr(0x202E) + "override", 5, None, ["a"]])
+def test_a_bad_text_head_is_refused(bad):
+    assert vs.check_manifest_line(_site_line(text_head=bad)) is not None
+
+
+def test_text_head_is_not_allowed_in_a_dataset_lab_line():
+    plain = {k: v for k, v in _site_line().items() if k in vs.EXPECTED_KEYS}
+    assert vs.check_manifest_line(plain) is None
+    assert vs.check_manifest_line({**plain, "text_head": "hi"}) is not None              # only whole-site lines may carry it
+
+
+def test_text_head_is_written_by_the_runner_only_in_whole_site_mode():
+    r = ShotResult(A, extended=True, text_head="Page not found")
+    assert r.as_dict()["text_head"] == "Page not found"
+    assert "text_head" not in ShotResult(A, text_head="Page not found").as_dict()        # dataset lab lines are unchanged

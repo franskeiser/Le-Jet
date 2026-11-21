@@ -34,6 +34,11 @@ from lejet.settings import Settings
 
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 MAX_LOCATION_LEN = 2048
+# Smart links (AppsFlyer OneLink, Branch, ...) send an Android phone to the Play Store app with
+# `market://...` (or `intent://...`) and an iPhone to `itms-apps://...`. These are commands for an
+# app, not web pages: the lab does not follow them, it just notes where the chain ended.
+APP_STORE_SCHEMES = frozenset({"market", "intent", "itms-apps", "itms-appss", "itms"})
+APP_TARGET_NOTE_LEN = 200
 
 
 @dataclass
@@ -256,6 +261,12 @@ class HttpStage:
             if is_redirect:
                 if len(location) > MAX_LOCATION_LEN:
                     res.fail_reason, res.chain_complete = "redirect_to_blocked", False
+                    return
+                if location.split(":", 1)[0].strip().lower() in APP_STORE_SCHEMES and ":" in location:
+                    # The chain ended at an app-store hand-off. Stop here, label it, keep the target as a note.
+                    res.redirects += 1                      # the link DID redirect once (nb_redirection stays as before)
+                    res.fail_reason, res.chain_complete = "app_store_redirect", True
+                    res.errors.append("app_store_target:" + location.strip()[:APP_TARGET_NOTE_LEN])
                     return
                 res.redirects += 1
                 if res.redirects > self.s.max_hops:

@@ -44,11 +44,20 @@ MAX_MEMBERS = shot_stage.MAX_SHOTS_TAR_MEMBERS + 1
 MAX_MANIFEST_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 600 * 1024 * 1024
 _PNG_NAME = re.compile(r"^[0-9a-f]{16}\.png$")
+_PAGE_NAME = shot_stage.PAGE_FILE_RE                           # <url_id>_p<n>.png : a linked page (whole-site mode)
 _ID = re.compile(r"^[0-9a-f]{16}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 EXPECTED_KEYS = {"url_id": str, "ok": bool, "error": str, "bytes": int, "sha256": str, "width": int,
                  "height": int, "partial": bool, "blocked_requests": int, "ms": int,
                  "final_url": str, "title": str, "text_chars": int, "rescued": bool}
+# whole-site mode (the live tool) adds these keys to a manifest line; the dataset lab's lines have none of them
+EXTENDED_KEYS = {"reach": str, "reason": str, "truncated": bool, "attempts": int, "pages": list}
+# optional in a whole-site line (older lab builds do not send it): the start of the page's visible text, so "removed / suspended / not
+# found" pages can be told from live ones. Page-controlled: capped and free of control / bidirectional-override characters.
+OPTIONAL_EXTENDED_KEYS = {"text_head": str}
+MAX_TEXT_HEAD = 400
+_PAGE_KEYS = {"n": int, "url": str, "title": str, "bytes": int, "sha256": str, "width": int, "height": int,
+              "text_chars": int, "truncated": bool}
 # page-controlled text: capped, and free of control / bidirectional-override characters
 # final_url: kept at <=1024 characters on the VM, then defanged ('.' -> '[.]', up to 3x), so 3100 covers the worst case
 _TEXT_LIMITS = {"final_url": 3100, "title": 200}
@@ -62,9 +71,18 @@ def _is_int(v: Any) -> bool:
 def check_manifest_line(rec: Any) -> Optional[str]:
     if not isinstance(rec, dict):
         return "not an object"
-    if set(rec) != set(EXPECTED_KEYS):
-        return f"keys differ: extra {sorted(set(rec) - set(EXPECTED_KEYS))}, missing {sorted(set(EXPECTED_KEYS) - set(rec))}"
-    for key, typ in EXPECTED_KEYS.items():
+    extended = "pages" in rec
+    expected = {**EXPECTED_KEYS, **EXTENDED_KEYS} if extended else EXPECTED_KEYS
+    allowed = set(expected) | (set(OPTIONAL_EXTENDED_KEYS) if extended else set())
+    if not set(expected) <= set(rec) <= allowed:
+        return f"keys differ: extra {sorted(set(rec) - allowed)}, missing {sorted(set(expected) - set(rec))}"
+    if "text_head" in rec:
+        head = rec["text_head"]
+        if not isinstance(head, str) or len(head) > MAX_TEXT_HEAD or _BAD_CHARS.search(head):
+            return "text_head: not a string, too long, or contains control characters"
+    for key, typ in expected.items():
+        if typ is list:
+            continue                                                # checked below
         v = rec[key]
         if typ is int:
             low = -1 if key == "text_chars" else 0                  # -1 = unknown (only for the text count)
@@ -87,6 +105,38 @@ def check_manifest_line(rec: Any) -> Optional[str]:
         return "failed row without an error code"
     if rec["ok"] and not _SHA.match(rec["sha256"]):
         return "ok row without a sha256"
+    if extended:
+        if rec["reach"] not in shot_stage.REACH:
+            return f"reach not allowed: {rec['reach'][:30]!r}"
+        if rec["reason"] not in shot_stage.REASONS:
+            return f"reason not allowed: {rec['reason'][:30]!r}"
+        if not (0 <= rec["attempts"] <= 20):
+            return "attempts: not plausible"
+        pages = rec["pages"]
+        if len(pages) > shot_stage.MAX_LINKED_PAGES:
+            return "too many linked pages"
+        seen_n = set()
+        for pg in pages:
+            if not isinstance(pg, dict) or set(pg) != set(_PAGE_KEYS):
+                return "a linked page entry has the wrong keys"
+            for key, typ in _PAGE_KEYS.items():
+                v = pg[key]
+                if typ is int:
+                    if not _is_int(v) or v < (-1 if key == "text_chars" else 0) or v > 10**10:
+                        return f"page {key}: not a plausible integer"
+                elif typ is bool:
+                    if not isinstance(v, bool):
+                        return f"page {key}: not a boolean"
+                elif not isinstance(v, str):
+                    return f"page {key}: not a string"
+                elif key in ("url", "title") and (len(v) > _TEXT_LIMITS["final_url" if key == "url" else "title"]
+                                                  or _BAD_CHARS.search(v)):
+                    return f"page {key}: too long or contains control characters"
+            if not (1 <= pg["n"] <= shot_stage.MAX_LINKED_PAGES) or pg["n"] in seen_n:
+                return "linked page numbers must be unique and 1..4"
+            seen_n.add(pg["n"])
+            if not _SHA.match(pg["sha256"]):
+                return "a linked page without a sha256"
     return None
 
 
@@ -127,7 +177,7 @@ def validate(tar_path: str, sidecar: str, batch_ids: Optional[set]) -> Tuple[Lis
             if not m.isreg():
                 problems.append(f"member {m.name[:40]!r} is not a regular file")
                 continue
-            if m.name != "shots.jsonl" and not _PNG_NAME.match(m.name):
+            if m.name != "shots.jsonl" and not _PNG_NAME.match(m.name) and not _PAGE_NAME.match(m.name):
                 problems.append(f"member name not allowed: {m.name[:40]!r}")
                 continue
             limit = MAX_MANIFEST_BYTES if m.name == "shots.jsonl" else pngcheck.MAX_BYTES
@@ -158,6 +208,7 @@ def validate(tar_path: str, sidecar: str, batch_ids: Optional[set]) -> Tuple[Lis
     # the manifest must agree with the files, one-to-one
     seen_ids = set()
     ok_ids = set()
+    listed_pages: set = set()
     try:
         lines = manifest.decode("utf-8").splitlines()
     except UnicodeDecodeError:
@@ -190,7 +241,20 @@ def validate(tar_path: str, sidecar: str, batch_ids: Optional[set]) -> Tuple[Lis
                 problems.append(f"{uid}: size/dimensions in the manifest differ from the PNG")
             if rec["sha256"] != hashlib.sha256(data).hexdigest():
                 problems.append(f"{uid}: sha256 in the manifest differs from the PNG")
-    extra = {n[:-4] for n in pngs} - ok_ids
+        for pg in rec.get("pages", []):                           # linked pages: each listed page needs its PNG
+            name = f"{uid}_p{pg['n']}.png"
+            pdata = pngs.get(name)
+            listed_pages.add(name)
+            if pdata is None:
+                problems.append(f"{name}: listed in the manifest but missing from the archive")
+                continue
+            _, _, w, h = pngcheck.check_png(pdata)
+            if (pg["bytes"], pg["width"], pg["height"]) != (len(pdata), w, h) or                     pg["sha256"] != hashlib.sha256(pdata).hexdigest():
+                problems.append(f"{name}: size or sha256 in the manifest differs from the PNG")
+    extra = {n[:-4] for n in pngs if _PNG_NAME.match(n)} - ok_ids
+    unlisted = {n for n in pngs if _PAGE_NAME.match(n)} - listed_pages
+    if unlisted:
+        problems.append(f"{len(unlisted)} linked-page PNG(s) in the archive are not listed in the manifest")
     if extra:
         problems.append(f"{len(extra)} PNG(s) in the archive are not listed as ok in the manifest")
     return problems, ({} if problems else pngs), (b"" if problems else manifest)

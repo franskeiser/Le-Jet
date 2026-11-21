@@ -47,7 +47,7 @@ Column names and spellings must match exactly. Same units as the public set (rat
 | Column | Type | Notes |
 |---|---|---|
 | `page_fetched` | 0/1 | **1 only if the page HTML was actually retrieved and parsed.** This alone decides which extractor runs: 1 → `full`, 0 → `url_only` (`route_p_u`). Never an input feature. |
-| `fetch_status` | text | One of `live`, `redirected`, `dead`, `blocked`, `timeout`, `not_attempted` (plan §6). Reporting only. |
+| `fetch_status` | text | One of `live`, `redirected`, `dead`, `blocked`, `timeout`, `not_attempted`, `app_store` (plan §6; `app_store` = a smart link that hands off to the Play Store / App Store app, so there is no web page). Reporting only. |
 | `final_url` | text | URL after redirects. Empty if not fetched. |
 | `final_domain` | text | Registrable domain of `final_url`. |
 | `n_redirects` | int | `-1` if not fetched. |
