@@ -151,8 +151,8 @@ def main(argv: List[str] | None = None) -> None:
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (a pipeline test only)")
     ap.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
     ap.add_argument("--folds", type=int, nargs="+", default=None)
-    ap.add_argument("--warm-start", choices=["baseline", "none"], default="baseline",
-                    help="train: start from the retrained baseline (default) or from scratch (the D7a check run); check: which set")
+    ap.add_argument("--warm-start", choices=["baseline", "none"], default="none",
+                    help="train: from scratch (default, like E2, decision D7) or from the retrained baseline (ablation); check: which set")
     args = ap.parse_args(argv)
     warm = args.warm_start == "baseline"
     if args.step == "train":

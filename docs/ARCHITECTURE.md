@@ -252,6 +252,18 @@ to score those messages at test time and in the app, so it must learn from them.
 forest can use "the page did not load" itself as evidence (in this dataset 1,303 of the 2,204 not-loaded links are smishing). That is
 realistic (scam pages are taken down quickly) but depends on when the pages were visited.
 
+## 7b. Progress on the testing guide
+
+| Step | Status (2026-11-21) | Files |
+|---|---|---|
+| 1–2 | done | `data/final/`, `data/final/step2/` |
+| 3 | done, all checks pass | `experiments/film/lejet_final_dataset/data_prep/Cross_Validation_{Splits,Checks}.xlsx` |
+| 4 | **done**: 4 models × 15 runs (+ text-only CNN for Step 6); every neural model rebuilds from its saved files with a gap of 0 | `experiments/film/lejet_final_dataset/step4/Training_Records.xlsx` (`scripts/build_step4_files.py`) |
+| 5–10 | not started; the test folds have not been read | |
+
+Step 4 validation F1 (mean ± SD of 15; validation picked the best epoch, so these are a training record, **not results**):
+E2 0.961 ± 0.012, CNN-only 0.961 ± 0.015, Concatenation 0.964 ± 0.013, KNN-RF-ETC 0.813 ± 0.035, text-only CNN 0.936 ± 0.017.
+
 ## 8. Open items (not decided; do not assume either way)
 
 | Item | Status |
