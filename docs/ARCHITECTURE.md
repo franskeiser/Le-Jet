@@ -260,7 +260,9 @@ realistic (scam pages are taken down quickly) but depends on when the pages were
 | 3 | done, all checks pass | `experiments/film/lejet_final_dataset/data_prep/Cross_Validation_{Splits,Checks}.xlsx` |
 | 4 | **done**: 4 models × 15 runs (+ text-only CNN for Step 6); every neural model rebuilds from its saved files with a gap of 0 | `experiments/film/lejet_final_dataset/step4/Training_Records.xlsx` (`scripts/build_step4_files.py`) |
 | 5 | **done** (2026-11-22): test-fold predictions, 5 models × 3 seeds × 6,716 messages, every check passed (each message once per seed, fold matches Step 3, same messages for every model); the test read is logged | `experiments/film/lejet_final_dataset/step5/` (`scripts/build_step5_files.py --read-test`) |
-| 6–10 | not started | |
+| 6 | **done** (2026-11-22): 4 component checks on the trained E2, test folds | `experiments/film/lejet_final_dataset/step6/Component_Check_Results.xlsx` (`scripts/build_step6_files.py --read-test`) |
+| 7 | **done** (2026-11-22): confusion matrices and metrics of the 4 main models, per seed and mean ± SD | `experiments/film/lejet_final_dataset/step7/Classification_Performance_Results.xlsx` (`scripts/build_step7_files.py`) |
+| 8–10 | not started | |
 
 Step 4 validation F1 (mean ± SD of 15; validation picked the best epoch, so these are a training record, **not results**):
 E2 0.961 ± 0.012, CNN-only 0.961 ± 0.015, Concatenation 0.964 ± 0.013, KNN-RF-ETC 0.813 ± 0.035, text-only CNN 0.936 ± 0.017.
