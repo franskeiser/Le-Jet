@@ -125,7 +125,7 @@ messages (their RF numbers replaced by the page-hidden version), text hidden for
 | Concatenation fusion | same CNN + same RF numbers attached before Dense 64, no FiLM | `src/unified/concat_control.py` |
 | KNN-RF-ETC | Jain et al. (2022) with its routing: no URL → text vote, URL → URL classifier (§6.2) | `src/unified/voting_baseline.py` |
 | Check: text-only CNN | E2 without any link | `src/unified/cnn_baseline.py` |
-| Check: FiLM neutralised | the trained E2 scored with γ = 1, β = 0 for every message | **not built yet** (§8) |
+| Check: FiLM neutralised | the trained E2 scored with γ = 1, β = 0 for every message | `scripts/build_step6_files.py` |
 | Check: shuffled RF outputs | every message gets another message's link numbers | `src/unified/film_controls.py` |
 | Check: webpage hidden | page features blanked, page_missing = 1 | `film_compare.py` "page hidden" condition |
 
@@ -271,10 +271,33 @@ E2 0.961 ± 0.012, CNN-only 0.961 ± 0.015, Concatenation 0.964 ± 0.013, KNN-RF
 
 ## 8. Open items (not decided; do not assume either way)
 
+### 8.1 ❓ OPEN QUESTION FOR THE GROUP, needed before Step 10: what to do about the labels? (raised 2026-11-22)
+
+**What Step 9 found** (`experiments/film/lejet_final_dataset/step9/Classification_Error_Analysis.xlsx`, sheet **Possible_Label_Issues**;
+the messages themselves in sheets **Representative** and **Per_Message**):
+- **The same gambling operators are labelled both ways.** `casinoplus.com.ph` 56 smishing / 4 legitimate, `applus.ph` 15 / 8,
+  `bingoplus.com` 18 / 4, `arenaplus.ph` 12 / 6: promotions that read almost the same have opposite labels. These four domains account
+  for **43 of the proposed model's 297 errors**.
+- **Some single labels look wrong.** Labelled legitimate but read like smishing: "FREE SP1NS 120% extra b0nus" (`taguigcom.cam`),
+  "30K top up bonos... GCazh" (`tbplus99.com`). Labelled smishing but read like genuine messages: a GCash receipt for `netflix.com`, an
+  HSBC promo linking to `hsbc.com.ph`, a cake promo from `contis.ph`.
+- **`lj_003092` is not an SMS**: it is only the group's own Azure lab URL, labelled legitimate.
+
+**Choose one:**
+
+| Option | What happens | Effect |
+|---|---|---|
+| **A. Fix the labels, then rerun** | Agree **one rule** and apply it to **every** message it covers (e.g. "licensed gambling promotions are ___"), not only to the messages the model got wrong (fixing only the errors would bias the results in the model's favour). Remove `lj_003092`. Record the rule and the changed message ids. Then rerun Steps 3–10 for all models (all scripted, about an hour). | Step 10 and Chapters 4–5 use the corrected data; every result so far is replaced |
+| **B. Keep the labels as they are** | Report the inconsistency in Chapter 5 as a limitation (the table in Possible_Label_Issues is the evidence). | Step 10 can run straight away on the current results |
+
+**Answer:** _(write the option, who decided, the date, and for A the rule)_
+
+### 8.2 Other open items
+
+
 | Item | Status |
 |---|---|
-| FiLM-neutralised check: no script yet (a test-time switch on the trained E2: treat every message as `has_url = 0`) | to build before Step 6 |
-| McNemar multiple-comparison correction (the code applies Holm per seed in `rf_only_compare.py`) | to confirm with the adviser (guide item 39) |
+| McNemar multiple-comparison correction for Step 10's 9 tests (none / Holm / Bonferroni) | to confirm with the adviser (guide item 39); Step 10 will report the uncorrected and the corrected p-values side by side, so the answer only picks the column |
 | Diagram wording: "Map full vocabulary" → vocabulary from each fold's training part; "200/500 trees" → 200 trees; "trained on complete pages" → trained on every training message with a link | being fixed by the diagram owner |
 
 **Folder name note:** the Link RF's outputs live in `experiments/c_prune/` and `models/c_prune/`. The name is left over from the
