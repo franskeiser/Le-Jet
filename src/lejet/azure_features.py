@@ -25,7 +25,7 @@ import platform
 import sys
 from typing import List, Optional
 
-from lejet.azure_run import OUT, TOKEN_MAX_AGE, settings_for_azure
+from lejet.azure_run import OUT, TOKEN_MAX_AGE, settings_for_azure, tunnel_resolver
 from lejet.cli import DEFAULT_TOKEN, preflight_ok, read_input, tool_versions
 from lejet.live_worker import ID_RE
 
@@ -33,6 +33,11 @@ INPUT = "/var/lib/lejet/in/urls.txt"
 MAX_LINKS = 400                      # the helper enforces the same cap; one call is one batch of the dataset
 CONCURRENCY = int(os.environ.get("LEJET_FEATURES_CONCURRENCY", "4"))
 RATE = float(os.environ.get("LEJET_FEATURES_RATE", "2.0"))     # new links started per second, at most
+# Sites that refuse the plain fetch (401/403/406/429/503 or a challenge page) are opened in the lab's Chromium and their HTML goes
+# through the same feature code (browser_html.py). On by default; LEJET_FEATURES_BROWSER=0 turns it off (the old behaviour).
+BROWSER_FALLBACK = os.environ.get("LEJET_FEATURES_BROWSER", "1") != "0"
+BROWSER_MAX_PAGES = int(os.environ.get("LEJET_FEATURES_BROWSER_MAX", "150"))
+BROWSER_BUDGET_S = float(os.environ.get("LEJET_FEATURES_BROWSER_BUDGET", "900"))
 
 
 def settings_for_features():
@@ -42,6 +47,18 @@ def settings_for_features():
     s.jitter = 0.0
     s.parse_workers = 3
     return s
+
+
+async def _start_browser(out_dir: str):
+    """The browser for sites that refuse the plain fetch. If it cannot start (no Chromium), the batch runs without it."""
+    from lejet.browser_html import BrowserHtml
+    vpn_on = os.environ.get("LEJET_VPN_ACTIVE") == "1"
+    try:
+        return await BrowserHtml(out_dir, resolver=tunnel_resolver() if vpn_on else None, max_pages=BROWSER_MAX_PAGES,
+                                 budget_s=BROWSER_BUDGET_S).start()
+    except Exception as exc:                                    # noqa: BLE001
+        print(f"browser fallback is OFF ({type(exc).__name__})", file=sys.stderr, flush=True)
+        return None
 
 
 async def amain(batch: str, input_path: str = INPUT, out_dir: str = OUT) -> int:
@@ -84,7 +101,15 @@ async def amain(batch: str, input_path: str = INPUT, out_dir: str = OUT) -> int:
 
         print(f"== 4 fetching {len(items)} links (features only, no screenshots)", flush=True)
         async with Pipeline(settings) as pipeline:
-            counts = await pipeline.run(items, batch, store, progress)
+            browser = await _start_browser(out_dir) if BROWSER_FALLBACK else None
+            try:
+                if browser is not None:
+                    pipeline.html_fallback = browser.fetch
+                counts = await pipeline.run(items, batch, store, progress)
+            finally:
+                if browser is not None:
+                    print(f"== browser fallback: {browser.got} of {browser.used} refused pages read", flush=True)
+                    await browser.close()
             for client, path in ((getattr(pipeline, "rdap", None), settings.rdap_cache_path),
                                  (getattr(pipeline, "ct", None), settings.ct_cache_path)):
                 if client is not None and path:

@@ -314,6 +314,10 @@ class ShotResult:
     truncated: bool = False         # the page was taller than FULL_PAGE_MAX_HEIGHT (or the PNG limit) and was cut
     attempts: int = 0
     nav_text: str = field(default="", repr=False)          # raw navigation error, never exported
+    # --- html_only mode (browser_html.py): what the browser's page looked like as HTML; never exported ------------
+    html: str = field(default="", repr=False)              # the page's DOM after it loaded (capped)
+    page_url: str = field(default="", repr=False)          # where the browser ended up, NOT defanged (the caller re-validates it)
+    http_status: int = -1                                    # the main page's HTTP status as the browser saw it, -1 = unknown
     pages: List[Dict[str, Any]] = field(default_factory=list)   # linked pages: <url_id>_p<n>.png
 
     def as_dict(self) -> Dict[str, Any]:
@@ -369,7 +373,10 @@ class ShotRunner:
                  page_deadline: float = PAGE_DEADLINE_S, launch_env: Optional[Dict[str, str]] = None,
                  mobile: bool = False, extra_wait_ms: int = 0, realistic: bool = False, rescue: bool = True,
                  extended: bool = False, full_page: bool = False, max_pages: int = 0, ladder: bool = False,
-                 resolver: Optional[Resolver] = None, clock: Callable[[], float] = time.monotonic):
+                 resolver: Optional[Resolver] = None, html_only: bool = False,
+                 clock: Callable[[], float] = time.monotonic):
+        # html_only = no picture: return the page's HTML (browser_html.py, for sites that refuse the plain fetch)
+        self.html_only = bool(html_only)
         # whole-site mode (the live tool): extended = extra manifest keys; full_page = top-to-bottom picture;
         # max_pages = same-site pages followed after the landing page; ladder = retry harder before giving up.
         # All off by default, so the dataset lab behaves exactly as before.
@@ -586,6 +593,24 @@ class ShotRunner:
             except Exception:                                         # noqa: BLE001
                 pass
 
+    async def _record_html(self, res: ShotResult, page: Any) -> None:
+        """html_only mode: the page's DOM as HTML (capped at the same 2 MB the plain fetch reads) and the browser's final
+        address. Both come from the page, so the caller must treat them as untrusted. Never raises."""
+        try:
+            res.page_url = safety.clean_field(str(page.url), max_len=2048)
+        except Exception:                                             # noqa: BLE001
+            pass
+        try:
+            html = await asyncio.wait_for(page.content(), 8)
+        except Exception:                                             # noqa: BLE001
+            res.error = "html_error"
+            return
+        if isinstance(html, str) and html.strip():
+            res.html = html[:safety.MAX_DECODED_BYTES]
+            res.ok, res.error = True, "none"
+        else:
+            res.error = "html_empty"
+
     async def _raw_screenshot(self, context: Any, page: Any) -> Optional[bytes]:
         """Chromium's own capture of the visible area (Chromium-only DevTools call). None on any failure."""
         try:
@@ -728,7 +753,11 @@ class ShotRunner:
             page.on("download", lambda d: asyncio.ensure_future(d.cancel()))
 
             try:
-                await page.goto(url, wait_until="load", timeout=SLOW_GOTO_TIMEOUT_MS if slow else GOTO_TIMEOUT_MS)
+                response = await page.goto(url, wait_until="load", timeout=SLOW_GOTO_TIMEOUT_MS if slow else GOTO_TIMEOUT_MS)
+                try:
+                    res.http_status = int(response.status) if response is not None else -1
+                except Exception:                                     # noqa: BLE001
+                    res.http_status = -1
             except Exception as exc:                                  # noqa: BLE001
                 if "timeout" in str(exc).lower():
                     res.partial = True                                # shoot whatever is on screen
@@ -748,13 +777,16 @@ class ShotRunner:
                 pass
             # picture 1 (early): many casino / phishing pages show content and then wipe themselves a few
             # seconds later when they decide the visitor is a robot. Take a quick picture at the first sign of text.
-            early = await self._early_capture(context, page) if self.rescue else None
+            early = await self._early_capture(context, page) if (self.rescue and not self.html_only) else None
             if self.extra_wait_ms:                                    # script-heavy pages render late
                 try:
                     await page.wait_for_timeout(self.extra_wait_ms)
                 except Exception:                                     # noqa: BLE001
                     pass
             await self._record_page_facts(res, page)
+            if self.html_only:                                        # no picture: just the page's HTML
+                await self._record_html(res, page)
+                return
             # picture 2 (settled): the normal one
             data: Optional[bytes]
             # (a restless page can make the careful screenshot give up: _page_png then asks Chromium directly for

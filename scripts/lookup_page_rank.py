@@ -149,13 +149,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--cache", help="JSON cache file (loaded and saved); never holds the key")
     ap.add_argument("--base-url", default=DEFAULT_URL)
     ap.add_argument("--pause", type=float, default=0.5)
+    ap.add_argument("--offline", action="store_true",
+                    help="make no request and need no key: use only the answers already in --cache (the Azure lab "
+                         "looks the domains up on the VM, scripts/azure_page_rank.py writes them into the cache)")
     a = ap.parse_args(argv)
 
     parsed = urllib.parse.urlsplit(a.base_url)
     if parsed.scheme != "https" and parsed.hostname not in ("127.0.0.1", "localhost"):
         raise SystemExit("the API base URL must be https (http only for localhost tests)")
 
-    key = load_key(a.key_file, a.env_file)
+    if a.offline and not a.cache:
+        raise SystemExit("--offline needs --cache (the file holding the answers)")
+    key = "" if a.offline else load_key(a.key_file, a.env_file)
     records = read_clean(a.clean_jsonl)
 
     cache: Dict[str, int] = {}
@@ -171,9 +176,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         dom = refang_domain(rec.get("final_reg_domain", ""))
         if _DOMAIN.fullmatch(dom):
             wanted.append(dom)
-    got, failed_batches = lookup(wanted, key, a.base_url, cache, pause=a.pause)
+    if a.offline:
+        got, failed_batches = {}, 0
+    else:
+        got, failed_batches = lookup(wanted, key, a.base_url, cache, pause=a.pause)
     cache.update(got)
-    if a.cache:
+    if a.cache and not a.offline:
         with open(a.cache, "w", encoding="utf-8") as fh:
             json.dump(dict(sorted(cache.items())), fh)
 

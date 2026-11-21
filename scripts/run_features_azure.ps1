@@ -20,7 +20,8 @@ param(
   [Parameter(Mandatory = $true)][string]$Batch,
   [string]$InputDir = "D:\LeJetData\input",
   [string]$Quarantine = "D:\LeJetData\quarantine",
-  [string]$CleanDir = "D:\LeJetData\clean"
+  [string]$CleanDir = "D:\LeJetData\clean",
+  [switch]$NoPageRank                                  # skip the page_rank look-up on the VM (page_rank then stays -1)
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,3 +93,11 @@ if ($expected -ne (Get-FileHash $jsonl -Algorithm SHA256).Hash.ToLower()) { Fail
 if ($LASTEXITCODE -ne 0) { Fail "VALIDATION FAILED: nothing was written to $CleanDir. Keep the quarantine folder as evidence." }
 Write-Host ""
 Write-Host "DONE. Batch ${Batch}: validated data in $CleanDir\$Batch.clean.jsonl"
+
+if (-not $NoPageRank) {
+  # page_rank: looked up ON THE VM, in its own locked-down unit that holds the Open PageRank key (the fetch account cannot read it).
+  # Only domain names of the pages that loaded leave this PC. A problem here never fails the batch: page_rank just stays -1.
+  Step 6 "page_rank on the Azure lab"
+  & $py -I (Join-Path $PSScriptRoot "azure_page_rank.py") (Join-Path $CleanDir "$Batch.clean.jsonl") --batch "${Batch}_pr"
+  if ($LASTEXITCODE -ne 0) { Write-Host "page_rank incomplete (exit $LASTEXITCODE): rerun  python -I scripts\azure_page_rank.py $CleanDir\$Batch.clean.jsonl  later" -ForegroundColor Yellow }
+}
