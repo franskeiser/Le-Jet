@@ -1,0 +1,1 @@
+2026-11-22T00:17:21 dataset=lejet_final_dataset.csv seeds=[42, 123, 2024] folds=[0, 1, 2, 3, 4] read_test_flag=True models=['E2 (from scratch)', 'CNN-only, text + URL features (from scratch)', 'Concatenation (from scratch)', 'CNN-only (baseline)', 'KNN-RF-ETC (Jain et al. 2022)']
