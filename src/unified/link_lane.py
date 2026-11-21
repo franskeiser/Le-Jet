@@ -74,9 +74,11 @@ from src.unified.prepare_web_37 import FEATURES_37, PAGE
 ROOT = Path(__file__).resolve().parents[2]
 TUNE_SPLITS = 3
 OOF_SPLITS = 5
-# The link forest has 100 trees (plan D19): on the pilot, 100 trees match 200 on F1 (0.9137 vs 0.9147) and 500 add
-# nothing. Only the other settings are tuned. rf_extractor.PARAM_GRID is left alone: other pipelines use it.
-LINK_PARAM_GRID = {**PARAM_GRID, "n_estimators": [100]}
+# The link forest has 200 trees (docs/ARCHITECTURE.md 7.2, 2026-11-21, final dataset; replaces the pilot's 100 of D19). From 50 to
+# 1,000 trees the inner-CV F1 is flat (within 0.2 points); 200 has the lowest log loss, and P and u enter the generator as numbers.
+# Evidence: python -m src.unified.link_rf_study trees. Only the other settings are tuned. rf_extractor.PARAM_GRID is left alone.
+LINK_TREES = 200
+LINK_PARAM_GRID = {**PARAM_GRID, "n_estimators": [LINK_TREES]}
 CONTRIBUTIONS = [f"c_{f}" for f in FEATURES_37]
 OUTPUTS = ["P", "u"] + CONTRIBUTIONS
 LANE = OUTPUTS + ["page_missing"]   # the 40 link numbers

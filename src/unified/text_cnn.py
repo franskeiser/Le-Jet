@@ -2,7 +2,7 @@
 
 Per seed and fold:
   * text: the fold's own vocabulary + frozen fastText matrix (src/features/build_crowd_embeddings.py) and
-    its SEQ_LEN_L (split_report.json). The link becomes <URL>; words outside the train vocabulary are
+    SEQ_LEN_L = 50 tokens for every fold (src/config.py; docs/ARCHITECTURE.md 7.1). The link becomes <URL>; words outside the train vocabulary are
     dropped (fusion_data.encode_batch_tolerant), as for a new message in the live app;
   * model: TextEncoder, 64 filters of width 3, with its temporary 2-way head. The embedding is FROZEN
     (requires_grad = False), so only Conv + head train;
@@ -41,7 +41,7 @@ from torch.utils.data import DataLoader
 
 from src.config import (
     ARTIFACTS_ROOT, CROWD_DATASET_PATH, CROWD_EMBEDDINGS_DIR, CROWD_N_FOLDS, CROWD_PILOT_PATH, CROWD_SPLITS_DIR,
-    KERNEL_SIZE, NUM_FILTERS, SEEDS,
+    KERNEL_SIZE, NUM_FILTERS, SEEDS, SEQ_LEN_L,
 )
 from src.data.split_crowd import load_fold
 from src.features.model.cnn_encoder import TextEncoder
@@ -85,11 +85,13 @@ def frozen_embedding(emb_dir: Path) -> tuple:
 
 
 def fold_text_setup(dataset: Path, seed: int, fold: int) -> tuple:
-    """(frozen embedding layer, word_to_idx, SEQ_LEN_L) of one fold."""
+    """(frozen embedding layer, word_to_idx, SEQ_LEN_L) of one fold.
+
+    The length is the fixed SEQ_LEN_L = 50 of src/config.py for every fold and every text model (E2, the text-only CNN, the
+    concatenation control, the CNN-only control), decided 2026-11-21 (docs/ARCHITECTURE.md 7.1). It used to be the fold's 95th
+    percentile from split_report.json (31-33 tokens); that number is still written there, for reference only."""
     embedding, word_to_idx = frozen_embedding(embeddings_dir(dataset, seed, fold))
-    report = json.loads((ROOT / CROWD_SPLITS_DIR / dataset.stem / "split_report.json").read_text(encoding="utf-8"))
-    seq_len = next(f["seq_len_l"] for f in report["folds"] if f["seed"] == seed and f["fold"] == fold)
-    return embedding, word_to_idx, seq_len
+    return embedding, word_to_idx, SEQ_LEN_L
 
 
 def sha256(path: Path) -> str:

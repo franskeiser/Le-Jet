@@ -1,0 +1,36 @@
+seed 42 fold 0: val F1 0.962, balanced accuracy 0.965 | best epoch 3 of 7 | 11.5 s | mean |gamma-1| 0.072, mean |beta| 0.081, 60 of 64 filters moved
+seed 42 fold 1: val F1 0.969, balanced accuracy 0.971 | best epoch 3 of 7 | 10.6 s | mean |gamma-1| 0.075, mean |beta| 0.077, 60 of 64 filters moved
+seed 42 fold 2: val F1 0.951, balanced accuracy 0.954 | best epoch 2 of 6 | 9.0 s | mean |gamma-1| 0.070, mean |beta| 0.079, 58 of 64 filters moved
+seed 42 fold 3: val F1 0.970, balanced accuracy 0.973 | best epoch 3 of 7 | 11.0 s | mean |gamma-1| 0.063, mean |beta| 0.078, 58 of 64 filters moved
+seed 42 fold 4: val F1 0.980, balanced accuracy 0.981 | best epoch 3 of 7 | 11.0 s | mean |gamma-1| 0.069, mean |beta| 0.084, 61 of 64 filters moved
+seed 123 fold 0: val F1 0.932, balanced accuracy 0.937 | best epoch 3 of 7 | 10.4 s | mean |gamma-1| 0.061, mean |beta| 0.069, 57 of 64 filters moved
+seed 123 fold 1: val F1 0.957, balanced accuracy 0.959 | best epoch 1 of 5 | 7.4 s | mean |gamma-1| 0.062, mean |beta| 0.064, 58 of 64 filters moved
+seed 123 fold 2: val F1 0.967, balanced accuracy 0.970 | best epoch 2 of 6 | 9.1 s | mean |gamma-1| 0.071, mean |beta| 0.072, 61 of 64 filters moved
+seed 123 fold 3: val F1 0.957, balanced accuracy 0.960 | best epoch 3 of 7 | 10.7 s | mean |gamma-1| 0.074, mean |beta| 0.084, 63 of 64 filters moved
+seed 123 fold 4: val F1 0.968, balanced accuracy 0.970 | best epoch 7 of 11 | 17.8 s | mean |gamma-1| 0.073, mean |beta| 0.087, 59 of 64 filters moved
+seed 2024 fold 0: val F1 0.961, balanced accuracy 0.964 | best epoch 3 of 7 | 11.1 s | mean |gamma-1| 0.073, mean |beta| 0.079, 61 of 64 filters moved
+seed 2024 fold 1: val F1 0.975, balanced accuracy 0.976 | best epoch 2 of 6 | 9.6 s | mean |gamma-1| 0.069, mean |beta| 0.079, 59 of 64 filters moved
+seed 2024 fold 2: val F1 0.946, balanced accuracy 0.950 | best epoch 3 of 7 | 10.9 s | mean |gamma-1| 0.064, mean |beta| 0.079, 57 of 64 filters moved
+seed 2024 fold 3: val F1 0.965, balanced accuracy 0.969 | best epoch 6 of 10 | 16.0 s | mean |gamma-1| 0.073, mean |beta| 0.087, 60 of 64 filters moved
+seed 2024 fold 4: val F1 0.950, balanced accuracy 0.954 | best epoch 3 of 7 | 11.7 s | mean |gamma-1| 0.069, mean |beta| 0.079, 59 of 64 filters moved
+
+15 E2 models trained; mean val F1 0.960 (std 0.012)
+ seed  fold   val_f1  max_gap  app_path_ok   ok
+   42     0 0.961918      0.0         True True
+   42     1 0.968661      0.0         True True
+   42     2 0.950635      0.0         True True
+   42     3 0.970464      0.0         True True
+   42     4 0.980114      0.0         True True
+  123     0 0.931694      0.0         True True
+  123     1 0.956772      0.0         True True
+  123     2 0.966574      0.0         True True
+  123     3 0.956764      0.0         True True
+  123     4 0.967560      0.0         True True
+ 2024     0 0.960563      0.0         True True
+ 2024     1 0.974504      0.0         True True
+ 2024     2 0.945908      0.0         True True
+ 2024     3 0.965326      0.0         True True
+ 2024     4 0.949523      0.0         True True
+
+15 of 15 rebuilt from their sidecars with a gap of exactly 0
+ALL_DONE

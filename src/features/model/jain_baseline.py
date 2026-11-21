@@ -160,6 +160,12 @@ class JainSmishingDetector:
         for text, label in zip(texts, labels):
             if isinstance(text, str):
                 rows += [(u, int(label)) for u in find_urls(text)]
+        return self.fit_url_classifier_on([u for u, _ in rows], [l for _, l in rows])
+
+    def fit_url_classifier_on(self, urls: list[str], labels) -> dict:
+        """The URL classifier (Section 3.4.4b) fitted on the given URLs and labels: removal of duplicate (url, label) pairs, Snowball-stemmed
+        letter tokens, CountVectorizer, Logistic Regression. Used directly when the URLs come from the dataset rather than UrlExtract."""
+        rows = [(u, int(l)) for u, l in zip(urls, labels) if isinstance(u, str) and u]
         unique = list(dict.fromkeys(rows))  # removal of duplicate (url, label) pairs, order kept
         urls, y = [u for u, _ in unique], np.array([l for _, l in unique])
         self.url_vec = CountVectorizer()

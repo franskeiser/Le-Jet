@@ -1,3 +1,5 @@
+> **Current architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** (E2: a text CNN whose filters are adjusted per message by the Link RF through FiLM). Design names below such as "static gating" are history.
+
 # Le-Jet — Context: what this repo is, why it exists, what changed from SmishGuard
 
 > **Read this first.** It explains where Le-Jet came from, how it relates to the **SmishGuard** repo, and what is different. It is written so a new teammate or a fresh AI session can get oriented without having seen the earlier conversations.

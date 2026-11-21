@@ -1,16 +1,17 @@
-r"""Step 3 of the experimental testing guide: Cross_Validation_Splits.xlsx, from the saved fold files.
+r"""Step 3 of the experimental testing guide: the checks behind Cross_Validation_Splits.xlsx.
 
     .venv\Scripts\python.exe scripts/build_step3_files.py [--data data/final/lejet_final_dataset.csv]
                                                           [--splits data/splits_crowd/lejet_final_dataset]
-                                                          [--out data/final/step3/Cross_Validation_Splits.xlsx]
+                                                          [--out experiments/film/lejet_final_dataset/data_prep/Cross_Validation_Checks.xlsx]
 
 The folds themselves are made by src/data/split_crowd.py (Stratified Group 5-fold, seeds 42/123/2024, grouping by
 link_domain + template_id + dup_group joined into one group, 15% grouped validation taken from the training part).
 This script does NOT make new folds. It reads the saved seed<S>_fold<F>.csv files, re-runs the split in memory to prove
 the saved files are reproducible, runs the guide's "before proceeding" checks, and writes the workbook.
 
-Sheets: Summary (the guide's seed table), Folds (sizes, smishing share, message conditions per part), Assignments
-(one row per message: its group and its part in each of the 15 runs), Checks, Notes.
+The per-message assignments (the guide's Step 3 file) are Cross_Validation_Splits.xlsx in the same folder, written by
+scripts/report_vocabularies.py. This workbook does not repeat them, so there is one copy of the folds.
+Sheets: Summary (the guide's seed table), Folds (sizes, smishing share, message conditions per part), Checks, Notes.
 """
 from __future__ import annotations
 
@@ -37,7 +38,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(ROOT / "data" / "final" / "lejet_final_dataset.csv"))
     ap.add_argument("--splits", default=str(ROOT / "data" / "splits_crowd" / "lejet_final_dataset"))
-    ap.add_argument("--out", default=str(ROOT / "data" / "final" / "step3" / "Cross_Validation_Splits.xlsx"))
+    ap.add_argument("--out", default=str(ROOT / "experiments" / "film" / "lejet_final_dataset" / "data_prep" / "Cross_Validation_Checks.xlsx"))
     a = ap.parse_args()
     t = pd.read_csv(a.data, keep_default_na=False)
     sha = hashlib.sha256(open(a.data, "rb").read()).hexdigest()
@@ -119,7 +120,7 @@ def main() -> int:
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(out, engine="openpyxl") as w:
-        for name, frame in [("Summary", summary), ("Folds", folds), ("Assignments", assign), ("Checks", chk), ("Notes", notes)]:
+        for name, frame in [("Summary", summary), ("Folds", folds), ("Checks", chk), ("Notes", notes)]:
             frame.to_excel(w, sheet_name=name, index=False)
     print(chk.to_string(index=False))
     print(folds[["seed", "fold", "n_train", "n_val", "n_test", "smishing_share_test", "test_no_url", "test_inaccessible", "test_accessible"]].to_string(index=False))

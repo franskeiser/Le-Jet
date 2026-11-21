@@ -1,3 +1,5 @@
+> **⚠ History only (2026-11-21).** The current architecture, data numbers and experiment decisions are in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md). Where this file disagrees with it, ARCHITECTURE.md wins.
+
 # Decision: how to use website inspection when old SMS links are dead
 
 | | |

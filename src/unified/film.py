@@ -34,7 +34,7 @@ The test part is never read here.
 
 Usage:
     python -m src.unified.film build --pilot
-    python -m src.unified.film train --pilot                     # after: python -m src.unified.cnn_baseline train --pilot
+    python -m src.unified.film train --pilot                     # from scratch (D7); --warm-start baseline needs cnn_baseline first
     python -m src.unified.film check --pilot
     python -m src.unified.film train --pilot --seeds 42 --folds 0 --warm-start none
 """
@@ -84,10 +84,13 @@ def trainable_counts(model: FiLMTextCNN) -> tuple[int, int]:
     return total - own, total
 
 
-def build_film(seed: int, fold: int, pilot: bool = False, **options) -> tuple[FiLMTextCNN, Dict[str, int], int]:
-    """(model, word_to_idx, SEQ_LEN_L) of one seed and fold, untrained. `options` go to FiLMTextCNN (defaults: the plan's)."""
+def build_film(seed: int, fold: int, pilot: bool = False, seq_len: int | None = None,
+               **options) -> tuple[FiLMTextCNN, Dict[str, int], int]:
+    """(model, word_to_idx, SEQ_LEN_L) of one seed and fold, untrained. `options` go to FiLMTextCNN (defaults: the plan's).
+    seq_len: None = SEQ_LEN_L = 50 (src/config.py, docs/ARCHITECTURE.md 7.1); a number = another length (ablations only)."""
     dataset = tc.dataset_path(pilot)
-    embedding, word_to_idx, seq_len = tc.fold_text_setup(dataset, seed, fold)      # a fresh layer for this model only
+    embedding, word_to_idx, fold_len = tc.fold_text_setup(dataset, seed, fold)      # a fresh layer for this model only
+    seq_len = fold_len if seq_len is None else seq_len
     tc.seed_everything(seed)
     return FiLMTextCNN(embedding, **options), word_to_idx, seq_len
 
@@ -225,11 +228,12 @@ def model_options(model: FiLMTextCNN) -> dict:
             "use_average": model.use_average}
 
 
-def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epochs: int = fm.EPOCHS, **options) -> tuple:
+def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epochs: int = fm.EPOCHS,
+               seq_len: int | None = None, **options) -> tuple:
     """Train, save and describe one seed and fold. Returns (summary row, per-epoch log, per-filter table)."""
     dataset = tc.dataset_path(pilot)
-    kind = kind_of(warm_start, options.get("bypass_no_link", True))
-    model, word_to_idx, seq_len = build_film(seed, fold, pilot, **options)
+    kind = kind_of(warm_start, options.get("bypass_no_link", True)) + (f"_len{seq_len}" if seq_len else "")
+    model, word_to_idx, seq_len = build_film(seed, fold, pilot, seq_len, **options)
     source = None
     if warm_start:
         source = warm_start_from_baseline(model, dataset, seed, fold)
@@ -264,13 +268,13 @@ def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epoch
 
 
 def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, warm_start: bool = True,
-              epochs: int = fm.EPOCHS, bypass: bool = True) -> pd.DataFrame:
+              epochs: int = fm.EPOCHS, bypass: bool = True, seq_len: int | None = None) -> pd.DataFrame:
     dataset = tc.dataset_path(pilot)
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
     rows, logs, filters = [], [], []
     for seed in seeds:
         for fold in folds:
-            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, bypass_no_link=bypass)
+            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, seq_len, bypass_no_link=bypass)
             rows.append(row)
             logs.append(log)
             filters.append(table)
@@ -278,7 +282,8 @@ def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
                   f"best epoch {row['best_epoch']} of {row['epochs_run']} | {row['train_seconds']:.1f} s | "
                   f"mean |gamma-1| {row['gamma_dev_mean']:.3f}, mean |beta| {row['beta_abs_mean']:.3f}, "
                   f"{row['filters_moved']} of {fm_filters(table)} filters moved", flush=True)
-    out = fm.out_dir(dataset, ("train" if warm_start else "train_scratch") + ("" if bypass else "_nobypass"))
+    out = fm.out_dir(dataset, ("train" if warm_start else "train_scratch") + ("" if bypass else "_nobypass")
+                     + (f"_len{seq_len}" if seq_len else ""))
     out.mkdir(parents=True, exist_ok=True)
     summary = pd.DataFrame(rows)
     summary.to_csv(out / "train_summary.csv", index=False)
@@ -342,8 +347,10 @@ def main(argv: List[str] | None = None) -> None:
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (a pipeline test only)")
     ap.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
     ap.add_argument("--folds", type=int, nargs="+", default=None, help=f"folds to run (default 0-{CROWD_N_FOLDS - 1})")
-    ap.add_argument("--warm-start", choices=["baseline", "none"], default="baseline",
-                    help="train: start from the retrained baseline (default) or from scratch (the D7a check run); check: which set")
+    ap.add_argument("--warm-start", choices=["baseline", "none"], default="none",
+                    help="train: from scratch (default, decision D7) or from the retrained baseline (the warm-start ablation); check: which set")
+    ap.add_argument("--seq-len", type=int, default=None,
+                    help="train: another message length, ablations only (default: SEQ_LEN_L = 50, docs/ARCHITECTURE.md 7.1)")
     ap.add_argument("--no-bypass", action="store_true",
                     help="train / check E2 WITHOUT the has_url bypass (the ablation): the generator reads the link numbers of every message")
     args = ap.parse_args(argv)
@@ -358,7 +365,7 @@ def main(argv: List[str] | None = None) -> None:
                 print(f"  seed {r['seed']} fold {r['fold']}: failed {[c for c in checks if not r[c]]}")
             sys.exit(1)
     elif args.step == "train":
-        summary = run_train(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass)
+        summary = run_train(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass, seq_len=args.seq_len)
         print(f"\n{len(summary)} E2 models trained; mean val F1 {summary['val_f1'].mean():.3f} (std {summary['val_f1'].std():.3f})")
     else:
         summary = run_check(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass)

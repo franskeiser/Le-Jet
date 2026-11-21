@@ -1,3 +1,5 @@
+> **⚠ History only (2026-11-21).** The current architecture, data numbers and experiment decisions are in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md). Where this file disagrees with it, ARCHITECTURE.md wins.
+
 # Le-Jet: final model
 
 **Superseded in part (2026-10-14, proposed):** the two-extractor RF design below is being replaced by one extractor on one dataset; see [`unified_architecture.md`](unified_architecture.md). The CNN, head, gating and `c_` ideas carry over.

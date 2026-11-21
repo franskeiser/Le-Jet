@@ -14,7 +14,8 @@ Rules this study adds to the instrument (step 4.3a):
   * The Link RF is timed on P and u only for every model that uses it (the generator reads only P, u and page_missing), so that the FiLM model and the
     concatenation control, which read the same inputs, differ only by the generator. `proposed_contrib` is the FiLM model with the forest also
     computing the 37 contributions (D21), listed apart so the cost of that choice is visible.
-  * No calibrator (raw P, D9). The voting model has no URL classifier here (voting_baseline.py), so its files are the TF-IDF vectorizer and the vote.
+  * No calibrator (raw P, D9). The KNN-RF-ETC model (voting_baseline.py) routes as Jain et al.: its files are the TF-IDF vectorizer and the
+    vote (no-link messages) and the URL CountVectorizer and Logistic Regression (messages with a link), saved together in one .joblib.
   * A model is loaded as a deployment would: the architecture from its sidecar, the weights from the .pt file (the trained embedding is in
     them; the starting fastText matrix is not loaded), the vocabulary from vocab.json.
   * Same libraries imported by every process before the memory baseline is read, so library overhead is the same for every model.
@@ -26,7 +27,7 @@ Models (key: what, files counted):
     rf_only           the Link RF .joblib alone; messages with a link only
     concat            the concatenation control (concat_scratch): .pt + .json + vocab.json + Link RF .joblib
     raw_cnn           CNN-only with the raw 37 features (cnn_raw): .pt + .json + vocab.json (extra row)
-    voting            KNN + RF + ExtraTrees vote on TF-IDF: one .joblib (made by `save-voting`)
+    voting            KNN-RF-ETC (Jain et al.): TF-IDF + KNN/RF/ExtraTrees vote and URL CountVectorizer + LR, one .joblib (`save-voting`)
 
 Writes experiments/film/<dataset>/efficiency/: form_b_model_size.csv, form_c_peak_memory.csv, form_d_runtime.csv,
 descriptive_details.csv (parameter counts, forest nodes), form_a_environment.json, form_e_summary.csv and .md.
@@ -81,7 +82,7 @@ MODELS: Dict[str, dict] = {
     "cnn_only": {"label": "CNN-only (text)", "kind": "cnn", "forest": False, "extra": False},
     "rf_only": {"label": "RF-only (Link RF)", "kind": None, "forest": True, "extra": False},
     "concat": {"label": "Concatenation fusion", "kind": "concat_scratch", "forest": True, "extra": False},
-    "voting": {"label": "KNN-RF-ETC voting (text only)", "kind": None, "forest": False, "extra": False},
+    "voting": {"label": "KNN-RF-ETC (Jain et al. 2022)", "kind": None, "forest": False, "extra": False},
     "proposed_contrib": {"label": "Proposed, forest also computes the 37 contributions", "kind": "film_scratch", "forest": True, "extra": True},
     "raw_cnn": {"label": "CNN-only, text + raw 37 features", "kind": "cnn_raw", "forest": False, "extra": True},
 }
@@ -105,7 +106,7 @@ def component_files(model: str, dataset: Path, seed: int, fold: int) -> List[tup
     from src.unified import fit_model as fm
     spec = MODELS[model]
     if model == "voting":
-        return [("TF-IDF vectorizer + KNN/RF/ExtraTrees vote", voting_path(dataset, seed, fold))]
+        return [("TF-IDF + KNN/RF/ExtraTrees vote, URL CountVectorizer + Logistic Regression", voting_path(dataset, seed, fold))]
     files = []
     if spec["kind"]:
         checkpoint = fm.checkpoint_path(dataset, spec["kind"], seed, fold)
@@ -130,7 +131,8 @@ def load_messages(pilot: bool, seed: int, fold: int, limit: int | None = None) -
     has_url = rows["has_url"].astype(int).to_numpy() if "has_url" in rows.columns else np.ones(len(rows), dtype=int)
     page_missing = 1 - rows["page_fetched"].astype(int).to_numpy()
     raw = torch.tensor(raw_link_matrix(rows))
-    return [{"text": rows["sms_text"].iloc[i], "has_url": int(has_url[i]), "page_missing": int(page_missing[i]),
+    links = rows["link"].astype(str).to_numpy() if "link" in rows.columns else np.array([""] * len(rows))
+    return [{"text": rows["sms_text"].iloc[i], "has_url": int(has_url[i]), "link": links[i], "page_missing": int(page_missing[i]),
              "features": rows.iloc[[i]][FEATURES_37], "raw": raw[i:i + 1], "label": int(rows["label"].iloc[i] == "smishing")}
             for i in range(len(rows))]
 
@@ -201,12 +203,18 @@ def build_classifier(model: str, pilot: bool, seed: int, fold: int) -> Callable[
 
     if model == "voting":
         from src.unified import voting_baseline as vb
+        from src.features.model.jain_baseline import transform_url
         bundle = joblib.load(voting_path(dataset, seed, fold))
-        tfidf, vote = bundle["tfidf"], bundle["text_clf"]
+        tfidf, vote, url_vec, url_clf = bundle["tfidf"], bundle["text_clf"], bundle["url_vec"], bundle["url_clf"]
         for est in vote.estimators_:
             if hasattr(est, "n_jobs"):
                 est.n_jobs = 1
-        return lambda msg: int(vote.predict(tfidf.transform([vb._prep(msg["text"])]))[0])
+
+        def route(msg):        # the paper's routing: a message with a link goes to the URL classifier, one without to the text vote
+            if msg["has_url"] == 1:
+                return int(url_clf.predict(url_vec.transform([transform_url(msg["link"])]))[0])
+            return int(vote.predict(tfidf.transform([vb._prep(msg["text"])]))[0])
+        return route
 
     if model == "rf_only":
         rf = forest()
@@ -251,7 +259,7 @@ def build_classifier(model: str, pilot: bool, seed: int, fold: int) -> Callable[
 
 # ------------------------------------------------------------------ the voting model is saved here
 def save_voting(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None) -> List[Path]:
-    """Fit the voting model on each fold's TRAIN part (as voting_baseline.py does) and save TF-IDF + the vote, the files it needs to predict."""
+    """Fit KNN-RF-ETC on each fold's TRAIN part (as voting_baseline.py does) and save both routes, the files it needs to predict."""
     import joblib
     from src.data.split_crowd import load_fold
     from src.unified import voting_baseline as vb
@@ -263,7 +271,8 @@ def save_voting(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None =
             detector = vb.fit_detector(load_fold(seed, fold, pilot=pilot)["train"], seed)
             path = voting_path(dataset, seed, fold)
             path.parent.mkdir(parents=True, exist_ok=True)
-            joblib.dump({"tfidf": detector.tfidf, "text_clf": detector.text_clf, "seed": seed, "fold": fold}, path)
+            joblib.dump({"tfidf": detector.tfidf, "text_clf": detector.text_clf, "url_vec": detector.url_vec, "url_clf": detector.url_clf,
+                         "seed": seed, "fold": fold}, path)
             paths.append(path)
             print(f"seed {seed} fold {fold}: saved {path.name} ({path.stat().st_size / MB:.2f} MB)", flush=True)
     return paths

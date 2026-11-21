@@ -1,3 +1,5 @@
+> **⚠ History only (2026-11-21).** The current architecture, data numbers and experiment decisions are in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md). Where this file disagrees with it, ARCHITECTURE.md wins.
+
 # Le-Jet walkthrough: where we are, what the RF is for, how to train it, what data is still missing
 
 **Written 2026-10-14. Living document: update the status column as steps are done.**

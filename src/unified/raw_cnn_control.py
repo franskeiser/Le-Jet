@@ -1,8 +1,9 @@
 """The "CNN-only, same inputs" baseline of the E2 study: one network that reads the SMS text AND the 37 URL / page features, with no Link RF.
 
 This is the baseline the panel asked for. The text-only CNN (cnn_baseline.py) reads no link at all; this one is given what E2 is given
-(the text and the link evidence) but has to learn the link evidence from the raw 37 features itself, in the same network (a Dense branch
-beside the Conv, then one head; src/features/model/raw_cnn.py). Everything else matches the study: the same folds, rows and order
+(the text and the link evidence) but has to learn the link evidence from the 37 features itself, in the same network (a URL branch beside
+the Conv, then one head; src/features/model/raw_cnn.py). The features are prepared inside the model (log of long-tailed counts,
+standardised on the training part's real values, -1 -> 0 plus missing flags; fitted here by feature_stats), docs/ARCHITECTURE.md. Everything else matches the study: the same folds, rows and order
 (film_data.part_inputs), the same shared loop and recipe (fit_model.fit, with the same modality dropout: page hidden 0.25, text
 hidden 0.10), trained from scratch like E2 (from scratch) and the control (from scratch). A "page hidden" message has its 13 page columns
 set to -1 and page_missing = 1 (link_lane.blank_page), the same version the forest-based models score.
@@ -28,7 +29,7 @@ import torch
 
 from src.config import CROWD_N_FOLDS, DENSE_WEIGHT_DECAY, LABEL_SMOOTHING, SEEDS
 from src.data.split_crowd import load_fold
-from src.features.model.raw_cnn import N_FEATURES, RAW_WIDTH, RawFeatureCNN
+from src.features.model.raw_cnn import BRANCH_WIDTH, FLAGGED, LOG_FEATURES, MISSING, N_FEATURES, RAW_WIDTH, RawFeatureCNN, log_columns
 from src.unified import fit_model as fm
 from src.unified import link_lane as ll
 from src.unified import text_cnn as tc
@@ -40,12 +41,12 @@ KIND = "cnn_raw"
 
 def expected_trainable(embedding_dim: int = 300, num_filters: int = 64, kernel_size: int = 3, branch_units: int = 64,
                        dense_units: int = 64) -> int:
-    """Trainable parameters without the embedding: conv + link branch (39 -> 64) + dense (64 + 64 -> 64) + output."""
-    return (embedding_dim * kernel_size * num_filters + num_filters + RAW_WIDTH * branch_units + branch_units
+    """Trainable parameters without the embedding: conv + URL branch (44 -> 64) + dense (64 + 64 -> 64) + output."""
+    return (embedding_dim * kernel_size * num_filters + num_filters + BRANCH_WIDTH * branch_units + branch_units
             + (num_filters + branch_units) * dense_units + dense_units + dense_units * 2 + 2)
 
 
-EXPECTED_TRAINABLE = expected_trainable()        # 68,610
+EXPECTED_TRAINABLE = expected_trainable()        # 68,930
 
 
 # ------------------------------------------------------------------ inputs
@@ -63,11 +64,17 @@ def raw_link_matrix(rows: pd.DataFrame) -> np.ndarray:
 
 
 def feature_stats(train_rows: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    """Mean and std of the 37 features over the TRAIN messages that have a link (page as inspected); a constant column gets std 1."""
+    """Mean and std of the 37 PREPARED features (log(1 + x) on the long-tailed ones, raw_cnn.LOG_FEATURES) over the TRAIN messages that
+    have a link, page as inspected, using the REAL values only: a -1 ("missing") cell is left out of its column's statistics. A constant
+    column, or one with no real value, gets mean 0 / std 1."""
     linked = train_rows[ll.has_link(train_rows).to_numpy()]
-    x = linked[FEATURES_37].to_numpy(dtype=np.float64)
-    std = x.std(axis=0)
-    return x.mean(axis=0).astype(np.float32), np.where(std > 0, std, 1.0).astype(np.float32)
+    x = log_columns(linked[FEATURES_37].to_numpy(dtype=np.float64))
+    real = np.where(x == MISSING, np.nan, x)
+    with np.errstate(invalid="ignore"):
+        mean, std = np.nanmean(real, axis=0), np.nanstd(real, axis=0)
+    mean = np.where(np.isfinite(mean), mean, 0.0)
+    std = np.where(np.isfinite(std) & (std > 1e-8), std, 1.0)              # constant (up to rounding after the log) -> 1
+    return mean.astype(np.float32), std.astype(np.float32)
 
 
 def raw_part_inputs(seed: int, fold: int, part: str, word_to_idx: Dict[str, int], seq_len: int, pilot: bool = False) -> PartData:
@@ -115,7 +122,9 @@ def train_cell(seed: int, fold: int, pilot: bool, epochs: int = fm.EPOCHS) -> tu
         "branch_units": model.branch_units, "dense_units": model.dense.out_features, "freeze_embedding": model.freeze_embedding,
         "seq_len_l": seq_len, "vocab_size": len(word_to_idx), "embeddings_dir": str(emb_dir.relative_to(tc.ROOT)),
         "sha256": fm.hashes(fm.sidecar_files(dataset, seed, fold, checkpoint, sidecar_extra(pilot))),
-        "inputs": "text + 37 raw URL/page features + page_missing + has_url; no Link RF", "warm_start": None,
+        "inputs": "text + 37 URL/page features + page_missing + has_url; no Link RF", "warm_start": None,
+        "feature_preparation": {"log1p": LOG_FEATURES, "standardise": "train part, real values only", "missing": "-1 -> 0 + flags",
+                                "missing_flags": ["page_missing"] + FLAGGED, "clip": 5.0, "branch_inputs": BRANCH_WIDTH},
         "recipe": {"optimizer": "adam", "lr": fm.LR, "epochs": epochs, "patience": fm.PATIENCE, "batch": fm.BATCH_SIZE,
                    "label_smoothing": LABEL_SMOOTHING, "class_weights": True, "dense_weight_decay": DENSE_WEIGHT_DECAY,
                    "p_page_hidden": fm.P_PAGE_HIDDEN, "p_text_hidden": fm.P_TEXT_HIDDEN},

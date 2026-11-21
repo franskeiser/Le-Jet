@@ -112,7 +112,7 @@ def test_the_files_counted_for_each_model_are_the_ones_a_deployment_reads():
     assert names("proposed") == names("proposed_contrib") == names("concat") == ["weights", "configuration", "vocabulary", "Link RF"]
     assert names("cnn_only") == ["weights", "configuration", "vocabulary"]
     assert names("rf_only") == ["Link RF"]
-    assert names("voting") == ["TF-IDF vectorizer + KNN/RF/ExtraTrees vote"]
+    assert names("voting") == ["TF-IDF + KNN/RF/ExtraTrees vote, URL CountVectorizer + Logistic Regression"]
     for model in ("proposed", "cnn_only", "rf_only", "concat"):
         assert all(path.exists() for _, path in eff.component_files(model, DATASET, 42, 0))
     assert not any("embedding_matrix" in path.name or path.suffix == ".csv" for m in eff.MODELS

@@ -43,8 +43,9 @@ def test_tune_returns_a_grid_candidate_and_every_score():
     assert {k: str(v) for k, v in params.items()} == {k: best[k] for k in ll.LINK_PARAM_GRID}
 
 
-def test_link_forest_has_100_trees_and_shares_the_other_settings_with_the_old_grid():
-    assert ll.LINK_PARAM_GRID["n_estimators"] == [100]
+def test_link_forest_has_200_trees_and_shares_the_other_settings_with_the_old_grid():
+    # 200 trees: docs/ARCHITECTURE.md 7.2 (tree-count test on the final dataset, 2026-11-21)
+    assert ll.LINK_TREES == 200 and ll.LINK_PARAM_GRID["n_estimators"] == [200]
     assert {k: v for k, v in ll.LINK_PARAM_GRID.items() if k != "n_estimators"} == \
            {k: v for k, v in PARAM_GRID.items() if k != "n_estimators"}
     assert PARAM_GRID["n_estimators"] == [200, 500]        # the shared grid is untouched

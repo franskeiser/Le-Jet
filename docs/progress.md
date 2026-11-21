@@ -1,3 +1,5 @@
+> **⚠ History only (2026-11-21).** The current architecture, data numbers and experiment decisions are in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md). Where this file disagrees with it, ARCHITECTURE.md wins.
+
 # Le-Jet progress and next steps
 
 **Updated 2026-10-15. Read this first, then `walkthrough.md` and `rf_link_expert_architecture.md` for background.**

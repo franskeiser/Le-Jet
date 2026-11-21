@@ -1,0 +1,16 @@
+seed 42 fold 0: 8809 tokens {'primary': 5483, 'secondary': 990, 'primary_subword_guess': 2335} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed42_fold0
+seed 42 fold 1: 8896 tokens {'primary': 5538, 'secondary': 1033, 'primary_subword_guess': 2324} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed42_fold1
+seed 42 fold 2: 8855 tokens {'primary': 5489, 'secondary': 965, 'primary_subword_guess': 2400} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed42_fold2
+seed 42 fold 3: 8983 tokens {'primary': 5659, 'secondary': 1041, 'primary_subword_guess': 2282} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed42_fold3
+seed 42 fold 4: 8999 tokens {'primary': 5607, 'secondary': 989, 'primary_subword_guess': 2402} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed42_fold4
+seed 123 fold 0: 8720 tokens {'primary': 5513, 'secondary': 1003, 'primary_subword_guess': 2203} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed123_fold0
+seed 123 fold 1: 8829 tokens {'primary': 5470, 'secondary': 993, 'primary_subword_guess': 2365} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed123_fold1
+seed 123 fold 2: 9143 tokens {'primary': 5617, 'secondary': 999, 'primary_subword_guess': 2526} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed123_fold2
+seed 123 fold 3: 8962 tokens {'primary': 5649, 'secondary': 1053, 'primary_subword_guess': 2259} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed123_fold3
+seed 123 fold 4: 8922 tokens {'primary': 5622, 'secondary': 1021, 'primary_subword_guess': 2278} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed123_fold4
+seed 2024 fold 0: 8886 tokens {'primary': 5478, 'secondary': 1081, 'primary_subword_guess': 2326} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed2024_fold0
+seed 2024 fold 1: 9001 tokens {'primary': 5631, 'secondary': 1001, 'primary_subword_guess': 2368} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed2024_fold1
+seed 2024 fold 2: 8836 tokens {'primary': 5422, 'secondary': 947, 'primary_subword_guess': 2466} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed2024_fold2
+seed 2024 fold 3: 8900 tokens {'primary': 5623, 'secondary': 1024, 'primary_subword_guess': 2252} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed2024_fold3
+seed 2024 fold 4: 9026 tokens {'primary': 5599, 'secondary': 1016, 'primary_subword_guess': 2410} -> D:\NYOLAN FILES HDD\pup\4th year\Thesis\Lejet\Le-Jet\models\embeddings_crowd\lejet_final_dataset\seed2024_fold4
+ALL_DONE

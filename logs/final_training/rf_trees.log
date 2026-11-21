@@ -1,0 +1,26 @@
+seed 42 fold 0 done (46s)
+seed 42 fold 1 done (89s)
+seed 42 fold 2 done (133s)
+seed 42 fold 3 done (177s)
+seed 42 fold 4 done (222s)
+seed 123 fold 0 done (269s)
+seed 123 fold 1 done (315s)
+seed 123 fold 2 done (361s)
+seed 123 fold 3 done (406s)
+seed 123 fold 4 done (452s)
+seed 2024 fold 0 done (497s)
+seed 2024 fold 1 done (542s)
+seed 2024 fold 2 done (587s)
+seed 2024 fold 3 done (633s)
+seed 2024 fold 4 done (678s)
+ n_trees  f1_mean  f1_sd  log_loss_mean  bal_acc_mean  within_tie_of_best  chosen
+      25   0.9082 0.0131         0.2672        0.9054               False   False
+      50   0.9109 0.0152         0.2612        0.9081                True    True
+     100   0.9100 0.0156         0.2619        0.9073               False   False
+     200   0.9112 0.0156         0.2588        0.9084                True   False
+     300   0.9108 0.0150         0.2590        0.9082                True   False
+     500   0.9110 0.0157         0.2614        0.9083                True   False
+     750   0.9117 0.0152         0.2610        0.9090                True   False
+    1000   0.9118 0.0152         0.2625        0.9090                True   False
+CHOSEN n_trees = 50 (best mean F1 0.9118; rule: smallest count within 0.001 of the best)
+ALL_DONE

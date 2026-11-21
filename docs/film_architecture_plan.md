@@ -1,3 +1,5 @@
+> **⚠ 2026-11-21: the short, current description is [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).** This file keeps the E2 plan, the study basis and the decision log (D1–D24). Its pilot numbers are synthetic rehearsals, and the Link RF tree count, message length and RF training rows are now set by ARCHITECTURE.md §7.
+
 # Le-Jet final architecture: E2 (DAFT-style FiLM). Plan, study basis, decisions, phases
 
 **Written 2026-10-19. Status: the group agreed to adopt E2 as the architecture (reported by Franz). The adviser said E2 is okay (2026-10-19, as reported by Franz; decision D1). Decisions D1, D2, D7 and D16 were answered on 2026-10-19 (Phase 0, step 0.1); D7 was changed on 2026-10-20 from warm start to from scratch; D18 (SOP 2) was recorded as removed on 2026-10-20 (Franz): the models are judged on accuracy.**

@@ -1,3 +1,5 @@
+> **⚠ History only (2026-11-21).** The current architecture, data numbers and experiment decisions are in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md). Where this file disagrees with it, ARCHITECTURE.md wins.
+
 # Le-Jet: unified architecture (one dataset, one Random Forest extractor)
 
 **Written 2026-10-14. Status: proposed, implemented, to be confirmed with the group and the adviser.**

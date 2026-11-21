@@ -1,3 +1,5 @@
+> **Current architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** (E2: a text CNN whose filters are adjusted per message by the Link RF through FiLM). Design names below such as "static gating" are history.
+
 # Le-Jet
 
 **Thesis:** A Random Forest-Guided Static Gating Framework for Financial-Related Smishing Classification Using SMS Text

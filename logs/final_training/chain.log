@@ -1,0 +1,192 @@
+=== rows 22:14:37
+seed 42 fold 0 done
+seed 42 fold 1 done
+seed 42 fold 2 done
+seed 42 fold 3 done
+seed 42 fold 4 done
+seed 123 fold 0 done
+seed 123 fold 1 done
+seed 123 fold 2 done
+seed 123 fold 3 done
+seed 123 fold 4 done
+seed 2024 fold 0 done
+seed 2024 fold 1 done
+seed 2024 fold 2 done
+seed 2024 fold 3 done
+seed 2024 fold 4 done
+  val_condition               variant  n_val_mean  f1_mean  f1_sd  bal_acc_mean  log_loss_mean
+     all_linked          A_all_linked    658.3333   0.9312 0.0307        0.9267         0.2022
+     all_linked B_complete_pages_only    658.3333   0.8984 0.0450        0.8796         0.3433
+    page_loaded          A_all_linked    414.7333   0.9420 0.0674        0.9467         0.1733
+    page_loaded B_complete_pages_only    414.7333   0.9495 0.0457        0.9517         0.1756
+page_not_loaded          A_all_linked    243.6000   0.9051 0.0478        0.8695         0.2594
+page_not_loaded B_complete_pages_only    243.6000   0.8350 0.0714        0.7333         0.6383
+=== tune 22:14:54
+seed 42 fold 0: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.8950
+seed 42 fold 1: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9264
+seed 42 fold 2: {'max_depth': None, 'max_features': 0.5, 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.8974
+seed 42 fold 3: {'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.8993
+seed 42 fold 4: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9289
+seed 123 fold 0: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9235
+seed 123 fold 1: {'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'n_estimators': 200} f1=0.9220
+seed 123 fold 2: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9016
+seed 123 fold 3: {'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9296
+seed 123 fold 4: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.8987
+seed 2024 fold 0: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9151
+seed 2024 fold 1: {'max_depth': 20, 'max_features': 0.5, 'min_samples_leaf': 1, 'n_estimators': 200} f1=0.9151
+seed 2024 fold 2: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.8799
+seed 2024 fold 3: {'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9304
+seed 2024 fold 4: {'max_depth': None, 'max_features': 0.5, 'min_samples_leaf': 5, 'n_estimators': 200} f1=0.9049
+ seed  fold  train_rows  max_depth max_features  min_samples_leaf  n_estimators  cv_f1  cv_log_loss
+   42     0        4607        NaN         sqrt                 5           200 0.8950       0.2828
+   42     1        4604        NaN         sqrt                 5           200 0.9264       0.2389
+   42     2        4606        NaN          0.5                 5           200 0.8974       0.2603
+   42     3        4606       20.0         sqrt                 5           200 0.8993       0.2670
+   42     4        4606        NaN         sqrt                 5           200 0.9289       0.2754
+  123     0        4603        NaN         sqrt                 5           200 0.9235       0.2402
+  123     1        4607       20.0         sqrt                 1           200 0.9220       0.2524
+  123     2        4606        NaN         sqrt                 5           200 0.9016       0.2708
+  123     3        4606       20.0         sqrt                 5           200 0.9296       0.2311
+  123     4        4606        NaN         sqrt                 5           200 0.8987       0.2827
+ 2024     0        4607        NaN         sqrt                 5           200 0.9151       0.2638
+ 2024     1        4606       20.0          0.5                 1           200 0.9151       0.2585
+ 2024     2        4606        NaN         sqrt                 5           200 0.8799       0.2839
+ 2024     3        4604        NaN         sqrt                 5           200 0.9304       0.2410
+ 2024     4        4606        NaN          0.5                 5           200 0.9049       0.2555
+=== oof 22:17:36
+seed 42 fold 0: oof F1 0.9018
+seed 42 fold 1: oof F1 0.927
+seed 42 fold 2: oof F1 0.9031
+seed 42 fold 3: oof F1 0.9012
+seed 42 fold 4: oof F1 0.9043
+seed 123 fold 0: oof F1 0.9188
+seed 123 fold 1: oof F1 0.9107
+seed 123 fold 2: oof F1 0.9141
+seed 123 fold 3: oof F1 0.9177
+seed 123 fold 4: oof F1 0.9018
+seed 2024 fold 0: oof F1 0.9172
+seed 2024 fold 1: oof F1 0.9208
+seed 2024 fold 2: oof F1 0.8962
+seed 2024 fold 3: oof F1 0.9238
+seed 2024 fold 4: oof F1 0.9039
+ seed  fold  train_rows  train_rows_with_link  oof_f1  oof_log_loss  mean_u  oof_f1_page_hidden
+   42     0        4607                  4016  0.9018        0.2705  0.2325              0.8808
+   42     1        4604                  4008  0.9270        0.2272  0.2149              0.9103
+   42     2        4606                  4030  0.9031        0.2613  0.1812              0.8757
+   42     3        4606                  4000  0.9012        0.2542  0.2170              0.8726
+   42     4        4606                  3988  0.9043        0.2621  0.2312              0.8758
+  123     0        4603                  4032  0.9188        0.2301  0.2083              0.8711
+  123     1        4607                  4005  0.9107        0.2394  0.2645              0.8909
+  123     2        4606                  3980  0.9141        0.2497  0.2211              0.8884
+  123     3        4606                  4007  0.9177        0.2334  0.2115              0.8871
+  123     4        4606                  4019  0.9018        0.2713  0.2312              0.8863
+ 2024     0        4607                  4018  0.9172        0.2409  0.2255              0.8990
+ 2024     1        4606                  4025  0.9208        0.2326  0.2206              0.8892
+ 2024     2        4606                  3993  0.8962        0.2640  0.2211              0.8791
+ 2024     3        4604                  3986  0.9238        0.2345  0.2137              0.9022
+ 2024     4        4606                  3954  0.9039        0.2372  0.1785              0.8814
+=== final 22:18:42
+seed 42 fold 0: val F1 0.9402
+seed 42 fold 1: val F1 0.9307
+seed 42 fold 2: val F1 0.9326
+seed 42 fold 3: val F1 0.9777
+seed 42 fold 4: val F1 0.9147
+seed 123 fold 0: val F1 0.8554
+seed 123 fold 1: val F1 0.937
+seed 123 fold 2: val F1 0.9579
+seed 123 fold 3: val F1 0.941
+seed 123 fold 4: val F1 0.9208
+seed 2024 fold 0: val F1 0.9291
+seed 2024 fold 1: val F1 0.9673
+seed 2024 fold 2: val F1 0.9328
+seed 2024 fold 3: val F1 0.9481
+seed 2024 fold 4: val F1 0.8828
+ seed  fold  val_rows  val_rows_with_link  test_rows_scored  val_f1  val_log_loss  val_f1_page_hidden
+   42     0       767                 654              1342  0.9402        0.1838              0.9156
+   42     1       767                 647              1345  0.9307        0.2299              0.9099
+   42     2       767                 657              1343  0.9326        0.2020              0.8840
+   42     3       767                 654              1343  0.9777        0.1248              0.9524
+   42     4       767                 658              1343  0.9147        0.2012              0.8997
+  123     0       768                 647              1345  0.8554        0.4071              0.8352
+  123     1       767                 661              1342  0.9370        0.2054              0.8925
+  123     2       767                 653              1343  0.9579        0.1657              0.9309
+  123     3       767                 648              1343  0.9410        0.1958              0.9080
+  123     4       767                 660              1343  0.9208        0.2067              0.8904
+ 2024     0       767                 653              1342  0.9291        0.1780              0.9202
+ 2024     1       767                 653              1343  0.9673        0.1459              0.9274
+ 2024     2       767                 653              1343  0.9328        0.1982              0.9033
+ 2024     3       767                 667              1345  0.9481        0.1515              0.9331
+ 2024     4       767                 710              1343  0.8828        0.2365              0.8459
+=== check 22:19:06
+P = bias + sum c_ holds on all 15 seed-folds (max gap 2.3e-15)
+ seed  fold   bias  final_max_gap  oof_distinct_biases
+   42     0 0.5154   1.998401e-15                    5
+   42     1 0.5157   1.665335e-15                    5
+   42     2 0.5160   1.776357e-15                    5
+   42     3 0.5184   1.887379e-15                    5
+   42     4 0.5205   1.887379e-15                    5
+  123     0 0.5111   1.887379e-15                    5
+  123     1 0.5175   1.887379e-15                    5
+  123     2 0.5183   1.776357e-15                    5
+  123     3 0.5161   1.776357e-15                    5
+  123     4 0.5137   2.109424e-15                    5
+ 2024     0 0.5159   1.887379e-15                    5
+ 2024     1 0.5150   1.665335e-15                    5
+ 2024     2 0.5178   1.998401e-15                    5
+ 2024     3 0.5184   1.887379e-15                    5
+ 2024     4 0.5227   2.331468e-15                    5
+=== film_build 22:19:13
+seed 42 fold 0: ok | 70,658 trainable without the embedding, 2,713,358 with it (vocabulary 8809)
+seed 42 fold 1: ok | 70,658 trainable without the embedding, 2,739,458 with it (vocabulary 8896)
+seed 42 fold 2: ok | 70,658 trainable without the embedding, 2,727,158 with it (vocabulary 8855)
+seed 42 fold 3: ok | 70,658 trainable without the embedding, 2,765,558 with it (vocabulary 8983)
+seed 42 fold 4: ok | 70,658 trainable without the embedding, 2,770,358 with it (vocabulary 8999)
+seed 123 fold 0: ok | 70,658 trainable without the embedding, 2,686,658 with it (vocabulary 8720)
+seed 123 fold 1: ok | 70,658 trainable without the embedding, 2,719,358 with it (vocabulary 8829)
+seed 123 fold 2: ok | 70,658 trainable without the embedding, 2,813,558 with it (vocabulary 9143)
+seed 123 fold 3: ok | 70,658 trainable without the embedding, 2,759,258 with it (vocabulary 8962)
+seed 123 fold 4: ok | 70,658 trainable without the embedding, 2,747,258 with it (vocabulary 8922)
+seed 2024 fold 0: ok | 70,658 trainable without the embedding, 2,736,458 with it (vocabulary 8886)
+seed 2024 fold 1: ok | 70,658 trainable without the embedding, 2,770,958 with it (vocabulary 9001)
+seed 2024 fold 2: ok | 70,658 trainable without the embedding, 2,721,458 with it (vocabulary 8836)
+seed 2024 fold 3: ok | 70,658 trainable without the embedding, 2,740,658 with it (vocabulary 8900)
+seed 2024 fold 4: ok | 70,658 trainable without the embedding, 2,778,458 with it (vocabulary 9026)
+
+15 of 15 seed x fold models built and checked
+=== film_foldlen 22:19:31
+seed 42 fold 0: val F1 0.962, balanced accuracy 0.965 | best epoch 3 of 7 | 11.1 s | mean |gamma-1| 0.078, mean |beta| 0.092, 62 of 64 filters moved
+seed 42 fold 1: val F1 0.963, balanced accuracy 0.965 | best epoch 3 of 7 | 11.6 s | mean |gamma-1| 0.080, mean |beta| 0.090, 62 of 64 filters moved
+seed 42 fold 2: val F1 0.948, balanced accuracy 0.952 | best epoch 4 of 8 | 11.3 s | mean |gamma-1| 0.077, mean |beta| 0.094, 60 of 64 filters moved
+seed 42 fold 3: val F1 0.963, balanced accuracy 0.966 | best epoch 1 of 5 | 7.1 s | mean |gamma-1| 0.075, mean |beta| 0.088, 56 of 64 filters moved
+seed 42 fold 4: val F1 0.976, balanced accuracy 0.978 | best epoch 3 of 7 | 10.8 s | mean |gamma-1| 0.076, mean |beta| 0.097, 62 of 64 filters moved
+seed 123 fold 0: val F1 0.921, balanced accuracy 0.927 | best epoch 3 of 7 | 10.4 s | mean |gamma-1| 0.070, mean |beta| 0.084, 59 of 64 filters moved
+seed 123 fold 1: val F1 0.964, balanced accuracy 0.967 | best epoch 9 of 13 | 17.4 s | mean |gamma-1| 0.074, mean |beta| 0.091, 62 of 64 filters moved
+seed 123 fold 2: val F1 0.969, balanced accuracy 0.972 | best epoch 1 of 5 | 6.8 s | mean |gamma-1| 0.082, mean |beta| 0.087, 62 of 64 filters moved
+seed 123 fold 3: val F1 0.950, balanced accuracy 0.954 | best epoch 1 of 5 | 6.7 s | mean |gamma-1| 0.080, mean |beta| 0.088, 59 of 64 filters moved
+seed 123 fold 4: val F1 0.969, balanced accuracy 0.972 | best epoch 7 of 11 | 15.3 s | mean |gamma-1| 0.082, mean |beta| 0.095, 60 of 64 filters moved
+seed 2024 fold 0: val F1 0.963, balanced accuracy 0.966 | best epoch 3 of 7 | 10.9 s | mean |gamma-1| 0.081, mean |beta| 0.090, 61 of 64 filters moved
+seed 2024 fold 1: val F1 0.971, balanced accuracy 0.973 | best epoch 2 of 6 | 10.5 s | mean |gamma-1| 0.075, mean |beta| 0.090, 61 of 64 filters moved
+seed 2024 fold 2: val F1 0.949, balanced accuracy 0.953 | best epoch 3 of 7 | 10.3 s | mean |gamma-1| 0.074, mean |beta| 0.090, 60 of 64 filters moved
+seed 2024 fold 3: val F1 0.960, balanced accuracy 0.963 | best epoch 2 of 6 | 8.4 s | mean |gamma-1| 0.076, mean |beta| 0.091, 61 of 64 filters moved
+seed 2024 fold 4: val F1 0.940, balanced accuracy 0.945 | best epoch 3 of 7 | 9.5 s | mean |gamma-1| 0.077, mean |beta| 0.092, 61 of 64 filters moved
+
+15 E2 models trained; mean val F1 0.958 (std 0.014)
+=== film_len50 22:22:41
+seed 42 fold 0: val F1 0.962, balanced accuracy 0.965 | best epoch 3 of 7 | 12.3 s | mean |gamma-1| 0.072, mean |beta| 0.081, 60 of 64 filters moved
+seed 42 fold 1: val F1 0.969, balanced accuracy 0.971 | best epoch 3 of 7 | 11.8 s | mean |gamma-1| 0.075, mean |beta| 0.077, 60 of 64 filters moved
+seed 42 fold 2: val F1 0.951, balanced accuracy 0.954 | best epoch 2 of 6 | 13.2 s | mean |gamma-1| 0.070, mean |beta| 0.079, 58 of 64 filters moved
+seed 42 fold 3: val F1 0.970, balanced accuracy 0.973 | best epoch 3 of 7 | 10.9 s | mean |gamma-1| 0.063, mean |beta| 0.078, 58 of 64 filters moved
+seed 42 fold 4: val F1 0.980, balanced accuracy 0.981 | best epoch 3 of 7 | 11.9 s | mean |gamma-1| 0.069, mean |beta| 0.084, 61 of 64 filters moved
+seed 123 fold 0: val F1 0.932, balanced accuracy 0.937 | best epoch 3 of 7 | 13.8 s | mean |gamma-1| 0.061, mean |beta| 0.069, 57 of 64 filters moved
+seed 123 fold 1: val F1 0.957, balanced accuracy 0.959 | best epoch 1 of 5 | 9.4 s | mean |gamma-1| 0.062, mean |beta| 0.064, 58 of 64 filters moved
+seed 123 fold 2: val F1 0.967, balanced accuracy 0.970 | best epoch 2 of 6 | 10.0 s | mean |gamma-1| 0.071, mean |beta| 0.072, 61 of 64 filters moved
+seed 123 fold 3: val F1 0.957, balanced accuracy 0.960 | best epoch 3 of 7 | 11.9 s | mean |gamma-1| 0.074, mean |beta| 0.084, 63 of 64 filters moved
+seed 123 fold 4: val F1 0.968, balanced accuracy 0.970 | best epoch 7 of 11 | 17.9 s | mean |gamma-1| 0.073, mean |beta| 0.087, 59 of 64 filters moved
+seed 2024 fold 0: val F1 0.961, balanced accuracy 0.964 | best epoch 3 of 7 | 11.0 s | mean |gamma-1| 0.073, mean |beta| 0.079, 61 of 64 filters moved
+seed 2024 fold 1: val F1 0.975, balanced accuracy 0.976 | best epoch 2 of 6 | 10.3 s | mean |gamma-1| 0.069, mean |beta| 0.079, 59 of 64 filters moved
+seed 2024 fold 2: val F1 0.946, balanced accuracy 0.950 | best epoch 3 of 7 | 11.4 s | mean |gamma-1| 0.064, mean |beta| 0.079, 57 of 64 filters moved
+seed 2024 fold 3: val F1 0.965, balanced accuracy 0.969 | best epoch 6 of 10 | 16.4 s | mean |gamma-1| 0.073, mean |beta| 0.087, 60 of 64 filters moved
+seed 2024 fold 4: val F1 0.950, balanced accuracy 0.954 | best epoch 3 of 7 | 11.1 s | mean |gamma-1| 0.069, mean |beta| 0.079, 59 of 64 filters moved
+
+15 E2 models trained; mean val F1 0.960 (std 0.012)
+ALL_DONE

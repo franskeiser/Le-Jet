@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import torch
 
-from src.features.model.raw_cnn import N_FEATURES, RAW_WIDTH, RawFeatureCNN
+from src.features.model.raw_cnn import BRANCH_WIDTH, FLAGGED, LOG_FEATURES, N_FEATURES, RAW_WIDTH, RawFeatureCNN, log_columns
 from src.unified import raw_cnn_control as rc
 from src.unified import link_lane as ll
 from src.unified.prepare_web_37 import FEATURES_37
@@ -33,13 +33,14 @@ def trainable(model):
 
 
 # ------------------------------------------------------------------ the model
-def test_the_model_has_68610_trainable_parameters_without_the_embedding():
+def test_the_model_has_68930_trainable_parameters_without_the_embedding():
     model = RawFeatureCNN(embedding())
-    assert trainable(model) == 68610 == rc.EXPECTED_TRAINABLE == rc.expected_trainable()
+    assert trainable(model) == 68930 == rc.EXPECTED_TRAINABLE == rc.expected_trainable()
     parts = {n: sum(p.numel() for p in layer.parameters()) for n, layer in
              (("conv", model.conv), ("link_branch", model.link_branch), ("dense", model.dense), ("output", model.output))}
-    assert parts == {"conv": 57664, "link_branch": 2560, "dense": 8256, "output": 130}
+    assert parts == {"conv": 57664, "link_branch": 2880, "dense": 8256, "output": 130}
     assert RAW_WIDTH == N_FEATURES + 2 == 39 and len(FEATURES_37) == N_FEATURES
+    assert BRANCH_WIDTH == 37 + 1 + len(FLAGGED) + 1 == 44            # prepared 37, page_missing, 5 flags, has_url
 
 
 def test_the_features_reach_the_verdict_and_there_is_no_forest_in_the_model():
@@ -54,19 +55,46 @@ def test_the_features_reach_the_verdict_and_there_is_no_forest_in_the_model():
     assert not any("forest" in n or "generator" in n for n, _ in model.named_modules())
 
 
-def test_the_features_are_standardised_with_the_given_mean_and_std_and_clipped():
+def test_the_features_are_logged_standardised_with_the_given_mean_and_std_and_clipped():
+    logged = [FEATURES_37.index(f) for f in LOG_FEATURES]
+    plain = [i for i in range(N_FEATURES) if i not in logged]
     mean, std = torch.full((N_FEATURES,), 10.0), torch.full((N_FEATURES,), 2.0)
     model = RawFeatureCNN(embedding(), mean, std)
     link = torch.zeros(3, RAW_WIDTH)
     link[:, N_FEATURES + 1] = 1
-    link[0, :N_FEATURES] = 12.0           # one std above the mean
+    link[0, :N_FEATURES] = 12.0           # plain columns: one std above the mean
     link[1, :N_FEATURES] = 10_000.0       # an enormous value
     link[2, :N_FEATURES] = 10.0
     scaled = model.scaled_link(link)
-    assert torch.allclose(scaled[0, :N_FEATURES], torch.ones(N_FEATURES))
-    assert (scaled[1, :N_FEATURES] == 5.0).all()                      # clipped
-    assert (scaled[2, :N_FEATURES] == 0).all()
+    assert torch.allclose(scaled[0, plain], torch.ones(len(plain)))
+    assert torch.allclose(scaled[0, logged], torch.full((len(logged),), (np.log1p(12.0) - 10.0) / 2.0))   # log(1 + x) first
+    assert (scaled[1, plain] == 5.0).all()                            # clipped
+    assert (scaled[2, plain] == 0).all()
     assert "feature_mean" in model.state_dict() and "feature_std" in model.state_dict()       # saved with the weights
+
+
+def test_a_missing_cell_becomes_average_and_raises_its_flag():
+    model = RawFeatureCNN(embedding(), torch.full((N_FEATURES,), 3.0), torch.full((N_FEATURES,), 2.0))
+    link = torch.full((2, RAW_WIDTH), 7.0)
+    link[:, N_FEATURES] = 0                                            # page loaded
+    link[:, N_FEATURES + 1] = 1
+    for f in FLAGGED:
+        link[1, FEATURES_37.index(f)] = -1                             # missing WHOIS / rank / redirects on a loaded page
+    out = model.scaled_link(link)
+    flagged = [FEATURES_37.index(f) for f in FLAGGED]
+    assert out.shape == (2, BRANCH_WIDTH)
+    assert (out[1, flagged] == 0).all() and (out[0, flagged] != 0).all()      # missing -> 0 (the average), not a made-up number
+    flags = out[:, N_FEATURES + 1:N_FEATURES + 1 + len(FLAGGED)]
+    assert flags[0].sum() == 0 and (flags[1] == 1).all()
+    assert out[:, N_FEATURES].tolist() == [0, 0] and out[:, -1].tolist() == [1, 1]   # page_missing, has_url passed on
+
+
+def test_a_message_with_no_link_gets_an_all_zero_url_input():
+    model = RawFeatureCNN(embedding(), torch.rand(N_FEATURES), torch.rand(N_FEATURES) + 1)
+    link = torch.full((1, RAW_WIDTH), -1.0)
+    link[0, N_FEATURES] = 1
+    link[0, N_FEATURES + 1] = 0
+    assert (model.scaled_link(link) == 0).all()
 
 
 def test_a_message_with_no_link_ignores_its_feature_cells_even_nan():
@@ -149,6 +177,17 @@ def test_feature_stats_use_only_the_messages_with_a_link_and_a_constant_column_g
     df.loc[df["has_url"] == 1, FEATURES_37[3]] = 5.0                       # constant over the linked messages
     mean, std = rc.feature_stats(df)
     linked = df[df["has_url"] == 1]
-    assert np.allclose(mean, linked[FEATURES_37].mean().to_numpy(), atol=1e-5) and np.isfinite(mean).all()
-    assert std[3] == 1.0 and mean[3] == pytest.approx(5.0)
-    assert np.allclose(np.delete(std, 3), np.delete(linked[FEATURES_37].std(ddof=0).to_numpy(), 3), atol=1e-4)
+    prepared = pd.DataFrame(log_columns(linked[FEATURES_37].to_numpy(dtype=np.float64)), columns=FEATURES_37)
+    assert np.allclose(mean, prepared.mean().to_numpy(), atol=1e-5) and np.isfinite(mean).all()
+    assert std[3] == 1.0
+    assert np.allclose(np.delete(std, 3), np.delete(prepared.std(ddof=0).to_numpy(), 3), atol=1e-4)
+
+
+def test_feature_stats_leave_the_missing_cells_out():
+    df = rows(20, has_url=[1] * 20)
+    col = FEATURES_37.index("domain_age")
+    real = df["domain_age"].copy()
+    df.loc[:9, "domain_age"] = -1                                        # half missing
+    mean, std = rc.feature_stats(df)
+    kept = np.log1p(real[10:].to_numpy())                                # domain_age is logged
+    assert mean[col] == pytest.approx(kept.mean(), abs=1e-5) and std[col] == pytest.approx(kept.std(), abs=1e-4)
