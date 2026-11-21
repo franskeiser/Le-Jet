@@ -10,7 +10,17 @@ models/*
 !models/embeddings/
 
 # ── Data and VM artifacts (never belong in git) ────────────────────────
-/data/
+/data/*
+# Shared so the whole group uses ONE set of folds (ids, labels, domains and fold parts only: no SMS text):
+#   Step 3 workbook (scripts/build_step3_files.py) and the fold files (src/data/split_crowd.py)
+!/data/final/
+/data/final/*
+!/data/final/step3/
+!/data/splits_crowd/
+/data/splits_crowd/*
+!/data/splits_crowd/lejet_final_dataset/
+# Excel / Word lock files (created while a workbook is open)
+~$*
 *.vdi
 *.vmdk
 *.vhd
