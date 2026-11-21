@@ -96,7 +96,7 @@ The embedding adds vocabulary size × 300 to both. The real speed cost of E2 is 
 ## 6. How it is trained and evaluated
 
 **Data:** `data/final/lejet_final_dataset.csv`. **6,716 messages: 3,091 smishing, 3,625 legitimate. 5,828 with a URL (3,624 page
-loaded, 2,204 not loaded), 888 without.** These are the numbers to quote; an older table in the guide (6,718 / 3,097 / 3,621) is out of date.
+loaded: 1,719 smishing / 1,905 legitimate; 2,204 not loaded: 1,297 / 907), 888 without (75 / 813).** These are the numbers to quote; an older table in the guide (6,718 / 3,097 / 3,621) is out of date.
 
 **Folds (guide Step 3):** Stratified Group 5-fold, seeds 42, 123, 2024 = 15 runs (`src/data/split_crowd.py`, files in
 `data/splits_crowd/lejet_final_dataset/`). Related messages (same link domain, same template, or ≥ 90% same wording) are one group and never
@@ -249,7 +249,7 @@ message with a link, (B) fit only on those whose page loaded; both score the val
 **Reading:** on pages that loaded the two are tied (within the ±5-point spread across folds). On pages that did not load (about 37% of
 linked messages) B is far worse: it never saw a blanked page while training, so its answers there are close to guesses. The forest has
 to score those messages at test time and in the app, so it must learn from them. **Limitation to state in Chapter 5:** with A, the
-forest can use "the page did not load" itself as evidence (in this dataset 1,303 of the 2,204 not-loaded links are smishing). That is
+forest can use "the page did not load" itself as evidence (in this dataset 1,297 of the 2,204 not-loaded links are smishing). That is
 realistic (scam pages are taken down quickly) but depends on when the pages were visited.
 
 ## 7b. Progress on the testing guide
@@ -262,7 +262,8 @@ realistic (scam pages are taken down quickly) but depends on when the pages were
 | 5 | **done** (2026-11-22): test-fold predictions, 5 models × 3 seeds × 6,716 messages, every check passed (each message once per seed, fold matches Step 3, same messages for every model); the test read is logged | `experiments/film/lejet_final_dataset/step5/` (`scripts/build_step5_files.py --read-test`) |
 | 6 | **done** (2026-11-22): 4 component checks on the trained E2, test folds | `experiments/film/lejet_final_dataset/step6/Component_Check_Results.xlsx` (`scripts/build_step6_files.py --read-test`) |
 | 7 | **done** (2026-11-22): confusion matrices and metrics of the 4 main models, per seed and mean ± SD | `experiments/film/lejet_final_dataset/step7/Classification_Performance_Results.xlsx` (`scripts/build_step7_files.py`) |
-| 8–10 | not started | |
+| 8 | **done** (2026-11-22): the 4 main models by message condition (no URL 888 / inaccessible 2,204 / accessible 3,624), per seed and mean ± SD | `experiments/film/lejet_final_dataset/step8/Message_Condition_Analysis.xlsx` (`scripts/build_step8_files.py`) |
+| 9–10 | not started | |
 
 Step 4 validation F1 (mean ± SD of 15; validation picked the best epoch, so these are a training record, **not results**):
 E2 0.961 ± 0.012, CNN-only 0.961 ± 0.015, Concatenation 0.964 ± 0.013, KNN-RF-ETC 0.813 ± 0.035, text-only CNN 0.936 ± 0.017.
