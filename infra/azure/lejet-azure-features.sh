@@ -65,7 +65,8 @@ systemd-run --quiet --wait --collect --pipe \
   -p PrivateTmp=yes -p ProtectSystem=strict -p ProtectHome=yes -p InaccessiblePaths=/var/lib/lejetweb \
   -p ReadWritePaths=/var/lib/lejet \
   -p TimeoutStopSec=20 -p RuntimeMaxSec=1800 \
-  -E HOME=/var/lib/lejet/work/home -E TMPDIR=/var/lib/lejet/work "${VPN_ENV[@]}" \
+  -E HOME=/var/lib/lejet/work/home -E TMPDIR=/var/lib/lejet/work \
+  -E PLAYWRIGHT_BROWSERS_PATH=/opt/lejet/browsers "${VPN_ENV[@]}" \
   "$PY" -I -m lejet.azure_features "$BATCH_ID"
 
 echo "== 5 hand the result to $SSH_USER"

@@ -98,6 +98,21 @@ It reloads the firewall, restarts the tunnel (which re-adds the rule), re-runs t
 `/etc/systemd/networkd.conf.d/10-lejet-keep-rules.conf` (`ManageForeignRoutingPolicyRules=no`) so `systemd-networkd` cannot delete
 the rule; the cause was not proven, so if it vanishes again, look for something else that edits routing rules.
 
+## page_rank in the lab (Open PageRank, looked up on the VM)
+
+`page_rank` is a third-party look-up, so the fetch cannot measure it. The lab now does it in a **separate step with its own key**:
+
+* `scripts/run_features_azure.ps1` ends with `scripts/azure_page_rank.py` (skip it with `-NoPageRank`). It copies only the **domain
+  names** of the pages that loaded to the VM (nothing a hostile page produced), the VM runs `sudo -n /usr/local/sbin/lejet-azure-pagerank`,
+  and the answers come back into `D:\LeJetData\clean\page_rank_cache.json` and `<batch>.model_input.csv` (the file `add_full_features.py`
+  and `build_feature_dataset.py` already read).
+* The look-up runs as a throw-away user (systemd `DynamicUser`) with read-only disk, no access to `/home`, the website or the lab's data.
+  The key is in `/etc/lejet/openpagerank.key` (root, mode 600); **`fetcher`, the account that opens hostile pages, cannot read it.**
+* Install the code once: `scripts\deploy_to_azure.ps1 -CodeOnly`. Then the key, once, typed at a hidden prompt (never given to Claude or
+  put on a command line): `ssh -t lejet-azure "sudo bash ~/lejet-src/infra/azure/set_rank_key.sh"`. Without a key the step prints `NO KEY`
+  and `page_rank` stays `-1` (a failed look-up is `-1`, never `0`; an answered-but-unrated domain is `0`).
+* Batches fetched earlier: `python -I scripts\azure_page_rank.py D:\LeJetData\clean\<batch>.clean.jsonl ...`
+
 ## Safety (why phishing pages are not dangerous to the website)
 
 - The page-opening program runs as user `fetcher`: no login, no sudo, cannot read `/var/lib/lejetweb` (the dataset CSV) and

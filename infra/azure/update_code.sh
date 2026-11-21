@@ -37,7 +37,7 @@ fi
 # the import check, as the unprivileged user and with -I (exactly how the lab will run)
 runuser -u fetcher -- "$PY" -I - <<'PY'
 import sys
-import lejet.cli, lejet.pipeline, lejet.live_worker, lejet.azure_run, lejet.azure_features
+import lejet.cli, lejet.pipeline, lejet.live_worker, lejet.azure_run, lejet.azure_features, lejet.azure_page_rank
 from src.features import link_features as lf
 import httpx, dns.version, lxml.etree as et, tldextract
 print("   imports as user fetcher with python -I: OK | python", sys.version.split()[0], "| httpx", httpx.__version__)
@@ -47,6 +47,8 @@ PY
 if [ -f /usr/local/sbin/lejet-azure-live ] && [ -f "$SRC/infra/azure/lejet-azure-features.sh" ]; then
   SSH_USER="${SUDO_USER:-azureuser}"
   install -o root -g root -m 755 "$SRC/infra/azure/lejet-azure-features.sh" /usr/local/sbin/lejet-azure-features
+  # the page_rank helper (own unit as a throw-away user; the Open PageRank key is never readable by `fetcher`)
+  [ -f "$SRC/infra/azure/lejet-azure-pagerank.sh" ] && install -o root -g root -m 755 "$SRC/infra/azure/lejet-azure-pagerank.sh" /usr/local/sbin/lejet-azure-pagerank
   sed "s/__SSH_USER__/$SSH_USER/g" "$SRC/infra/azure/92-lejet-azure.sudoers" > /tmp/92-lejet-azure
   visudo -cf /tmp/92-lejet-azure >/dev/null && install -o root -g root -m 440 /tmp/92-lejet-azure /etc/sudoers.d/92-lejet-azure
   rm -f /tmp/92-lejet-azure

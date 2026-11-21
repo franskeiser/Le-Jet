@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from urllib.parse import urlsplit
 
-from lejet import domains, safety, schema, urlnorm
+from lejet import browser_html, domains, safety, schema, urlnorm
 from lejet.features import external_features, hannousse_html, hannousse_url
 from lejet.parse_pool import ParsePool
 from lejet.settings import Settings
@@ -88,6 +88,9 @@ class Pipeline:
         self.rdap: Optional[RdapClient] = None
         self.http: Optional[HttpStage] = None
         self._own_fetcher: Optional[HttpxRdapFetcher] = None
+        # optional: async (url) -> BrowserPage | None. Only the Azure features lab sets it (browser_html.py): for a site that
+        # refused the plain fetch (401/403/406/429/503/challenge) a real browser's HTML is parsed like a plain fetch would be.
+        self.html_fallback = None
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> "Pipeline":
@@ -161,6 +164,39 @@ class Pipeline:
         row["page_fetched"] = row["html_available"]
         row["duration_ms"] = _ms(started)
         return insp
+
+    async def _browser_fallback(self, insp: Inspection, http: Any, url: str) -> None:
+        """A site refused the plain fetch: try its HTML as a real browser sees it. On success `http` is rewritten as if the
+        plain fetch had worked (so every later step is unchanged); on ANY problem it is left exactly as it was."""
+        assert self.pool is not None
+        try:
+            page = await self.html_fallback(url)
+            if page is None:
+                return
+            t = time.monotonic()
+            base = page.final_url if page.final_url.lower().startswith(("http://", "https://")) else url
+            analysis = await self.pool.analyze(body=page.html.encode("utf-8", "replace"),
+                                               content_type="text/html; charset=utf-8", base_url=base, want_features=True)
+            ms = _ms(t)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:                                # noqa: BLE001
+            insp.errors.append(("http", "note", f"browser_fallback_error:{type(exc).__name__}"))
+            return
+        usable = (not analysis.get("error") and analysis.get("is_html") and analysis.get("features")
+                  and not analysis.get("challenge") and not analysis.get("parked") and not analysis.get("redirect_url"))
+        if not usable:
+            insp.errors.append(("http", "note", "browser_fallback_unusable"))
+            return
+        http.analysis = analysis
+        http.fail_reason = "none"
+        http.final_status = page.status
+        http.chain_complete = True
+        http.body_truncated = False
+        http.html_ms += ms
+        if base != url and urlnorm.normalize(base, allow_loopback=self.s.allow_loopback).ok:
+            http.final_url = base
+        insp.errors.append(("http", "note", "browser_fallback"))
 
     def _url_text_features(self, raw_url: str, insp: Inspection) -> None:
         lf = _load_link_features()
@@ -253,6 +289,8 @@ class Pipeline:
         http = None
         if dns_ok:
             http = await self.http.fetch(norm)
+            if self.html_fallback is not None and browser_html.needs_browser(http.fail_reason, http.final_status):
+                await self._browser_fallback(insp, http, insp.normalized_url)
             insp.hops = http.hops
             row["stage_ms_http"] = max(0, http.elapsed_ms - http.html_ms)
             row["stage_ms_html"] = http.html_ms
