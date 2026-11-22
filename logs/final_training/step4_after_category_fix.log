@@ -1,0 +1,12 @@
+Proposed model (E2: CNN + RF + FiLM): training performance measured on 15 runs
+CNN-only (text + 37 URL features): training performance measured on 15 runs
+Concatenation fusion: training performance measured on 15 runs
+KNN-RF-ETC (Jain et al. 2022): training performance measured on 15 runs
+Text-only CNN: training performance measured on 15 runs
+                               model  runs_completed  of  train_f1_mean  val_f1_mean  val_f1_sd  best_epoch_mean runs_stopped_early
+Proposed model (E2: CNN + RF + FiLM)              15  15         0.9996       0.9439     0.0249           6.2000                 15
+   CNN-only (text + 37 URL features)              15  15         0.9989       0.9429     0.0182           5.0000                 15
+                Concatenation fusion              15  15         0.9997       0.9402     0.0240           5.8667                 15
+       KNN-RF-ETC (Jain et al. 2022)              15  15         0.9681       0.8124     0.0348              NaN                n/a
+                       Text-only CNN              15  15         0.9982       0.9135     0.0212           3.8000                 15
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step4\Training_Records.xlsx

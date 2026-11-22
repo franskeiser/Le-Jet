@@ -2,7 +2,7 @@ r"""Dataset_Statistics.xlsx: the numbers of Chapter 4.1 and the guide's Step 1 t
 
     .venv\Scripts\python.exe scripts/build_dataset_statistics.py [--data data/final/lejet_final_dataset.csv] [--out data/final/Dataset_Statistics.xlsx]
 
-Sheets: Dataset information, By source, By language, Link result by label, Near-duplicates, Checks, Categories (draft),
+Sheets: Dataset information, By source, By language, Link result by label, Near-duplicates, Checks, Categories,
 Smishing without category, Label decisions, Freeze candidate, Notes. Every number is computed from the file (none is typed in).
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ def main() -> int:
     cat["Total"] = cat.sum(axis=1)
     cat["% of smishing"] = (cat.smishing / cat.smishing.sum() * 100).round(1)
     cat["% of legitimate"] = (cat.legitimate / cat.legitimate.sum() * 100).round(1)
-    cat = cat.reset_index().rename(columns={"category": "category (DRAFT by rules)"})
+    cat = cat.reset_index().rename(columns={"category": "category (rules + hand corrections)"})
     nf = pd.crosstab(sm.category == "none", sm.source).rename(index={True: "no financial category", False: "has a financial category"}).reset_index()
     nf = nf.rename(columns={"category": "smishing messages"})
     dec = pd.read_csv(a.decisions, keep_default_na=False) if Path(a.decisions).exists() else pd.DataFrame()
@@ -69,7 +69,7 @@ def main() -> int:
                            {"Item": "Built", "Value": datetime.date.today().isoformat()},
                            {"Item": "Labels from", "Value": f"the data lead's list; {len(dec)} labels decided by us, see the Label decisions sheet"}])
     notes = pd.DataFrame({"Note": [
-        "CATEGORIES ARE A DRAFT assigned by word and brand rules (scripts/financial_category.py), not by people: in a hand reading of 58 random messages about 80-90% of the smishing assignments were plausible; check a sample before using them in the thesis. A message can touch several categories (column categories_all); the sheet counts the main one.",
+        "CATEGORIES: word and brand rules (scripts/financial_category.py, version 2 of 2026-11-22) plus hand corrections (data/final/category_decisions.csv, applied by build_final_from_master.py). Version 1 had clear errors (a parcel number such as PH2264810 counted as gambling, a bank's cash rebate as gambling, the Tagalog word 'dito' read as the telco DITO). Every message whose category changed between the versions was read by hand, and a stratified audit of 210 unchanged messages (30 per category) found about 8% wrong; those were corrected, but similar errors may remain in messages nobody read. This is one reader's check, not an independent annotation. A message can touch several categories (column categories_all); the sheet counts the main one.",
         f"Smishing with no financial category: {n_none:,} of {len(sm):,} ({n_none_syn:,} of them synthetic). Examples: Microsoft/Google/WhatsApp account lures, job offers, parcel and voucher notices. Chapter 3 says smishing samples must relate to one of the six financial subcategories, so the group must decide how to treat them.",
         "Inclusion and exclusion criteria (guide step 1, item 3): applied by the data lead; confirmed done by the group on 2026-11-21.",
         "Annotation and external-validation results are NOT in this file: not done or not recorded yet (label_verified_by is empty).",
@@ -79,7 +79,7 @@ def main() -> int:
     out = Path(a.out)
     with pd.ExcelWriter(out, engine="openpyxl") as w:
         for name, frame in [("Dataset information", info), ("By source", src), ("By language", lang), ("Link result by label", fs),
-                            ("Near-duplicates", dup), ("Checks", chk), ("Categories (draft)", cat), ("Smishing without category", nf),
+                            ("Near-duplicates", dup), ("Checks", chk), ("Categories", cat), ("Smishing without category", nf),
                             ("Label decisions", dec), ("Freeze candidate", freeze), ("Notes", notes)]:
             frame.to_excel(w, sheet_name=name, index=False)
         for ws in w.book.worksheets:

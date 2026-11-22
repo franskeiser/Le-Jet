@@ -68,22 +68,6 @@
     "taglish": 1723,
     "tl": 458
   },
-  "category_draft_by_label": {
-    "banking|legitimate": 239,
-    "banking|smishing": 351,
-    "e-wallet|legitimate": 309,
-    "e-wallet|smishing": 110,
-    "gambling|legitimate": 184,
-    "gambling|smishing": 971,
-    "investment_crypto|legitimate": 38,
-    "investment_crypto|smishing": 94,
-    "lending|legitimate": 198,
-    "lending|smishing": 204,
-    "none|legitimate": 2470,
-    "none|smishing": 948,
-    "payments_billing|legitimate": 285,
-    "payments_billing|smishing": 313
-  },
   "source_by_label": {
     "isda|legitimate": 1115,
     "isda|smishing": 608,
@@ -113,6 +97,24 @@
     "found with features: web_legit_lab": 2466,
     "near-duplicate groups that carry both labels (kept: they are the lead's)": 2,
     "near-duplicate groups with 2 or more rows": 256,
-    "rows inside those groups": 920
-  }
+    "rows inside those groups": 920,
+    "categories set by hand (category_decisions.csv)": 56
+  },
+  "category_by_label": {
+    "banking|legitimate": 267,
+    "banking|smishing": 362,
+    "e-wallet|legitimate": 335,
+    "e-wallet|smishing": 137,
+    "gambling|legitimate": 147,
+    "gambling|smishing": 921,
+    "investment_crypto|legitimate": 32,
+    "investment_crypto|smishing": 117,
+    "lending|legitimate": 161,
+    "lending|smishing": 198,
+    "none|legitimate": 2498,
+    "none|smishing": 929,
+    "payments_billing|legitimate": 283,
+    "payments_billing|smishing": 327
+  },
+  "category_note": "2026-11-22: word rules v2 (scripts/financial_category.py) + hand corrections (data/final/category_decisions.csv); only category / categories_all changed"
 }

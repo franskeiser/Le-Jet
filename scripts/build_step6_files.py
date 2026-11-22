@@ -16,7 +16,7 @@ trained: the checks change what the TRAINED E2 of each run receives at test time
   Webpage features hidden     the 13 page features set to -1 and page_missing = 1 before the Link RF scores the message (the 4 outside
                               features and the 20 URL features stay), i.e. link_lane.blank_page; the Link RF's page-hidden numbers.
 
-Metrics: accuracy, precision, recall, F1 (smishing = positive), per seed over the 6,715 messages, then mean and SD over the 3 seeds.
+Metrics: accuracy, precision, recall, F1 (smishing = positive), per seed over every message (6,714 on the current dataset), then mean and SD over the 3 seeds.
 Writes experiments/film/<dataset>/step6/Component_Check_Results.xlsx (Summary, Per_Seed, By_Condition, Configuration) and
 Component_Check_Predictions.csv (every message, check, seed; the shuffled check with its permutation number).
 """

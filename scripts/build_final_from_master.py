@@ -96,6 +96,8 @@ def main() -> int:
                     help="messages whose label we decided ourselves (see label_decisions.csv); an empty value means: use the lead's labels only")
     ap.add_argument("--exclude", default=str(ROOT / "data" / "final" / "excluded_messages.csv"),
                     help="messages that are not SMS and are left out of the dataset (columns sms_text, reason); an empty value means: leave out nothing")
+    ap.add_argument("--category-decisions", default=str(ROOT / "data" / "final" / "category_decisions.csv"),
+                    help="hand-checked financial categories that replace the word rules' choice (an empty value: rules only)")
     ap.add_argument("--text-edits", default=str(ROOT / "data" / "final" / "text_edits.csv"),
                     help="messages whose TEXT we rewrote around the same link (columns sms_text = the original, new_text, reason); features and label stay those of the "
                          "original; an empty value means: no text changed")
@@ -221,9 +223,11 @@ def main() -> int:
     stats["rows inside those groups"] = int(sizes[sizes > 1].sum())
     df["message_id"] = [f"lj_{n:06d}" for n in range(1, len(df) + 1)]
     df["has_url"] = (df.link.astype(str) != str(MISSING)).astype(int)
-    _cats = [financial_category.categorize(t) for t in df.sms_text]            # DRAFT by rules, not a human annotation
+    # word rules (scripts/financial_category.py), then the hand-checked corrections of category_decisions.csv
+    _cats, _hand = financial_category.categorize_all(list(df.sms_text), a.category_decisions or None)
     df["category"] = [c[0] for c in _cats]
-    df["categories_all"] = [c[1] or "none" for c in _cats]        # never blank
+    df["categories_all"] = [c[1] for c in _cats]                  # never blank
+    stats["categories set by hand (category_decisions.csv)"] = _hand
     for c in ["page_fetched", "link_shortened"] + dataset.FEATURES_37:          # (rows from the site CSV carry text numbers, ISDA rows real ones)
         df[c] = pd.to_numeric(df[c])
     for c in B.FULL_COLUMNS:
@@ -235,7 +239,7 @@ def main() -> int:
                "rows": len(df), "columns": len(B.FULL_COLUMNS), "columns_read_by_training": B.TRAIN_COLUMNS, "label": df.label.value_counts().to_dict(),
                "has_url": df.has_url.value_counts().to_dict(), "page_fetched": df.page_fetched.value_counts().to_dict(),
                "language": df.language.value_counts().to_dict(),
-               "category_draft_by_label": {f"{c}|{l}": int(n) for (c, l), n in df.groupby(["category", "label"]).size().items()},
+               "category_by_label": {f"{c}|{l}": int(n) for (c, l), n in df.groupby(["category", "label"]).size().items()},
                "source_by_label": {f"{s}|{l}": int(n) for (s, l), n in df.groupby(["source", "label"]).size().items()},
                "conflicting_texts_left_out": conflict, "steps": dict(stats)}
     Path(str(out) + ".summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

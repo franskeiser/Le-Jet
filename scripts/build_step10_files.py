@@ -122,6 +122,9 @@ def main() -> int:
     print(summary.round(4).to_string(index=False))
     print(adjusted.round(4).to_string(index=False))
     print(f"wrote {out / 'McNemar_Test_Results.xlsx'}")
+    # the experiment papers (Appendix 1, 2, 4, 5): a new Markdown copy whenever the Step 5 predictions changed (one per retraining)
+    from build_experiment_papers import main as experiment_papers
+    experiment_papers([])
     return 0
 
 

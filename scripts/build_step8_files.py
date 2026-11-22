@@ -48,7 +48,7 @@ def main() -> int:
                 rows.append({"Model": model, "Message Condition": name, "Seed": seed, "Number of Messages": len(s),
                              "Smishing": int((s["Actual Label"] == "smishing").sum()), **c, **metrics(c)})
     per_seed = pd.DataFrame(rows)
-    n_msgs = len(pd.read_csv(step5 / f"{MODELS[0][1]}_Predictions.csv").query("Seed == @SEEDS[0]"))        # every message once per seed (6,715 on the corrected dataset)
+    n_msgs = len(pd.read_csv(step5 / f"{MODELS[0][1]}_Predictions.csv").query("Seed == @SEEDS[0]"))        # every message once per seed (6,714 on the current dataset)
     assert (per_seed.groupby(["Model", "Seed"])["Number of Messages"].sum() == n_msgs).all(), "the conditions do not cover every message"
     agg = per_seed.groupby(["Model", "Message Condition"], sort=False).agg(
         **{"Number of Messages": ("Number of Messages", "first"), "Smishing": ("Smishing", "first")},

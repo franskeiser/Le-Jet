@@ -228,3 +228,29 @@ The goal "significant in all nine" is **not** met: against CNN-only and Concaten
 
 **Step 6** component checks (F1): reference .949, text-only CNN .910, FiLM neutralised .735, shuffled RF outputs .794: every part still matters.
 **Step 8** (F1, Proposed vs best baseline): accessible webpage .963 vs .960 (best), inaccessible .940 vs .941, no URL .746 vs .768 (75 smishing only).
+
+## 14. Financial categories fixed (2026-11-22)
+
+The `category` column (the six financial subcategories) came from a first draft of word rules with clear errors: a parcel number such as
+"PH2264810" counted as gambling, a bank's "cash rebate" or a shop's "spin and win" counted as gambling, the Tagalog word "dito" was read as the
+telco DITO (which switched some rules off), and "invest" matched "investigation".
+
+What was done:
+- `scripts/financial_category.py` version 2: gambling, investment and lending words are split into strong ones (casino, sabong, loan, crypto) and
+  weak ones (withdraw, cash out, rebate, interest, profit). A weak word alone no longer overrides a bank, wallet or bill. Bugs above fixed.
+- Every message whose category changed was read by hand (about 350), plus a stratified audit of 210 unchanged messages (30 per category;
+  about 8% were wrong and were corrected).
+- 56 hand corrections in `data/final/category_decisions.csv` (`sms_text, final_category, reason`; git-ignored like the other decision
+  files, so use `git add -f`), applied by `build_final_from_master.py --category-decisions` after the rules.
+- `data/final/lejet_final_dataset.csv`: only `category` and `categories_all` changed (checked: every other column identical). Backup of
+  the previous file: `D:/LeJetData/dataset_backups/lejet_final_dataset_before_category_fix_20261122.csv`.
+- No model reads these columns, so no model result changed. The CNN-only sidecars record the dataset file's sha256, so it was re-recorded by
+  `scripts/restamp_dataset_hash.py` (it checks that only the two columns differ and notes the change in each sidecar); all 15 CNN-only
+  models still reproduce their validation metrics exactly. No test fold was read.
+- Rebuilt: Step 9 workbook, `Dataset_Statistics.xlsx`, the dataset summary JSON, Step 4 workbook (same numbers). New tests:
+  `tests/test_financial_category.py`.
+
+Smishing by main category now: gambling 921, banking 362, payments/billing 327, lending 198, e-wallet 137, investment/crypto 117,
+none 929 (before: gambling about 1,070, none 953). This is still one reader's check, not an independent annotation.
+
+Also fixed: the Step 7 workbook's Method sheet said "6,715" predictions per seed; it now gives the real count (6,714), computed from the data.

@@ -1,0 +1,116 @@
+D:\Le-Jet\scripts\build_step9_files.py:129: UserWarning: This pattern is interpreted as a regular expression, and has match groups. To actually get the groups, use str.extract.
+  data[w] = data.sms_text.str.contains(pattern, case=False, regex=True)
+               model  TP (majority)  TP in all 3 seeds  TN (majority)  TN in all 3 seeds  FP (majority)  FP in all 3 seeds  FN (majority)  FN in all 3 seeds  messages wrong in at least one seed
+      Proposed Model           2891               2814           3540               3407            183                 96            100                 62                                  493
+Concatenation Fusion           2899               2792           3528               3367            195                 91             92                 51                                  555
+            CNN-only           2834               2729           3578               3453            145                 72            157                 80                                  532
+          KNN-RF-ETC           2845               2811           2651               2454           1072                982            146                116                                 1449
+E2 error  E2 messages          other model  also wrong (majority) by the other model  share
+      FN          100 Concatenation Fusion                                        65  0.650
+      FN          100             CNN-only                                        84  0.840
+      FN          100           KNN-RF-ETC                                        23  0.230
+      FP          183 Concatenation Fusion                                       140  0.765
+      FP          183             CNN-only                                        90  0.492
+      FP          183           KNN-RF-ETC                                        84  0.459
+                                                      characteristic  FN (n=100)  TP (n=2891)  kind  difference
+                                                      urgent wording      0.3600       0.4410 share     -0.0810
+                                          OTP / verification phrases      0.0900       0.2293 share     -0.1393
+                                                     financial terms      0.6300       0.5915 share      0.0385
+                                                      reward wording      0.4000       0.4396 share     -0.0396
+                       neutral wording (none of the four word lists)      0.0800       0.1173 share     -0.0373
+                                       no URL (missing URL evidence)      0.2900       0.0159 share      0.2741
+                                                inaccessible webpage      0.1900       0.4089 share     -0.2189
+                                                  accessible webpage      0.5200       0.5752 share     -0.0552
+                                                      shortened link      0.2000       0.1055 share      0.0945
+                                                      category: none      0.2500       0.3127 share     -0.0627
+                                                  category: gambling      0.2300       0.3106 share     -0.0806
+                                                   category: banking      0.2100       0.1180 share      0.0920
+                                                  category: e-wallet      0.0800       0.0446 share      0.0354
+                                          category: payments_billing      0.0300       0.1121 share     -0.0821
+                                                   category: lending      0.1900       0.0619 share      0.1281
+                                         category: investment_crypto      0.0100       0.0401 share     -0.0301
+                                                        language: en      0.6700       0.7115 share     -0.0415
+                                                   language: taglish      0.2600       0.2394 share      0.0206
+                                                        language: tl      0.0700       0.0491 share      0.0209
+                                                        source: isda      0.3300       0.1989 share      0.1311
+                                                   source: web_group      0.6100       0.3507 share      0.2593
+                                               source: web_synthetic      0.0600       0.4504 share     -0.3904
+                                       message length (tokens), mean     26.8900      20.0930  mean      6.7970
+                             Link RF's P (messages with a URL), mean      0.2565       0.8816  mean     -0.6251
+Link RF's P < 0.5 (RF said legitimate), share of messages with a URL      0.7700       0.0778 share      0.6922
+                                                      characteristic  FP (n=183)  TN (n=3540)  kind  difference
+                                                      urgent wording      0.4098       0.2237 share      0.1861
+                                          OTP / verification phrases      0.2240       0.1251 share      0.0989
+                                                     financial terms      0.3661       0.3071 share      0.0591
+                                                      reward wording      0.4699       0.1802 share      0.2897
+                       neutral wording (none of the four word lists)      0.2350       0.3952 share     -0.1602
+                                       no URL (missing URL evidence)      0.0055       0.2294 share     -0.2239
+                                                inaccessible webpage      0.6721       0.2486 share      0.4235
+                                                  accessible webpage      0.3224       0.5220 share     -0.1996
+                                                      shortened link      0.0000       0.0040 share     -0.0040
+                                                      category: none      0.3552       0.6873 share     -0.3321
+                                                  category: gambling      0.4262       0.0195 share      0.4067
+                                                   category: banking      0.0546       0.0726 share     -0.0180
+                                                  category: e-wallet      0.0710       0.0910 share     -0.0199
+                                          category: payments_billing      0.0219       0.0788 share     -0.0570
+                                                   category: lending      0.0601       0.0424 share      0.0177
+                                         category: investment_crypto      0.0109       0.0085 share      0.0025
+                                                        language: en      0.6885       0.6449 share      0.0436
+                                                   language: taglish      0.2514       0.2709 share     -0.0195
+                                                        language: tl      0.0601       0.0842 share     -0.0241
+                                                        source: isda      0.1202       0.3088 share     -0.1885
+                                                   source: web_group      0.4317       0.0178 share      0.4139
+                                               source: web_legit_lab      0.4481       0.6734 share     -0.2254
+                                       message length (tokens), mean     23.3661      21.8353  mean      1.5308
+                             Link RF's P (messages with a URL), mean      0.4119       0.1569  mean      0.2550
+Link RF's P < 0.5 (RF said legitimate), share of messages with a URL      0.6667       0.9607 share     -0.2941
+               value     group   TP  FN   TN  FP  error rate
+  accessible webpage condition 1663  52 1848  59      0.0306
+inaccessible webpage condition 1182  19  880 123      0.0644
+              no URL condition   46  29  812   1      0.0338
+             banking  category  341  21  257  10      0.0493
+            e-wallet  category  129   8  322  13      0.0445
+            gambling  category  898  23   69  78      0.0946
+   investment_crypto  category  116   1   30   2      0.0201
+             lending  category  179  19  150  11      0.0836
+                none  category  904  25 2433  65      0.0263
+    payments_billing  category  324   3  279   4      0.0115
+                  en  language 2057  67 2283 126      0.0426
+             taglish  language  692  26  959  46      0.0418
+                  tl  language  142   7  298  11      0.0393
+                isda    source  575  33 1093  22      0.0319
+           web_group    source 1014  61   63  79      0.1150
+       web_legit_lab    source    0   0 2384  82      0.0333
+       web_synthetic    source 1302   6    0   0      0.0046
+outcome                                                                                                                                                                                                                                                                                                        message (anonymised)  E2 mean P(smishing)  Link RF's P            condition         category
+     TP                                                                                                                                                    Flash Express: your parcel PH[NUMBER] is stuck at the Pasig hub because the barangay in your address is missing. Update it here to resume delivery: [link: pencilmp.com]                0.959        0.816   accessible webpage             none
+     TP                                                                                                                                                                                                                Pinata Wins Swerte today! First 100O only: 3O FREE SP1NS + P12,888 BONUS. Habol na: [link: nn33koccc.it.com]                0.978        0.936   accessible webpage         gambling
+     TP                                                                                                                                                                                           Your pre-qualified business loan of ₱500,000 is waiting. Upload two valid IDs here to proceed with the release: [link: kimi.page]                0.971        0.847   accessible webpage          lending
+     TP                                                                                                                                                                                               JUAN C., GoJackpot's thrill begins! Get 100% Welcome Bonus + 3% Deposit Bonus. Claim P777 and play at [link: betfilvips3.com]                0.974        0.999 inaccessible webpage         gambling
+     TP                                                                                              DEAR VIP JUAN C., SABONG PH is Back here in SBET! PH's Cockfighting officially here in SBET and Slot Machines! Register now and claim up to 88k Prizes plus Free Bet 100 Credit. Sign up now! [link: sbetpremyo.com] SABONGNOW                0.981        0.980 inaccessible webpage         gambling
+     TP                                                                                                                                                                                                                    Short sa budget? P5oK loan in 5 mins! No hiddenfees & 7-day interest offset. Apply: [link: juanhand.com]                0.876        0.589 inaccessible webpage          lending
+     TP                                                                                                                                                                                          JUAN C. Be one of our Highest earning Player at W+ best online casino! Sign up and get [NUMBER] Bonus at w42u . com 6:23 AM Ry + |                0.856        0.000               no URL         gambling
+     TP                                                                                                                                                                                         JUAN C.,, jackpot city REWARD CLUB! be our vip members and win more. Sign up now and get 20P and [NUMBER]CASH! jackpotcityjili.ccom                0.948        0.000               no URL         gambling
+     TN Get P3,000 eGC when you apply for a BPI Mastercard Credit Card online. Use promo code GCSH when you apply. Use your eGC for food delivery, grocery, shopping and more! Apply here [link: bpi.com.ph].  Visit [link: bpi.com.ph] Promo period: Aug 3-Nov 3, [NUMBER]. Per DTI [NUMBER] No advisories? Tap [link: bpi.com.ph]                0.067        0.341   accessible webpage          banking
+     TN                                                                                                                                                                                               Your Shopee order [NUMBER]KX7RT has been shipped via SPX Express. Track it at [link: shopee.ph] Expected delivery: Nov 23-25.                0.034        0.284   accessible webpage             none
+     TN                                                                                                                                                                                MERALCO: We received your payment of PHP 4,316.52 for CAN ending [NUMBER] on 11/19/[NUMBER]. Thank you! Bill history: [link: meralco.com.ph]                0.050        0.068   accessible webpage payments_billing
+     TN                                                                                                                                                                            Manila Water: Scheduled water interruption in Brgy. San Antonio, Pasig on Nov 22, 10PM to 4AM. Please store water ahead. [link: manilawater.com]                0.042        0.074 inaccessible webpage             none
+     TN                                                                                                                                                                                            04Aug 22:31: GIGA VIDEO 50 loaded to [PHONE]. Ref:EV9H44BTF0B8. Use GigaLife App for the best promos & deals! [link: onelink.me]                0.043        0.165 inaccessible webpage             none
+     TN                                                                                                                                                                                                                                       As promised, here's the leche flan recipe I was telling you about! [link: reddit.com]                0.057        0.130 inaccessible webpage             none
+     TN                                                                                                                                                                                                                                     Hello! You just opened your GCash Gift with PHP 100.00 from [PHONE]! Ref. No. [NUMBER].                0.155        0.000               no URL         e-wallet
+     TN                                                                                                                                                               Ready ka na ba? Andito na ang mas pinasayang GIGASURF 99! Enjoy 2GB data PLUS 1hr for Video Every Day for 7 days! I-dial ang *121# to get it now! DTI[NUMBER]                0.034        0.000               no URL             none
+     FP                                                                                                                                                                                                                          Kaya Reg & DL today para makuha ang free 18P. High rebate & legit. Play na: [link: tablephwin.com]                0.983        0.980   accessible webpage         gambling
+     FP                                                                                                                                                              ColorGame jackpot reached 179M and climbing every round. Bagong ColorGame tables are open-pasok agad,walang [link: hintayan.play] now at [link: hintayan.play]                0.961        0.997 inaccessible webpage         gambling
+     FP                                                                                                                                                                                                                       ikaw ang napili today! Wild Bountygives 30 FREE SP1NS 120% extra b0nus for you: [link: taguigcom.cam]                0.953        0.994   accessible webpage         gambling
+     FP                                                                                                                                                                 Your loan application for PHP 10,000 has expired. Reapply today in [link: finbro.ph] with promocode REAPPLY50 to enjoy 50% off BAP fee. Get your FUNDS now!                0.945        0.726   accessible webpage          lending
+     FP                                                                                                                                                                                  Hate fees? Cash in to your PayMaya account FREE of charge via BPI linked account, Ministop & Smart Padala. Cash in now:[link: paymaya.com]                0.937        0.797 inaccessible webpage         e-wallet
+     FP                                                                                                                                                                        Boss ! Your EXCLUSIVE deposit coupon reward is ready! Log in to your wallet and claim it now.Get 2% Unlimited Cashback + 2% Slot [link: ptgaming.ph]                0.936        0.636 inaccessible webpage         gambling
+     FN                                                                                                                                                                    You have paid P549.00 to [link: netflix.com] on 06-30-21 02:13 PM via GCash American Express Virtual Pay. Ref. No. [NUMBER]. Your new balance is P116.00                0.040        0.080   accessible webpage         e-wallet
+     FN                                                                                                                                                                                                                                Load (All Network) P50 Prepaid Load Code: 733 966 718 Valid: 05/04/27 [link: sharetreats.ph]                0.068        0.740   accessible webpage             none
+     FN                                                                                                                                                                                         Get exclusive discounts on the latest gadgets! Hurry, limited stocks only! 📱💥 Visit our website now! [link: example.com] #TechDeals                0.076        0.268   accessible webpage             none
+     FN                                                                                                                                                                                      Catch your favorite streamers live! Buy & get bonuses for your KUMU coins via GCash. No advisories? Opt out via our GCash Help Center.                0.077        0.000               no URL         e-wallet
+     FN               RUSH invites you to share your beauty goals!\nAnswer this AI quiz featuring Unilever's U-Coin and get rewarded with 50 U-COINS to exchange for FREE GCash credits, online vouchers, shopping coupons, mobile load, mobile data, and more! Get rewarded now:\n[link: bit.ly]\n\nNo msgs? Text STOP to [NUMBER]                0.102        0.588 inaccessible webpage         e-wallet
+     FN                                                                                                                                                                                                                                                            Salamat sa pag suporta sa casino, gusto mo ba kumita ng REWARDS?                0.115        0.000               no URL         gambling
+     FN                                                                                                                                        NN ‘ / Wednesday, July 22, [NUMBER] we offer u cashloan with our bank only 1.3 to 1.5%monthly qualifcation with basic income 20k and up pls reply fu intrestd 4 more details 1:51 AM                0.123        0.000               no URL          lending
+     FN                                                                                                                                                                              Familiar with this 7x CBA Champion and previous NBA pick? Kaya mo bang hulaan? Take your best guess and drop youranswer here [link: applus.ph]                0.165        0.550 inaccessible webpage         gambling
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step9\Classification_Error_Analysis.xlsx
