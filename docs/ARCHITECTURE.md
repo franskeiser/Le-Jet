@@ -290,7 +290,14 @@ the messages themselves in sheets **Representative** and **Per_Message**):
 | **A. Fix the labels, then rerun** | Agree **one rule** and apply it to **every** message it covers (e.g. "licensed gambling promotions are ___"), not only to the messages the model got wrong (fixing only the errors would bias the results in the model's favour). Remove `lj_003092`. Record the rule and the changed message ids. Then rerun Steps 3–10 for all models (all scripted, about an hour). | Step 10 and Chapters 4–5 use the corrected data; every result so far is replaced |
 | **B. Keep the labels as they are** | Report the inconsistency in Chapter 5 as a limitation (the table in Possible_Label_Issues is the evidence). | Step 10 can run straight away on the current results |
 
-**Answer:** _(write the option, who decided, the date, and for A the rule)_
+**Answer (2026-11-22): Option A, chosen by Franz.** Rule: a gambling promotion is **legitimate** when it links to a real, working gambling site
+(checked live) and carries no deceptive bait; a fake payout / receipt / "you won" notice, or a lookalike or unverifiable domain, stays **smishing**.
+Applied to every message of: `casinoplus.com.ph`, `bingoplus.com`, `arenaplus.ph`, `ptgaming.ph`, `6bet.com`, `gbet.com` (all -> legitimate), `789bingo.com`
+(5 plain promos -> legitimate; the 12 "PHP 789.00 Successful Released" messages stay smishing), and `applus.ph` (all smishing). `lj_003092` (the Azure lab URL)
+was removed. 115 labels changed, each with its reason in `data/final/label_decisions.csv`; the removed row is in `data/final/excluded_messages.csv`.
+The dataset is now 6,715 messages (2,992 smishing / 3,723 legitimate), message ids were renumbered, and Steps 3-9 were rerun on it with the scripts unchanged
+(two hard-coded 6,716 in `build_step8_files.py` / the text of steps 6-7 were updated to 6,715). The other label doubts above (Netflix receipt, HSBC promo, `contis.ph`,
+`taguigcom.cam`) were NOT changed: the data lead's labels stand. Step 10 (McNemar, `scripts/build_step10_files.py`) was then run on the corrected predictions: `experiments/film/lejet_final_dataset/step10/McNemar_Test_Results.xlsx`.
 
 ### 8.2 Other open items
 

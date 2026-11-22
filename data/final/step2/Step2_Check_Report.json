@@ -1,5 +1,5 @@
 {
-  "rows": 6716,
+  "rows": 6714,
   "text": {
     "empty_after_cleaning": 0,
     "median_tokens": 21.0,
@@ -19,20 +19,20 @@
     "every link appears in its own message text": true
   },
   "counts": {
-    "with_url": 5828,
+    "with_url": 5826,
     "without_url": 888,
-    "accessible": 3624,
+    "accessible": 3622,
     "inaccessible": 2204
   },
   "url_feature_recomputation": {
-    "rows_checked": 5828,
+    "rows_checked": 5826,
     "extractor_errors": 0,
     "rows_with_any_difference": 0,
     "share_identical": 1.0,
     "differences_by_feature": {}
   },
   "link_found_in_its_own_message": {
-    "rows_checked": 5828,
+    "rows_checked": 5826,
     "not_found": 0,
     "message_ids": []
   },

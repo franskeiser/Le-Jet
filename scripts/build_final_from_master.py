@@ -94,6 +94,11 @@ def main() -> int:
     ap.add_argument("--urls-out", default=None, help="write the links the lab has not inspected yet to this file and stop")
     ap.add_argument("--decisions", default=str(ROOT / "data" / "final" / "label_decisions.csv"),
                     help="messages whose label we decided ourselves (see label_decisions.csv); an empty value means: use the lead's labels only")
+    ap.add_argument("--exclude", default=str(ROOT / "data" / "final" / "excluded_messages.csv"),
+                    help="messages that are not SMS and are left out of the dataset (columns sms_text, reason); an empty value means: leave out nothing")
+    ap.add_argument("--text-edits", default=str(ROOT / "data" / "final" / "text_edits.csv"),
+                    help="messages whose TEXT we rewrote around the same link (columns sms_text = the original, new_text, reason); features and label stay those of the "
+                         "original; an empty value means: no text changed")
     ap.add_argument("--synthetic", default=r"D:\Downloads\synthetic_smishing_messages_v3.csv")
     ap.add_argument("--legit-bulk", default=r"D:\Downloads\combined_messages.csv")
     a = ap.parse_args()
@@ -115,6 +120,20 @@ def main() -> int:
         assert set(decided.values()) <= {"smishing", "legitimate"}
         m["label"] = [decided.get(k, l) for k, l in zip(m.key, m.label)]
         stats["labels decided by us instead of the lead's (label_decisions.csv)"] = int((m.label != m.lead_label).sum())                       # the row number in the lead's file (header = row 1)
+    if a.exclude and Path(a.exclude).exists():                    # rows that are not SMS at all (e.g. the group's own lab URL)
+        exc = pd.read_csv(a.exclude, keep_default_na=False, dtype=str)
+        drop_keys = {key_of(t) for t in exc.sms_text}
+        stats["left out because it is not an SMS (excluded_messages.csv)"] = int(m.key.isin(drop_keys).sum())
+        m = m[~m.key.isin(drop_keys)]
+    m["final_text"] = m["text"]
+    edited_keys: set = set()
+    if a.text_edits and Path(a.text_edits).exists():              # bare-link messages rewritten with a realistic sentence around the same link
+        ed = pd.read_csv(a.text_edits, keep_default_na=False, dtype=str)
+        new_of = {key_of(t): n.strip() for t, n in zip(ed.sms_text, ed.new_text)}
+        assert len(new_of) == len(ed), "text_edits.csv names the same message twice"
+        m["final_text"] = [new_of.get(k, t) for k, t in zip(m.key, m.text)]
+        edited_keys = set(new_of) & set(m.key)
+        stats["texts rewritten by us around the same link (text_edits.csv)"] = len(edited_keys)
     stats["lead's file: texts repaired from wrong encoding"] = int((m.text != m.SMS_Text.map(lambda t: B.unguard(t).strip())).sum())
     both = m.groupby("key").label.nunique()
     conflict = sorted(both[both > 1].index)
@@ -150,9 +169,13 @@ def main() -> int:
                 stats["label taken from the lead, different from ours or ISDA's"] += 1
             if row["label"] == "":
                 stats["label given by the lead to an ISDA row that had none"] += 1
-            row.update(label=r.label, sms_text=r.text, template_id=dataset.template_id(r.text))
+            row.update(label=r.label, sms_text=r.final_text, template_id=dataset.template_id(r.final_text))
+            if r.key in edited_keys:                              # same link, same page features; the words around it are new
+                assert str(row["link"]) in r.final_text, f"the rewritten text must keep its link {row['link']!r}: {r.final_text!r}"
+                row["language"] = B.language_of(r.final_text)
             stats[f"found with features: {row['source']}"] += 1
         else:
+            assert r.key not in edited_keys, "a rewritten message must be one that already has features"
             found = dataset.first_link(r.text)
             lang = B.language_of(r.text)                      # already "en", "tl" or "taglish"
             if found is None:

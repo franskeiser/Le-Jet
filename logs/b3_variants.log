@@ -1,0 +1,22 @@
+seed 42 fold 0: control 0.9155 | C1_mask 0.9117 | C2_link_only 0.9030
+seed 42 fold 1: control 0.9692 | C1_mask 0.9653 | C2_link_only 0.9692
+seed 42 fold 2: control 0.9105 | C1_mask 0.8988 | C2_link_only 0.8974
+seed 42 fold 3: control 0.9272 | C1_mask 0.9187 | C2_link_only 0.9316
+seed 42 fold 4: control 0.9375 | C1_mask 0.9325 | C2_link_only 0.9487
+seed 123 fold 0: control 0.9311 | C1_mask 0.9208 | C2_link_only 0.9395
+seed 123 fold 1: control 0.9660 | C1_mask 0.9657 | C2_link_only 0.9666
+seed 123 fold 2: control 0.9476 | C1_mask 0.9388 | C2_link_only 0.9488
+seed 123 fold 3: control 0.9674 | C1_mask 0.9622 | C2_link_only 0.9780
+seed 123 fold 4: control 0.9590 | C1_mask 0.9564 | C2_link_only 0.9569
+seed 2024 fold 0: control 0.9302 | C1_mask 0.9149 | C2_link_only 0.9499
+seed 2024 fold 1: control 0.9689 | C1_mask 0.9616 | C2_link_only 0.9692
+seed 2024 fold 2: control 0.9170 | C1_mask 0.9194 | C2_link_only 0.9197
+seed 2024 fold 3: control 0.9392 | C1_mask 0.9208 | C2_link_only 0.9474
+seed 2024 fold 4: control 0.9322 | C1_mask 0.9170 | C2_link_only 0.9211
+
+control replay vs the group's recorded validation balanced accuracy: largest difference 0.000000
+Concatenation (recorded) mean validation balanced accuracy: 0.9541
+
+control       val bal-acc 0.9412 | F1 0.9344 | better than control in 0/15 | false alarms/fold 27.7 misses/fold 17.9 | bare-link false alarms 80/81 | other-legit false alarms 5.323%
+C1_mask       val bal-acc 0.9336 | F1 0.9262 | better than control in 1/15 | false alarms/fold 30.1 misses/fold 21.2 | bare-link false alarms 81/81 | other-legit false alarms 5.879%
+C2_link_only  val bal-acc 0.9431 | F1 0.9366 | better than control in 10/15 | false alarms/fold 24.7 misses/fold 19.0 | bare-link false alarms 72/81 | other-legit false alarms 4.751%

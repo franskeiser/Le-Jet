@@ -4,8 +4,8 @@ r"""Step 8 of the experimental testing guide: performance of the four main model
 
 Reads only the Step 5 prediction files; nothing is trained or scored again. Conditions (from the dataset, the same for every model):
     No URL                 has_url = 0                                  (888 messages: 75 smishing, 813 legitimate)
-    Inaccessible webpage   has_url = 1, page did not load               (2,204: 1,297 smishing, 907 legitimate)
-    Accessible webpage     has_url = 1, page loaded                     (3,624: 1,719 smishing, 1,905 legitimate)
+    Inaccessible webpage   has_url = 1, page did not load               (2,204: 1,201 smishing, 1,003 legitimate)
+    Accessible webpage     has_url = 1, page loaded                     (3,623: 1,716 smishing, 1,907 legitimate)
 Per model, condition and seed: N, TP / FN / FP / TN, Accuracy, Precision, Recall, F1 (smishing = positive; the guide's formulas).
 Aggregation method: the metrics are computed per seed on that condition's messages (each message tested once per seed), then
 mean and sample SD (n - 1) over the three seeds. N is the same in every seed (every message is in every seed's predictions).
@@ -48,7 +48,8 @@ def main() -> int:
                 rows.append({"Model": model, "Message Condition": name, "Seed": seed, "Number of Messages": len(s),
                              "Smishing": int((s["Actual Label"] == "smishing").sum()), **c, **metrics(c)})
     per_seed = pd.DataFrame(rows)
-    assert (per_seed.groupby(["Model", "Seed"])["Number of Messages"].sum() == 6716).all(), "the conditions do not cover every message"
+    n_msgs = len(pd.read_csv(step5 / f"{MODELS[0][1]}_Predictions.csv").query("Seed == @SEEDS[0]"))        # every message once per seed (6,715 on the corrected dataset)
+    assert (per_seed.groupby(["Model", "Seed"])["Number of Messages"].sum() == n_msgs).all(), "the conditions do not cover every message"
     agg = per_seed.groupby(["Model", "Message Condition"], sort=False).agg(
         **{"Number of Messages": ("Number of Messages", "first"), "Smishing": ("Smishing", "first")},
         **{f"{m}_mean": (m, "mean") for m in METRICS}, **{f"{m}_sd": (m, "std") for m in METRICS}).reset_index()

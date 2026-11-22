@@ -1,0 +1,61 @@
+model,seed,fold,cutoff
+CNN-only,42,0,0.31
+CNN-only,42,1,0.42
+CNN-only,42,2,0.31
+CNN-only,42,3,0.43
+CNN-only,42,4,0.38
+CNN-only,123,0,0.4
+CNN-only,123,1,0.46
+CNN-only,123,2,0.48
+CNN-only,123,3,0.47
+CNN-only,123,4,0.42
+CNN-only,2024,0,0.3
+CNN-only,2024,1,0.47
+CNN-only,2024,2,0.31
+CNN-only,2024,3,0.5
+CNN-only,2024,4,0.36
+Concatenation Fusion,42,0,0.36
+Concatenation Fusion,42,1,0.46
+Concatenation Fusion,42,2,0.41
+Concatenation Fusion,42,3,0.49
+Concatenation Fusion,42,4,0.5
+Concatenation Fusion,123,0,0.45
+Concatenation Fusion,123,1,0.54
+Concatenation Fusion,123,2,0.5
+Concatenation Fusion,123,3,0.42
+Concatenation Fusion,123,4,0.46
+Concatenation Fusion,2024,0,0.56
+Concatenation Fusion,2024,1,0.52
+Concatenation Fusion,2024,2,0.42
+Concatenation Fusion,2024,3,0.46
+Concatenation Fusion,2024,4,0.5
+KNN-RF-ETC,42,0,0.58
+KNN-RF-ETC,42,1,0.69
+KNN-RF-ETC,42,2,0.56
+KNN-RF-ETC,42,3,0.7
+KNN-RF-ETC,42,4,0.67
+KNN-RF-ETC,123,0,0.7
+KNN-RF-ETC,123,1,0.59
+KNN-RF-ETC,123,2,0.64
+KNN-RF-ETC,123,3,0.7
+KNN-RF-ETC,123,4,0.7
+KNN-RF-ETC,2024,0,0.53
+KNN-RF-ETC,2024,1,0.58
+KNN-RF-ETC,2024,2,0.62
+KNN-RF-ETC,2024,3,0.7
+KNN-RF-ETC,2024,4,0.59
+Proposed Model,42,0,0.47
+Proposed Model,42,1,0.58
+Proposed Model,42,2,0.49
+Proposed Model,42,3,0.58
+Proposed Model,42,4,0.62
+Proposed Model,123,0,0.55
+Proposed Model,123,1,0.66
+Proposed Model,123,2,0.51
+Proposed Model,123,3,0.51
+Proposed Model,123,4,0.6
+Proposed Model,2024,0,0.55
+Proposed Model,2024,1,0.58
+Proposed Model,2024,2,0.61
+Proposed Model,2024,3,0.56
+Proposed Model,2024,4,0.64

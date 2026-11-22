@@ -1,0 +1,19 @@
+message_id,label,source,language,link_domain,fetch_status,words_without_link,sms_text
+lj_004317,legitimate,web_legit_lab,en,instagram.com,live,0,https://www.instagram.com/reel/C8kLm2xPqRt/
+lj_004995,legitimate,web_legit_lab,en,instagram.com,live,0,https://www.instagram.com/reel/C9xTqLm2Pz4/
+lj_005851,legitimate,web_legit_lab,en,instagram.com,live,0,https://www.instagram.com/reel/C9xT4mPq2Lk/?igsh=MWx0eGQ5dWc2
+lj_006196,legitimate,web_legit_lab,en,instagram.com,live,0,https://www.instagram.com/reel/C9xT4pLmQ2a/
+lj_005765,legitimate,web_legit_lab,en,rappler.com,live,0,https://www.rappler.com/philippines/weather
+lj_005680,legitimate,web_legit_lab,en,tiktok.com,live,0,https://www.tiktok.com/@kusinanimaria/video/7438291056634218789
+lj_004412,legitimate,web_legit_lab,en,youtube.com,redirected,0,https://youtu.be/kJQP7kiw5Fk
+lj_006280,legitimate,web_legit_lab,en,youtube.com,redirected,0,https://youtu.be/dQw4w9WgXcQ
+lj_006372,legitimate,web_legit_lab,en,youtube.com,live,0,https://www.youtube.com/watch?v=dQw4w9WgXcQ
+lj_000065,smishing,web_group,en,bit.ly,dead,0,https://bit.ly/4zjS6WH
+lj_000402,smishing,web_group,en,bit.ly,dead,2,P3500 Claim https://bit.ly/47j1v4q
+lj_000945,smishing,web_group,en,bit.ly,dead,3,"3,500
+09931797732 Claim https://bit.ly/4hZhXf3"
+lj_000006,smishing,web_group,en,bitly.com,redirected,2,bit.ly.l.
+lj_000005,smishing,web_group,en,bp.plus,dead,0,https://bp.plus/r/iJa
+lj_000387,smishing,web_group,en,duxtonconsulting.com,live,3,Surveyby Duxton Consulting https://www.duxtonconsulting.com/survey-faqs
+lj_000617,smishing,web_group,en,mychoicesurveys.com,dead,1,300? https://boomerang.mychoicesurveys.com/#/tryhoptop/673db7a356f68c48139b5733
+lj_000523,smishing,web_group,taglish,onelink.me,dead,0,https://juannana.onelink.me/HLk4/217szbjg

@@ -1,0 +1,30 @@
+A2  CUT-OFF (validation rows, 15 seed-fold runs; 767 messages each)
+                      false_alarms   misses  bal_acc_05  mean_best_cutoff  folds_best_above_05  folds_best_below_05  bal_acc_best
+model                                                                                                                            
+Proposed Model             27.6667  17.9333      0.9412            0.5773                   13                    1        0.9457
+CNN-only                   11.9333  30.6667      0.9411            0.4067                    1                   12        0.9511
+Concatenation Fusion       16.3333  18.2667      0.9541            0.4600                    3                   10        0.9585
+KNN-RF-ETC                129.0667  12.2667      0.8302            0.6440                   15                    0        0.8736
+    (bal_acc_best is measured on the same rows the cut-off was picked on, so it is optimistic; KNN-RF-ETC's p is not a calibrated probability)
+    H1 rule: Proposed best cut-off > 0.5 in 13/15 runs, mean 0.577  ->  H1 SUPPORTED
+
+A3  LINK RF on LEGITIMATE validation messages that have a link (rows summed over 15 runs)
+                          n_rows  rf_P_mean  rf_flags_share  false_alarm_rate_Proposed Model  false_alarm_rate_CNN-only  false_alarm_rate_Concatenation Fusion
+page_rank_group                                                                                                                                               
+page rank 0-6 or unknown    2661      0.230           0.101                            0.067                      0.054                                  0.053
+page rank 10                 675      0.182           0.009                            0.258                      0.016                                  0.090
+page rank 7-9               1552      0.156           0.034                            0.030                      0.006                                  0.020
+    by source:
+               n_rows  rf_P_mean  rf_flags_share  false_alarm_rate_Proposed Model  false_alarm_rate_CNN-only  false_alarm_rate_Concatenation Fusion
+source                                                                                                                                             
+isda             1260      0.211           0.098                            0.041                      0.029                                  0.032
+web_group         118      0.593           0.508                            0.814                      0.661                                  0.712
+web_legit_lab    3510      0.183           0.042                            0.071                      0.014                                  0.031
+    H2 rule: RF flags (P >= 0.5) 0.9% of legitimate page-rank-10 messages (need >= 20%)  ->  H2 NOT supported
+
+A4  FALSE-ALARM RATE on legitimate validation messages, by message length
+model                                n_rows_proposed  Proposed Model  CNN-only  Concatenation Fusion
+group                                                                                               
+longer                                          6146          0.0535    0.0288                0.0394
+short (<= 3 words without the link)              229          0.3755    0.0087                0.0131
+    H3 rule: gap Proposed - CNN-only is 36.7 pts for short, 2.5 pts for longer; difference 34.2 pts (need >= 5)  ->  H3 SUPPORTED

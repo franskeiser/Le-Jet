@@ -3,7 +3,7 @@ r"""Step 7 of the experimental testing guide: confusion matrices and classificat
     .venv\Scripts\python.exe scripts/build_step7_files.py
 
 Reads only the Step 5 prediction files (experiments/film/<dataset>/step5/*_Predictions.csv); nothing is trained or scored again.
-Positive class = Smishing. Per model and seed (6,716 out-of-fold test predictions each):
+Positive class = Smishing. Per model and seed (6,715 out-of-fold test predictions each):
     confusion matrix  TP (smishing -> smishing), FN (smishing -> legitimate), FP (legitimate -> smishing), TN (legitimate -> legitimate)
     Accuracy  = (TP + TN) / (TP + TN + FP + FN)      Precision = TP / (TP + FP)
     Recall    = TP / (TP + FN)                       F1-score  = 2 x Precision x Recall / (Precision + Recall)
@@ -84,7 +84,7 @@ def main() -> int:
     method = pd.DataFrame({"item": ["positive class", "Accuracy", "Precision", "Recall", "F1-score", "per seed", "mean ± SD",
                                     "pooled matrix", "source", "framework"], "value": [
         "Smishing", "(TP + TN) / (TP + TN + FP + FN)", "TP / (TP + FP)", "TP / (TP + FN)", "2 x Precision x Recall / (Precision + Recall)",
-        "each seed's 6,716 out-of-fold test predictions (every message tested once per seed)",
+        "each seed's 6,715 out-of-fold test predictions (every message tested once per seed)",
         "mean and sample SD (n - 1) over seeds 42, 123, 2024",
         "the three seeds' counts added; shown for the figure only, the metrics are per seed",
         f"experiments/film/{dataset.stem}/step5/<Model>_Predictions.csv", "Stratified Group 5-fold x 3 seeds (Step 3)"]})
