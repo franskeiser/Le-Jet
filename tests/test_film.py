@@ -625,3 +625,113 @@ def test_without_the_conv_average_it_still_starts_as_the_plain_text_cnn_and_stil
     loss.backward()
     assert model.generator.weight.grad.abs().sum() > 0                                         # the link still reaches the generator's weights
     assert model.film_parameters(link, model.conv_features(ids)[1]) is not None
+
+
+# ------------------------------------------------------------------ upgrade options (validation study 2026-11-22)
+def randomize_all_generator_layers(model, std=0.5, seed=0):
+    g = torch.Generator().manual_seed(seed)
+    with torch.no_grad():
+        for layer in model.generator_layers():
+            layer.weight.copy_(torch.randn(layer.weight.shape, generator=g) * std)
+            layer.bias.copy_(torch.randn(layer.bias.shape, generator=g) * std)
+
+
+def test_upgrade_defaults_build_the_same_model_with_the_same_starting_weights():
+    """The new options at their defaults must not change the layers or the random draws (old checkpoints and replays stay exact)."""
+    old, new = FiLMTextCNN(embedding()), FiLMTextCNN(embedding(), text_dropout="pooled", generator_hidden=0, head_link=False)
+    a, b = old.state_dict(), new.state_dict()
+    assert list(a) == list(b) and all(torch.equal(a[k], b[k]) for k in a)
+    assert trainable(new) == 70658 and isinstance(new.generator, torch.nn.Linear)
+
+
+def test_upgrade_bad_options_are_refused():
+    with pytest.raises(ValueError, match="text_dropout"):
+        FiLMTextCNN(embedding(), text_dropout="words")
+    with pytest.raises(ValueError, match="link_dim"):
+        FiLMTextCNN(embedding(), link_dim=2)
+    with pytest.raises(ValueError, match="generator_hidden"):
+        FiLMTextCNN(embedding(), generator_hidden=-1)
+
+
+@pytest.mark.parametrize("options", [{"generator_hidden": 64}, {"link_dim": 40}, {"head_link": True},
+                                     {"text_dropout": "input"}, {"link_dim": 40, "generator_hidden": 64, "text_dropout": "input"}])
+def test_upgrade_every_option_starts_with_gamma_one_beta_zero_and_runs(options):
+    model = FiLMTextCNN(embedding(), **options)
+    g = torch.Generator().manual_seed(3)
+    ids = torch.randint(1, FRESH, (8, 50), generator=g)
+    link = torch.rand(8, options.get("link_dim", 3) + 1, generator=g)
+    link[:, -1] = 1.0
+    gamma, beta = model.film_parameters(link, model.conv_features(ids)[1])
+    assert (gamma == 1).all() and (beta == 0).all()
+    assert tuple(model(ids, link).shape) == (8, 2)
+    listed = [p for grp in model.parameter_groups(1e-4) for p in grp["params"]]
+    assert len(listed) == len({id(p) for p in listed}) == sum(1 for p in model.parameters() if p.requires_grad)
+
+
+def test_upgrade_the_two_layer_generator_zero_starts_only_its_last_layer_and_learns():
+    model = FiLMTextCNN(embedding(), generator_hidden=64)
+    first, last = model.generator_layers()
+    assert first.out_features == 64 and last.in_features == 64 and last.out_features == 2 * FILTERS
+    assert first.weight.abs().sum() > 0 and (last.weight == 0).all() and (last.bias == 0).all()
+    decay = {id(p): grp["weight_decay"] for grp in model.parameter_groups(1e-4) for p in grp["params"]}
+    assert decay[id(first.weight)] == decay[id(last.weight)] == 1e-4 and decay[id(first.bias)] == 0.0
+    ids, link = batch()
+    optimizer = torch.optim.Adam(model.parameter_groups(1e-4), lr=1e-2)
+    F.cross_entropy(model(ids, link), torch.tensor([0, 1] * 4)).backward()
+    optimizer.step()
+    assert (last.weight != 0).any()
+
+
+def test_upgrade_input_text_dropout_hides_the_words_but_keeps_the_link_effect():
+    model = FiLMTextCNN(embedding(), text_dropout="input").eval()
+    randomize_generator(model, std=0.5)
+    (ids_a, link), (ids_b, _) = batch(seed=1), batch(seed=2)
+    other_link = torch.rand(8, 3, generator=torch.Generator().manual_seed(9))
+    hidden = torch.zeros(8)
+    with torch.no_grad():
+        # different words, same link -> the same numbers: the words are gone
+        assert torch.allclose(model.encode(ids_a, link, text_keep=hidden), model.encode(ids_b, link, text_keep=hidden))
+        # same words, different link -> different numbers: the link still acts (the "pooled" mode gives zeros here)
+        assert not torch.allclose(model.encode(ids_a, link, text_keep=hidden), model.encode(ids_a, other_link, text_keep=hidden))
+        assert model.encode(ids_a, link, text_keep=hidden).abs().sum() > 0
+        # per message, and 1 means unchanged
+        keep = torch.tensor([1, 0, 1, 0, 1, 1, 0, 1.0])
+        plain, masked = model.encode(ids_a, link), model.encode(ids_a, link, text_keep=keep)
+        assert torch.allclose(masked[keep == 1], plain[keep == 1])
+        assert torch.equal(model.encode(ids_a, link, text_keep=torch.ones(8)), plain)
+    pooled = FiLMTextCNN(embedding()).eval()
+    randomize_generator(pooled, std=0.5)
+    with torch.no_grad():
+        assert (pooled.encode(ids_a, link, text_keep=hidden) == 0).all()
+
+
+def test_upgrade_the_extra_link_numbers_reach_gamma_and_beta():
+    model = FiLMTextCNN(embedding(), link_dim=40).eval()
+    randomize_all_generator_layers(model)
+    ids = torch.randint(1, FRESH, (4, 50), generator=torch.Generator().manual_seed(1))
+    link = torch.rand(4, 41, generator=torch.Generator().manual_seed(2))
+    link[:, -1] = 1.0
+    changed = link.clone()
+    changed[:, 20] += 1.0                                       # one of the extra (contribution) columns
+    average = model.conv_features(ids)[1]
+    assert not torch.allclose(model.film_parameters(link, average)[0], model.film_parameters(changed, average)[0])
+    link[:2, -1] = 0.0                                          # has_url = 0 still bypasses the generator
+    gamma, beta = model.film_parameters(link, average)
+    assert (gamma[:2] == 1).all() and (beta[:2] == 0).all()
+
+
+def test_upgrade_head_link_gives_the_head_the_concat_controls_four_numbers():
+    model = FiLMTextCNN(embedding(), head_link=True).eval()
+    assert model.dense.in_features == FILTERS + 4 and trainable(model) == 70658 + 4 * 64
+    ids, link3 = batch()
+    link = torch.cat([link3, torch.tensor([1, 1, 0, 1, 1, 1, 1, 0.0]).unsqueeze(1)], dim=1)
+    link[2, :3] = float("nan")                                  # a no-link row's numbers are never read
+    numbers = model.head_numbers(link)
+    assert torch.allclose(numbers[0], link[0])
+    assert torch.equal(numbers[2], torch.tensor([0.0, 0.0, 1.0, 0.0]))
+    assert torch.isfinite(model(ids, link)).all()
+    assert torch.equal(model.head_numbers(link3)[:, 3], torch.ones(8))   # no has_url column: every message has a link
+    changed = link.clone()
+    changed[0, 0] = 1.0 - changed[0, 0]                          # with the generator at zero, P still moves the verdict
+    with torch.no_grad():
+        assert not torch.allclose(model(ids, link)[0], model(ids, changed)[0])

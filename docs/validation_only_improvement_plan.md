@@ -134,3 +134,37 @@ The control (the unchanged model, retrained here) reproduces the group's recorde
 Keep rule (better on average **and** in at least 11 of 15 pairs): **neither variant is kept.** C1 is worse. C2 is +0.002 on average and better in 10 of 15, which is within noise and still 0.011 below Concatenation; it does not fix the bare-link false alarms (72 of 81 remain).
 
 Conclusion of the validation-only study: the cut-off (B1) does not help, the Link RF is not the cause (B2 dropped), and the two cheap FiLM variants (B3) do not close the gap. We stop here, as the stop rule says, and do not add more candidates after seeing these results.
+
+---
+
+## Phase C, FiLM upgrade study (run 2026-11-22; validation rows only; `scripts/film_upgrade_validation.py`, `experiments/film/lejet_final_dataset/film_upgrade/`)
+
+Goal set by Franz: the Proposed model significantly better than every baseline in all nine Step 10 McNemar tests. On the 6,714-row data this
+needs about b − c ≥ +31 to +39 per pairing (accuracy about .955 / .957 / .961 for seeds 42 / 123 / 2024).
+
+**New finding that motivated it:** modality dropout hides the text 10% of the time by zeroing the 64 pooled numbers. In Concatenation and
+CNN-only the link numbers still reach the head on those rows. In FiLM the link only acts through the text numbers, so on those rows the head sees
+zeros: the link is hidden too, and the baselines get "decide from the link" practice that FiLM never gets.
+
+Candidates (fixed before running; new `FiLMTextCNN` options, defaults unchanged, control replay gap 0.000000):
+D1 `text_dropout="input"` (hide the words before the Conv, so gamma and beta still act); D1F2 D1 + generator reads the 37 RF contributions;
+D1F3 D1 + two-layer generator; D1F23 both; D1F1 D1 + link numbers also into the head (not pure FiLM).
+
+| Variant | Val bal-acc | Better than control in | False alarms / fold | Misses / fold | Lab-legit false alarms (15 folds) | Projected b − c vs CNN-only (42 / 123 / 2024) | vs Concat |
+|---|---|---|---|---|---|---|---|
+| control | .9410 | n/a | 24.2 | 20.9 | 181 | −56 / −18 / −24 | −19 / +4 / −41 |
+| **D1** | **.9495** | **12 / 15** | 20.0 | 18.5 | 119 | −36 / +5 / +33 | +1 / +27 / +16 |
+| D1F2 | .9379 | 7 | 20.8 | 25.7 | 86 | −87 / −26 / −6 | −50 / −4 / −23 |
+| D1F3 | .9454 | 10 | 18.5 | 22.5 | 117 | −54 / +3 / +15 | −17 / +25 / −2 |
+| D1F23 | .9373 | 5 | 19.9 | 26.9 | 119 | −84 / −44 / +5 | −47 / −22 / −12 |
+| D1F1 | .9473 | 12 | 19.1 | 20.7 | 110 | −43 / +17 / +8 | −6 / +39 / −9 |
+| (CNN-only / Concat, saved models) | .9482 / .9464 | | | | | | |
+
+Projected b − c = validation rows summed over a seed's 5 folds (folds' validation rows can overlap, so a proxy, not a test).
+
+Keep rule (fixed before running: better than control on average and in ≥ 11 of 15, AND projected b − c > 0 against both baselines in every
+seed): **no candidate passes.** D1 passes the improvement part (+0.0085, 12 of 15; first version above both baselines on validation) and is ahead
+of Concatenation in all three seeds and of CNN-only in two, but is behind CNN-only in seed 42 (−36). The extra generator inputs (37
+contributions) make it worse; the two-layer generator and the head shortcut do not beat D1. As the rule says, the study stops here; the
+shared-recipe check R1 was not run. Adopting D1 (a fix of a training inconsistency) is a decision for the group and the adviser and would need a
+disclosed 4th test read or a fresh holdout. Test folds were not read.

@@ -27,10 +27,13 @@ class PartData(NamedTuple):
     link_blank: torch.Tensor       # (n, 4) the same with the page hidden (page_missing = 1); has_url is the same in both
 
 
-def part_inputs(seed: int, fold: int, part: str, word_to_idx: Dict[str, int], seq_len: int, pilot: bool = False) -> PartData:
+def part_inputs(seed: int, fold: int, part: str, word_to_idx: Dict[str, int], seq_len: int, pilot: bool = False,
+                extra_link_columns: tuple = ()) -> PartData:
+    """extra_link_columns: further lane columns placed after P, u, page_missing (has_url stays last), e.g. link_lane.CONTRIBUTIONS
+    for a generator that reads the Link RF's 37 contributions. Left empty, the link tensors are the usual (n, 4)."""
     rows = load_fold(seed, fold, pilot=pilot)[part]
     token_ids, labels = tc.tensors(rows, word_to_idx, seq_len)
-    link = fi.link_inputs(seed, fold, pilot=pilot)[part]
+    link = fi.link_inputs(seed, fold, pilot=pilot, extra=tuple(extra_link_columns), parts_wanted=(part,))[part]
     assert LABEL_TO_IDX["smishing"] == 1 and torch.equal(labels, torch.tensor(link.label)), "labels disagree with the link rows"
     return PartData(message_id=link.message_id, token_ids=token_ids, labels=labels,
                     link_full=torch.tensor(link.stack4("full")), link_blank=torch.tensor(link.stack4("blank")))

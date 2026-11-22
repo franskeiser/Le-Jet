@@ -1,0 +1,28 @@
+control replay: largest gap to the recorded Proposed validation balanced accuracy = 0.000000 (must be 0)
+baselines' mean validation balanced accuracy: CNN-only 0.9482, Concat 0.9464
+
+variant  val_bal_acc  val_f1  wins_vs_control  false_alarms_per_fold  misses_per_fold  legit_lab_FA bare_link_FA  worst_seed_b_minus_c  kept
+control       0.9410  0.9343                0                   24.2             20.9           181          0/0                   -56 False
+     D1       0.9495  0.9439               12                   20.0             18.5           119          0/0                   -36 False
+   D1F2       0.9379  0.9315                7                   20.8             25.7            86          0/0                   -87 False
+   D1F3       0.9454  0.9394               10                   18.5             22.5           117          0/0                   -54 False
+  D1F23       0.9373  0.9306                5                   19.9             26.9           119          0/0                   -84 False
+   D1F1       0.9473  0.9415               12                   19.1             20.7           110          0/0                   -43 False
+
+projected McNemar per seed (validation rows, proxy):
+seed              42    123   2024
+variant baseline                  
+D1      CNN-only -36.0   5.0  33.0
+        Concat     1.0  27.0  16.0
+D1F1    CNN-only -43.0  17.0   8.0
+        Concat    -6.0  39.0  -9.0
+D1F2    CNN-only -87.0 -26.0  -6.0
+        Concat   -50.0  -4.0 -23.0
+D1F23   CNN-only -84.0 -44.0   5.0
+        Concat   -47.0 -22.0 -12.0
+D1F3    CNN-only -54.0   3.0  15.0
+        Concat   -17.0  25.0  -2.0
+control CNN-only -56.0 -18.0 -24.0
+        Concat   -19.0   4.0 -41.0
+
+KEPT: none (no candidate passes the keep rule; stop and report)

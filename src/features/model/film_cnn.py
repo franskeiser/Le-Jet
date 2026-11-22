@@ -38,6 +38,11 @@ class FilterExplanation(NamedTuple):
 # How gamma is made from the generator's output (decision D2, changed 2026-10-20). "bounded" is the default: gamma = 1 +
 # tanh(delta), between 0 and 2. "free" is gamma = 1 + delta, unbounded, as in the FiLM paper; it is kept as an ablation.
 GAMMA_MODES = ("free", "bounded")
+# How modality dropout hides a message's text (fit_model.fit passes text_keep while training). "pooled" (the original): the 64
+# pooled text numbers are set to 0 AFTER FiLM, so the link's gamma and beta are hidden with them and the head sees zeros. "input"
+# (validation study 2026-11-22): the words are hidden BEFORE the Conv (its input is zeroed), so the filters see no phrase but the
+# link's gamma and beta still act; the head then sees what the link alone does, as the baselines' text dropout keeps their link numbers.
+TEXT_DROPOUT_MODES = ("pooled", "input")
 
 
 class FiLMTextCNN(nn.Module):
@@ -74,21 +79,37 @@ class FiLMTextCNN(nn.Module):
       freeze_embedding    False: the embedding is fine-tuned during training, as in the diagram (D6, changed 2026-10-20).
                           True: it stays at its fastText values (the frozen-embedding check run). The layer you pass in is
                           used as given and its requires_grad is set here, so do not share one layer between two models.
+      text_dropout        "pooled" (default): text_keep = 0 zeroes the pooled numbers after FiLM. "input": it zeroes the Conv's input
+                          instead, so the link's gamma and beta still reach the head (TEXT_DROPOUT_MODES).
+      generator_hidden    0 (default): the generator is one Dense layer. > 0: Dense (that many units) -> ReLU -> Dense; only the last
+                          layer starts at zero, so the model still starts as the plain text CNN.
+      head_link           False (default): the head sees only the 64 text numbers. True: [P, u, page_missing, has_url] are also
+                          attached before Dense 64, as in the concatenation control (has_url = 1 when it is not given).
+      link_dim            3 (default) = [P, u, page_missing]. A larger value lets the generator read more link numbers placed after
+                          those three (for example the Link RF's 37 contributions); has_url, when given, is still the last column.
     """
 
     def __init__(self, embedding_layer: nn.Embedding, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
                  link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, gamma_mode: str = "bounded",
                  mask_padding: bool = False, average_after_relu: bool = False, use_beta: bool = True,
-                 freeze_embedding: bool = False, bypass_no_link: bool = True, use_average: bool = True):
+                 freeze_embedding: bool = False, bypass_no_link: bool = True, use_average: bool = True,
+                 text_dropout: str = "pooled", generator_hidden: int = 0, head_link: bool = False):
         super().__init__()
         if gamma_mode not in GAMMA_MODES:
             raise ValueError(f"gamma_mode must be one of {GAMMA_MODES}, got {gamma_mode!r}")
+        if text_dropout not in TEXT_DROPOUT_MODES:
+            raise ValueError(f"text_dropout must be one of {TEXT_DROPOUT_MODES}, got {text_dropout!r}")
+        if link_dim < LINK_DIM:
+            raise ValueError(f"link_dim must be at least {LINK_DIM} (P, u, page_missing come first), got {link_dim}")
+        if generator_hidden < 0:
+            raise ValueError(f"generator_hidden must be 0 or more, got {generator_hidden}")
         if mask_padding and embedding_layer.padding_idx is None:
             raise ValueError("mask_padding needs an embedding layer with a padding_idx")
         self.num_filters, self.kernel_size, self.link_dim = num_filters, kernel_size, link_dim
         self.gamma_mode, self.mask_padding, self.average_after_relu = gamma_mode, mask_padding, average_after_relu
         self.use_beta, self.freeze_embedding, self.bypass_no_link = use_beta, freeze_embedding, bypass_no_link
         self.use_average = use_average
+        self.text_dropout, self.generator_hidden, self.head_link = text_dropout, generator_hidden, head_link
 
         # Fine-tuned for every model of the study (D6, changed 2026-10-20 from frozen). Its parameters are counted apart from
         # the 70,658 of the layers below (vocabulary size x 300 more), and it has its own optimizer group.
@@ -98,14 +119,24 @@ class FiLMTextCNN(nn.Module):
 
         # One Dense layer: (link numbers + one average per filter) -> a delta_gamma and a beta per filter (delta_gamma only
         # when use_beta is False).
-        self.generator = nn.Linear(link_dim + (num_filters if use_average else 0), (2 if use_beta else 1) * num_filters)
-        nn.init.zeros_(self.generator.weight)
-        nn.init.zeros_(self.generator.bias)
+        generator_in, generator_out = link_dim + (num_filters if use_average else 0), (2 if use_beta else 1) * num_filters
+        if generator_hidden:
+            self.generator = nn.Sequential(nn.Linear(generator_in, generator_hidden), nn.ReLU(),
+                                           nn.Linear(generator_hidden, generator_out))
+        else:
+            self.generator = nn.Linear(generator_in, generator_out)
+        last = self.generator_layers()[-1]
+        nn.init.zeros_(last.weight)
+        nn.init.zeros_(last.bias)
 
         self.dropout_pool = nn.Dropout(0.2)
-        self.dense = nn.Linear(num_filters, dense_units)
+        self.dense = nn.Linear(num_filters + (LINK_DIM + 1 if head_link else 0), dense_units)
         self.dropout_head = nn.Dropout(0.5)
         self.output = nn.Linear(dense_units, 2)
+
+    def generator_layers(self) -> list:
+        """The generator's Dense layers, first to last (one, or two when generator_hidden > 0)."""
+        return [m for m in self.generator.modules() if isinstance(m, nn.Linear)]
 
     def conv_average(self, x: torch.Tensor, token_ids: torch.Tensor) -> torch.Tensor:
         # The mean of each filter's scores over the positions (batch, filters): what the generator reads about the text.
@@ -118,10 +149,13 @@ class FiLMTextCNN(nn.Module):
         total = counts.sum(dim=2).clamp(min=1.0)                                               # a message with no words -> 0
         return (scores * counts).sum(dim=2) / total
 
-    def conv_features(self, token_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def conv_features(self, token_ids: torch.Tensor, words_keep: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         # token_ids: (batch, seq_len) of vocab indices. Returns x (batch, filters, positions), the Conv scores before the
         # FiLM step, and their average over the positions (batch, filters), which is what the generator reads.
+        # words_keep: optional (batch,) of 1 / 0; a 0 zeroes that message's Conv input (text_dropout="input").
         embedded = self.embedding(token_ids)           # (batch, seq_len, embedding_dim)
+        if words_keep is not None:
+            embedded = embedded * words_keep.to(embedded.dtype).view(-1, 1, 1)
         x = self.conv(embedded.transpose(1, 2))        # (batch, filters, positions)
         return x, self.conv_average(x, token_ids)
 
@@ -158,11 +192,12 @@ class FiLMTextCNN(nn.Module):
         # The one place the FiLM step and the pooling are done, so encode(), encode_with_positions() and explain() cannot
         # disagree. Returns (pooled, position, x, gamma, beta): the pooled numbers (batch, filters), the start of each
         # filter's winning window, the Conv scores before FiLM, and gamma and beta.
-        x, average = self.conv_features(token_ids)
+        hide_input = text_keep is not None and self.text_dropout == "input"
+        x, average = self.conv_features(token_ids, text_keep if hide_input else None)
         gamma, beta = self.film_parameters(link, average, has_url)
         adjusted = gamma.unsqueeze(2) * x + beta.unsqueeze(2)          # FiLM, before ReLU, at every position
         pooled, position = F.relu(adjusted).max(dim=2)                 # the same value adaptive_max_pool1d gives
-        if text_keep is not None:
+        if text_keep is not None and not hide_input:
             pooled = pooled * text_keep.to(pooled.dtype).unsqueeze(1)
         return pooled, position, x, gamma, beta
 
@@ -177,7 +212,21 @@ class FiLMTextCNN(nn.Module):
                 has_url: torch.Tensor | None = None) -> torch.Tensor:
         # Raw logits (batch, 2); no Softmax here, as in TextEncoder (the loss applies it).
         features = self.encode(token_ids, link, text_keep, has_url)
+        if self.head_link:
+            features = torch.cat([features, self.head_numbers(link, has_url)], dim=1)
         return self.output(self.dropout_head(F.relu(self.dense(features))))
+
+    def head_numbers(self, link: torch.Tensor, has_url: torch.Tensor | None = None) -> torch.Tensor:
+        # head_link only: (batch, 4) [P, u, page_missing, has_url], what the concatenation control's head reads. has_url comes from the
+        # argument, else the link's last column when it has one, else 1. A no-link row's numbers (even NaN) are replaced by
+        # P = 0, u = 0, page_missing = 1, as the link lane writes them.
+        if has_url is None:
+            has_url = link[:, self.link_dim] if link.shape[1] == self.link_dim + 1 else torch.ones(link.shape[0], dtype=link.dtype)
+        has_url = has_url.to(link.dtype)
+        numbers = link[:, :LINK_DIM]
+        no_link = torch.tensor([0.0, 0.0, 1.0], dtype=link.dtype).expand_as(numbers)
+        numbers = torch.where(has_url.bool().unsqueeze(1), numbers, no_link)
+        return torch.cat([numbers, has_url.unsqueeze(1)], dim=1)
 
     def encode_with_positions(self, token_ids: torch.Tensor, link: torch.Tensor,
                               has_url: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
@@ -209,11 +258,11 @@ class FiLMTextCNN(nn.Module):
         # Biases, the Conv and the output layer get none. A trainable embedding has a group of its own with no decay (so its
         # learning rate can be set apart later); a frozen one is in no group.
         generator_decay = weight_decay if generator_weight_decay is None else generator_weight_decay
-        decayed = [(self.dense.weight, weight_decay), (self.generator.weight, generator_decay)]
-        apart = {id(p) for p, _ in decayed} | {id(self.embedding.weight)}
+        generator_weights = [layer.weight for layer in self.generator_layers()]
+        apart = {id(self.dense.weight), id(self.embedding.weight)} | {id(w) for w in generator_weights}
         plain = [p for p in self.parameters() if p.requires_grad and id(p) not in apart]
         groups = [{"params": [self.dense.weight], "weight_decay": weight_decay},
-                  {"params": [self.generator.weight], "weight_decay": generator_decay},
+                  {"params": generator_weights, "weight_decay": generator_decay},
                   {"params": plain, "weight_decay": 0.0}]
         if self.embedding.weight.requires_grad:
             groups.append({"params": [self.embedding.weight], "weight_decay": 0.0})

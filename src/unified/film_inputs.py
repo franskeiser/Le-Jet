@@ -45,20 +45,24 @@ class PartLink:
     full: Dict[str, np.ndarray]          # P, u, page_missing, each (n,): the page as inspected
     blank: Dict[str, np.ndarray]         # the same with the page hidden (page_missing = 1)
     has_url: np.ndarray = None           # (n,) 1 if the message has a link; a dataset without the column has a link in every message
+    extra: tuple = ()                    # names of extra link columns (from the lane) held in full / blank after the three
 
     def stack(self, which: str = "full") -> np.ndarray:
-        """(n, 3) float32 array [P, u, page_missing] of `full` or `blank`."""
+        """(n, 3 + len(extra)) float32 array [P, u, page_missing, extra...] of `full` or `blank`."""
         numbers = self.full if which == "full" else self.blank
-        return np.column_stack([numbers[c] for c in E2_LINK]).astype(np.float32)
+        return np.column_stack([numbers[c] for c in E2_LINK + list(self.extra)]).astype(np.float32)
 
     def stack4(self, which: str = "full") -> np.ndarray:
-        """(n, 4) float32 array [P, u, page_missing, has_url]: what E2, the concatenation control and the baseline are given."""
+        """(n, 4) float32 array [P, u, page_missing, has_url]: what E2, the concatenation control and the baseline are given.
+        With extra columns: (n, 4 + len(extra)) [P, u, page_missing, extra..., has_url] (has_url stays last)."""
         has_url = np.ones(len(self.message_id)) if self.has_url is None else self.has_url
         return np.column_stack([self.stack(which), has_url]).astype(np.float32)
 
 
-def align(rows: pd.DataFrame, full: pd.DataFrame, blank: pd.DataFrame) -> PartLink:
-    """Line the lane's frames up with the text `rows` of one part, or stop with the reason they do not match."""
+def align(rows: pd.DataFrame, full: pd.DataFrame, blank: pd.DataFrame, extra: tuple = ()) -> PartLink:
+    """Line the lane's frames up with the text `rows` of one part, or stop with the reason they do not match.
+    extra: names of further lane columns to carry after P, u, page_missing (for example the 37 c_ contributions)."""
+    columns = E2_LINK + list(extra)
     ids = rows["message_id"]
     if ids.duplicated().any():
         raise ValueError("a message id appears twice in the text rows")
@@ -66,11 +70,11 @@ def align(rows: pd.DataFrame, full: pd.DataFrame, blank: pd.DataFrame) -> PartLi
     for name, lane in (("full", full), ("blank", blank)):
         if len(lane) != len(rows) or lane["message_id"].duplicated().any() or set(lane["message_id"]) != set(ids):
             raise ValueError(f"{name}: the link numbers and the text rows do not match one to one")
-        link = rows[["message_id"]].merge(lane[["message_id"] + E2_LINK], on="message_id", how="left", validate="one_to_one")
-        values = link[E2_LINK].to_numpy(dtype=np.float64)
+        link = rows[["message_id"]].merge(lane[["message_id"] + columns], on="message_id", how="left", validate="one_to_one")
+        values = link[columns].to_numpy(dtype=np.float64)
         if not np.isfinite(values).all():
             raise ValueError(f"{name}: a link number is missing or not finite")
-        aligned[name] = {c: link[c].to_numpy(dtype=np.float64) for c in E2_LINK}
+        aligned[name] = {c: link[c].to_numpy(dtype=np.float64) for c in columns}
 
     for name, numbers in aligned.items():
         if (numbers["P"] < 0).any() or (numbers["P"] > 1).any():
@@ -84,14 +88,15 @@ def align(rows: pd.DataFrame, full: pd.DataFrame, blank: pd.DataFrame) -> PartLi
 
     has_url = rows["has_url"].astype(int).to_numpy() if "has_url" in rows.columns else np.ones(len(rows), dtype=int)
     return PartLink(message_id=ids.to_numpy(), label=(rows["label"] == "smishing").to_numpy().astype(int),
-                    full=aligned["full"], blank=aligned["blank"], has_url=has_url)
+                    full=aligned["full"], blank=aligned["blank"], has_url=has_url, extra=tuple(extra))
 
 
-def link_inputs(seed: int, fold: int, pilot: bool = False) -> Dict[str, PartLink]:
-    """{train, val, test} -> PartLink for one seed and fold. Train rows are out-of-fold; val and test use the final forest."""
+def link_inputs(seed: int, fold: int, pilot: bool = False, extra: tuple = (), parts_wanted: tuple = PARTS) -> Dict[str, PartLink]:
+    """{train, val, test} -> PartLink for one seed and fold. Train rows are out-of-fold; val and test use the final forest.
+    extra: further lane columns to carry (e.g. link_lane.CONTRIBUTIONS). parts_wanted: only these parts are lined up."""
     parts = load_fold(seed, fold, pilot=pilot)
     lane = ll.load_lane(seed, fold, pilot=pilot)
-    return {part: align(parts[part], *lane[part]) for part in PARTS}
+    return {part: align(parts[part], *lane[part], extra=extra) for part in parts_wanted}
 
 
 def summary_rows(seed: int, fold: int, inputs: Dict[str, PartLink]) -> List[dict]:

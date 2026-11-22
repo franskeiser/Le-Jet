@@ -101,3 +101,17 @@ def test_pilot_files_align_for_one_cell():
     for part in inputs.values():
         n = len(part.message_id)
         assert n > 0 and all(a.shape == (n,) for a in part.full.values()) and all(a.shape == (n,) for a in part.blank.values())
+
+
+def test_align_can_carry_extra_lane_columns_with_has_url_last():
+    text = rows().assign(has_url=[1, 1, 0, 1, 1, 1])
+    full = lane(text)
+    full["c_length_url"] = np.arange(6) / 10
+    part = fi.align(text, full, lane(text, blank=True), extra=("c_length_url",))
+    assert part.stack("full").shape == (6, 4) and np.allclose(part.stack("full")[:, 3], np.arange(6) / 10)
+    four = part.stack4("full")
+    assert four.shape == (6, 5) and list(four[:, -1]) == [1, 1, 0, 1, 1, 1]
+    plain = fi.align(text, full, lane(text, blank=True))
+    assert plain.stack4("full").shape == (6, 4)                  # without extra columns nothing changes
+    with pytest.raises(KeyError):
+        fi.align(text, full.drop(columns="c_length_url"), lane(text, blank=True), extra=("c_length_url",))

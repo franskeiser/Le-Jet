@@ -56,7 +56,8 @@ CONFIG = {
 }
 RECIPE = ("Adam lr 0.001, batch 64, up to 30 epochs, early stop after 3 epochs without better validation balanced accuracy (best epoch "
           "kept), class weights, label smoothing 0.1, weight decay 1e-4 on Dense 64 (and the generator), modality dropout page 0.25 / "
-          "text 0.10 (models that read the link), from scratch")
+          "text 0.10 (models that read the link; for the Proposed model the text is hidden before the Conv, so the link's FiLM still acts, "
+          "adopted 2026-11-22), from scratch")
 RUN_COLUMNS = (["model", "seed", "fold", "status", "n_train", "n_val", "best_epoch", "epochs_run", "stopped_early", "patience",
                 "train_seconds"] + [f"train_{m}" for m in PERF] + [f"val_{m}" for m in PERF]
                + ["val_log_loss", "checkpoint", "checkpoint_exists", "rebuild_check"])

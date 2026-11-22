@@ -1,0 +1,385 @@
+=== 10:11:39 step4
+Proposed model (E2: CNN + RF + FiLM): training performance measured on 15 runs
+CNN-only (text + 37 URL features): training performance measured on 15 runs
+Concatenation fusion: training performance measured on 15 runs
+KNN-RF-ETC (Jain et al. 2022): training performance measured on 15 runs
+Text-only CNN: training performance measured on 15 runs
+                               model  runs_completed  of  train_f1_mean  val_f1_mean  val_f1_sd  best_epoch_mean runs_stopped_early
+Proposed model (E2: CNN + RF + FiLM)              15  15         0.9996       0.9439     0.0249           6.2000                 15
+   CNN-only (text + 37 URL features)              15  15         0.9989       0.9429     0.0182           5.0000                 15
+                Concatenation fusion              15  15         0.9997       0.9402     0.0240           5.8667                 15
+       KNN-RF-ETC (Jain et al. 2022)              15  15         0.9681       0.8124     0.0348              NaN                n/a
+                       Text-only CNN              15  15         0.9982       0.9135     0.0212           3.8000                 15
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step4\Training_Records.xlsx
+=== 10:13:27 step5
+seed 42 fold 0: test F1 0.8136
+seed 42 fold 1: test F1 0.7785
+seed 42 fold 2: test F1 0.8653
+seed 42 fold 3: test F1 0.7830
+seed 42 fold 4: test F1 0.8691
+seed 123 fold 0: test F1 0.8603
+seed 123 fold 1: test F1 0.7755
+seed 123 fold 2: test F1 0.8191
+seed 123 fold 3: test F1 0.8162
+seed 123 fold 4: test F1 0.8384
+seed 2024 fold 0: test F1 0.8302
+seed 2024 fold 1: test F1 0.7791
+seed 2024 fold 2: test F1 0.8167
+seed 2024 fold 3: test F1 0.8164
+seed 2024 fold 4: test F1 0.8370
+                       model  seed  rows  every message exactly once  fold matches Step 3  probability in [0, 1]  no missing value  same messages as every other model  all passed
+              Proposed Model    42  6714                        True                 True                   True              True                                True        True
+              Proposed Model   123  6714                        True                 True                   True              True                                True        True
+              Proposed Model  2024  6714                        True                 True                   True              True                                True        True
+                    CNN-only    42  6714                        True                 True                   True              True                                True        True
+                    CNN-only   123  6714                        True                 True                   True              True                                True        True
+                    CNN-only  2024  6714                        True                 True                   True              True                                True        True
+        Concatenation Fusion    42  6714                        True                 True                   True              True                                True        True
+        Concatenation Fusion   123  6714                        True                 True                   True              True                                True        True
+        Concatenation Fusion  2024  6714                        True                 True                   True              True                                True        True
+Text-only CNN (Step 6 check)    42  6714                        True                 True                   True              True                                True        True
+Text-only CNN (Step 6 check)   123  6714                        True                 True                   True              True                                True        True
+Text-only CNN (Step 6 check)  2024  6714                        True                 True                   True              True                                True        True
+                  KNN-RF-ETC    42  6714                        True                 True                   True              True                                True        True
+                  KNN-RF-ETC   123  6714                        True                 True                   True              True                                True        True
+                  KNN-RF-ETC  2024  6714                        True                 True                   True              True                                True        True
+wrote 5 prediction files, PageHidden_Predictions.csv and Predictions.xlsx to D:\Le-Jet\experiments\film\lejet_final_dataset\step5
+=== 10:14:46 step6
+seed 42 fold 0 done
+seed 42 fold 1 done
+seed 42 fold 2 done
+seed 42 fold 3 done
+seed 42 fold 4 done
+seed 123 fold 0 done
+seed 123 fold 1 done
+seed 123 fold 2 done
+seed 123 fold 3 done
+seed 123 fold 4 done
+seed 2024 fold 0 done
+seed 2024 fold 1 done
+seed 2024 fold 2 done
+seed 2024 fold 3 done
+seed 2024 fold 4 done
+                     check accuracy (mean ± SD) precision (mean ± SD) recall (mean ± SD)  f1 (mean ± SD)
+Proposed model (reference)      0.9536 ± 0.0010       0.9356 ± 0.0047    0.9622 ± 0.0037 0.9487 ± 0.0009
+             Text-only CNN      0.9171 ± 0.0079       0.8794 ± 0.0166    0.9436 ± 0.0056 0.9103 ± 0.0076
+          FiLM neutralised      0.8085 ± 0.0079       0.9569 ± 0.0121    0.5971 ± 0.0230 0.7351 ± 0.0154
+       Shuffled RF outputs      0.8014 ± 0.0048       0.7394 ± 0.0068    0.8562 ± 0.0110 0.7935 ± 0.0051
+   Webpage features hidden      0.9497 ± 0.0008       0.9366 ± 0.0054    0.9514 ± 0.0060 0.9439 ± 0.0009
+                            accuracy_change_vs_reference  precision_change_vs_reference  recall_change_vs_reference  f1_change_vs_reference
+check                                                                                                                                      
+Proposed model (reference)                          0.00                           0.00                        0.00                    0.00
+Text-only CNN                                      -3.65                          -5.62                       -1.86                   -3.84
+FiLM neutralised                                  -14.52                           2.14                      -36.51                  -21.36
+Shuffled RF outputs                               -15.22                         -19.62                      -10.60                  -15.52
+Webpage features hidden                            -0.40                           0.11                       -1.08                   -0.47
+message_condition           accessible webpage  inaccessible webpage  no URL
+check                                                                       
+Proposed model (reference)              0.9645                0.9316  0.9640
+Text-only CNN                           0.9221                0.9003  0.9381
+FiLM neutralised                        0.7885                0.7786  0.9640
+Shuffled RF outputs                     0.7794                0.7722  0.9640
+Webpage features hidden                 0.9571                0.9316  0.9640
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step6
+=== 10:15:16 step7
+               Model        Accuracy       Precision          Recall        F1-score
+            CNN-only 0.9510 ± 0.0019 0.9457 ± 0.0019 0.9444 ± 0.0047 0.9450 ± 0.0022
+Concatenation Fusion 0.9511 ± 0.0048 0.9308 ± 0.0098 0.9619 ± 0.0060 0.9461 ± 0.0051
+          KNN-RF-ETC 0.8131 ± 0.0036 0.7197 ± 0.0041 0.9507 ± 0.0027 0.8192 ± 0.0030
+      Proposed Model 0.9536 ± 0.0010 0.9356 ± 0.0047 0.9622 ± 0.0037 0.9487 ± 0.0009
+               Model  Seed    N  Accuracy  Precision  Recall  F1-score
+            CNN-only    42 6714    0.9492     0.9443  0.9415    0.9429
+            CNN-only   123 6714    0.9510     0.9478  0.9418    0.9448
+            CNN-only  2024 6714    0.9529     0.9448  0.9498    0.9473
+Concatenation Fusion    42 6714    0.9470     0.9271  0.9562    0.9414
+Concatenation Fusion   123 6714    0.9501     0.9235  0.9682    0.9453
+Concatenation Fusion  2024 6714    0.9564     0.9420  0.9612    0.9515
+          KNN-RF-ETC    42 6714    0.8143     0.7201  0.9539    0.8207
+          KNN-RF-ETC   123 6714    0.8159     0.7236  0.9495    0.8213
+          KNN-RF-ETC  2024 6714    0.8091     0.7154  0.9488    0.8158
+      Proposed Model    42 6714    0.9547     0.9409  0.9585    0.9497
+      Proposed Model   123 6714    0.9528     0.9338  0.9622    0.9478
+      Proposed Model  2024 6714    0.9534     0.9319  0.9659    0.9486
+               Model             Seed     N   TP  FN   FP    TN
+            CNN-only               42  6714 2816 175  166  3557
+            CNN-only              123  6714 2817 174  155  3568
+            CNN-only             2024  6714 2841 150  166  3557
+            CNN-only pooled (3 seeds) 20142 8474 499  487 10682
+Concatenation Fusion               42  6714 2860 131  225  3498
+Concatenation Fusion              123  6714 2896  95  240  3483
+Concatenation Fusion             2024  6714 2875 116  177  3546
+Concatenation Fusion pooled (3 seeds) 20142 8631 342  642 10527
+          KNN-RF-ETC               42  6714 2853 138 1109  2614
+          KNN-RF-ETC              123  6714 2840 151 1085  2638
+          KNN-RF-ETC             2024  6714 2838 153 1129  2594
+          KNN-RF-ETC pooled (3 seeds) 20142 8531 442 3323  7846
+      Proposed Model               42  6714 2867 124  180  3543
+      Proposed Model              123  6714 2878 113  204  3519
+      Proposed Model             2024  6714 2889 102  211  3512
+      Proposed Model pooled (3 seeds) 20142 8634 339  595 10574
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step7\Classification_Performance_Results.xlsx
+=== 10:15:24 step8
+               Model    Message Condition  Number of Messages  Smishing        Accuracy       Precision          Recall        F1-score
+            CNN-only               No URL                 888        75 0.9591 ± 0.0047 0.8487 ± 0.0190 0.6267 ± 0.0481 0.7206 ± 0.0388
+            CNN-only Inaccessible webpage                2204      1201 0.9347 ± 0.0036 0.9229 ± 0.0055 0.9603 ± 0.0021 0.9412 ± 0.0031
+            CNN-only   Accessible webpage                3622      1715 0.9590 ± 0.0022 0.9657 ± 0.0007 0.9471 ± 0.0055 0.9563 ± 0.0025
+Concatenation Fusion               No URL                 888        75 0.9643 ± 0.0046 0.8491 ± 0.0108 0.7022 ± 0.0555 0.7681 ± 0.0372
+Concatenation Fusion Inaccessible webpage                2204      1201 0.9294 ± 0.0133 0.9109 ± 0.0170 0.9650 ± 0.0110 0.9371 ± 0.0116
+Concatenation Fusion   Accessible webpage                3622      1715 0.9612 ± 0.0013 0.9482 ± 0.0056 0.9710 ± 0.0070 0.9595 ± 0.0014
+          KNN-RF-ETC               No URL                 888        75 0.9407 ± 0.0017 0.6085 ± 0.0080 0.8356 ± 0.0204 0.7041 ± 0.0097
+          KNN-RF-ETC Inaccessible webpage                2204      1201 0.8090 ± 0.0035 0.7691 ± 0.0044 0.9281 ± 0.0029 0.8412 ± 0.0025
+          KNN-RF-ETC   Accessible webpage                3622      1715 0.7843 ± 0.0073 0.6946 ± 0.0073 0.9716 ± 0.0044 0.8101 ± 0.0055
+      Proposed Model               No URL                 888        75 0.9640 ± 0.0049 0.9227 ± 0.0471 0.6267 ± 0.0400 0.7458 ± 0.0362
+      Proposed Model Inaccessible webpage                2204      1201 0.9316 ± 0.0049 0.9035 ± 0.0095 0.9792 ± 0.0046 0.9398 ± 0.0039
+      Proposed Model   Accessible webpage                3622      1715 0.9645 ± 0.0027 0.9602 ± 0.0049 0.9650 ± 0.0036 0.9626 ± 0.0028
+                                             TP   FN    FP    TN
+Message Condition    Model                                      
+No URL               CNN-only               141   84    25  2414
+Inaccessible webpage CNN-only              3460  143   289  2720
+Accessible webpage   CNN-only              4873  272   173  5548
+No URL               Concatenation Fusion   158   67    28  2411
+Inaccessible webpage Concatenation Fusion  3477  126   341  2668
+Accessible webpage   Concatenation Fusion  4996  149   273  5448
+No URL               KNN-RF-ETC             188   37   121  2318
+Inaccessible webpage KNN-RF-ETC            3344  259  1004  2005
+Accessible webpage   KNN-RF-ETC            4999  146  2198  3523
+No URL               Proposed Model         141   84    12  2427
+Inaccessible webpage Proposed Model        3528   75   377  2632
+Accessible webpage   Proposed Model        4965  180   206  5515
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step8\Message_Condition_Analysis.xlsx
+=== 10:15:32 step9
+D:\Le-Jet\scripts\build_step9_files.py:129: UserWarning: This pattern is interpreted as a regular expression, and has match groups. To actually get the groups, use str.extract.
+  data[w] = data.sms_text.str.contains(pattern, case=False, regex=True)
+               model  TP (majority)  TP in all 3 seeds  TN (majority)  TN in all 3 seeds  FP (majority)  FP in all 3 seeds  FN (majority)  FN in all 3 seeds  messages wrong in at least one seed
+      Proposed Model           2891               2814           3540               3407            183                 96            100                 62                                  493
+Concatenation Fusion           2899               2792           3528               3367            195                 91             92                 51                                  555
+            CNN-only           2834               2729           3578               3453            145                 72            157                 80                                  532
+          KNN-RF-ETC           2845               2811           2651               2454           1072                982            146                116                                 1449
+E2 error  E2 messages          other model  also wrong (majority) by the other model  share
+      FN          100 Concatenation Fusion                                        65  0.650
+      FN          100             CNN-only                                        84  0.840
+      FN          100           KNN-RF-ETC                                        23  0.230
+      FP          183 Concatenation Fusion                                       140  0.765
+      FP          183             CNN-only                                        90  0.492
+      FP          183           KNN-RF-ETC                                        84  0.459
+                                                      characteristic  FN (n=100)  TP (n=2891)  kind  difference
+                                                      urgent wording      0.3600       0.4410 share     -0.0810
+                                          OTP / verification phrases      0.0900       0.2293 share     -0.1393
+                                                     financial terms      0.6300       0.5915 share      0.0385
+                                                      reward wording      0.4000       0.4396 share     -0.0396
+                       neutral wording (none of the four word lists)      0.0800       0.1173 share     -0.0373
+                                       no URL (missing URL evidence)      0.2900       0.0159 share      0.2741
+                                                inaccessible webpage      0.1900       0.4089 share     -0.2189
+                                                  accessible webpage      0.5200       0.5752 share     -0.0552
+                                                      shortened link      0.2000       0.1055 share      0.0945
+                                                      category: none      0.2900       0.3179 share     -0.0279
+                                                  category: gambling      0.2400       0.3276 share     -0.0876
+                                                   category: banking      0.1700       0.1155 share      0.0545
+                                                  category: e-wallet      0.0600       0.0360 share      0.0240
+                                          category: payments_billing      0.0300       0.1072 share     -0.0772
+                                                   category: lending      0.1800       0.0643 share      0.1157
+                                         category: investment_crypto      0.0300       0.0315 share     -0.0015
+                                                        language: en      0.6700       0.7115 share     -0.0415
+                                                   language: taglish      0.2600       0.2394 share      0.0206
+                                                        language: tl      0.0700       0.0491 share      0.0209
+                                                        source: isda      0.3300       0.1989 share      0.1311
+                                                   source: web_group      0.6100       0.3507 share      0.2593
+                                               source: web_synthetic      0.0600       0.4504 share     -0.3904
+                                       message length (tokens), mean     26.8900      20.0930  mean      6.7970
+                             Link RF's P (messages with a URL), mean      0.2565       0.8816  mean     -0.6251
+Link RF's P < 0.5 (RF said legitimate), share of messages with a URL      0.7700       0.0778 share      0.6922
+                                                      characteristic  FP (n=183)  TN (n=3540)  kind  difference
+                                                      urgent wording      0.4098       0.2237 share      0.1861
+                                          OTP / verification phrases      0.2240       0.1251 share      0.0989
+                                                     financial terms      0.3661       0.3071 share      0.0591
+                                                      reward wording      0.4699       0.1802 share      0.2897
+                       neutral wording (none of the four word lists)      0.2350       0.3952 share     -0.1602
+                                       no URL (missing URL evidence)      0.0055       0.2294 share     -0.2239
+                                                inaccessible webpage      0.6721       0.2486 share      0.4235
+                                                  accessible webpage      0.3224       0.5220 share     -0.1996
+                                                      shortened link      0.0000       0.0040 share     -0.0040
+                                                      category: none      0.3497       0.6797 share     -0.3299
+                                                  category: gambling      0.4262       0.0299 share      0.3963
+                                                   category: banking      0.0546       0.0647 share     -0.0100
+                                                  category: e-wallet      0.0656       0.0839 share     -0.0183
+                                          category: payments_billing      0.0219       0.0794 share     -0.0575
+                                                   category: lending      0.0656       0.0525 share      0.0130
+                                         category: investment_crypto      0.0164       0.0099 share      0.0065
+                                                        language: en      0.6885       0.6449 share      0.0436
+                                                   language: taglish      0.2514       0.2709 share     -0.0195
+                                                        language: tl      0.0601       0.0842 share     -0.0241
+                                                        source: isda      0.1202       0.3088 share     -0.1885
+                                                   source: web_group      0.4317       0.0178 share      0.4139
+                                               source: web_legit_lab      0.4481       0.6734 share     -0.2254
+                                       message length (tokens), mean     23.3661      21.8353  mean      1.5308
+                             Link RF's P (messages with a URL), mean      0.4119       0.1569  mean      0.2550
+Link RF's P < 0.5 (RF said legitimate), share of messages with a URL      0.6667       0.9607 share     -0.2941
+               value     group   TP  FN   TN  FP  error rate
+  accessible webpage condition 1663  52 1848  59      0.0306
+inaccessible webpage condition 1182  19  880 123      0.0644
+              no URL condition   46  29  812   1      0.0338
+             banking  category  334  17  229  10      0.0458
+            e-wallet  category  104   6  297  12      0.0430
+            gambling  category  947  24  106  78      0.0883
+   investment_crypto  category   91   3   35   3      0.0455
+             lending  category  186  18  186  12      0.0746
+                none  category  919  29 2406  64      0.0272
+    payments_billing  category  310   3  281   4      0.0117
+                  en  language 2057  67 2283 126      0.0426
+             taglish  language  692  26  959  46      0.0418
+                  tl  language  142   7  298  11      0.0393
+                isda    source  575  33 1093  22      0.0319
+           web_group    source 1014  61   63  79      0.1150
+       web_legit_lab    source    0   0 2384  82      0.0333
+       web_synthetic    source 1302   6    0   0      0.0046
+Traceback (most recent call last):
+  File "D:\Le-Jet\scripts\build_step9_files.py", line 248, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "D:\Le-Jet\scripts\build_step9_files.py", line 242, in main
+    print(reps[["outcome", "message (anonymised)", "E2 mean P(smishing)", "Link RF's P", "condition", "category"]].to_string(index=False))
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Franz\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b1' in position 1421: character maps to <undefined>
+=== 10:16:19 step9
+D:\Le-Jet\scripts\build_step9_files.py:129: UserWarning: This pattern is interpreted as a regular expression, and has match groups. To actually get the groups, use str.extract.
+  data[w] = data.sms_text.str.contains(pattern, case=False, regex=True)
+               model  TP (majority)  TP in all 3 seeds  TN (majority)  TN in all 3 seeds  FP (majority)  FP in all 3 seeds  FN (majority)  FN in all 3 seeds  messages wrong in at least one seed
+      Proposed Model           2891               2814           3540               3407            183                 96            100                 62                                  493
+Concatenation Fusion           2899               2792           3528               3367            195                 91             92                 51                                  555
+            CNN-only           2834               2729           3578               3453            145                 72            157                 80                                  532
+          KNN-RF-ETC           2845               2811           2651               2454           1072                982            146                116                                 1449
+E2 error  E2 messages          other model  also wrong (majority) by the other model  share
+      FN          100 Concatenation Fusion                                        65  0.650
+      FN          100             CNN-only                                        84  0.840
+      FN          100           KNN-RF-ETC                                        23  0.230
+      FP          183 Concatenation Fusion                                       140  0.765
+      FP          183             CNN-only                                        90  0.492
+      FP          183           KNN-RF-ETC                                        84  0.459
+                                                      characteristic  FN (n=100)  TP (n=2891)  kind  difference
+                                                      urgent wording      0.3600       0.4410 share     -0.0810
+                                          OTP / verification phrases      0.0900       0.2293 share     -0.1393
+                                                     financial terms      0.6300       0.5915 share      0.0385
+                                                      reward wording      0.4000       0.4396 share     -0.0396
+                       neutral wording (none of the four word lists)      0.0800       0.1173 share     -0.0373
+                                       no URL (missing URL evidence)      0.2900       0.0159 share      0.2741
+                                                inaccessible webpage      0.1900       0.4089 share     -0.2189
+                                                  accessible webpage      0.5200       0.5752 share     -0.0552
+                                                      shortened link      0.2000       0.1055 share      0.0945
+                                                      category: none      0.2900       0.3179 share     -0.0279
+                                                  category: gambling      0.2400       0.3276 share     -0.0876
+                                                   category: banking      0.1700       0.1155 share      0.0545
+                                                  category: e-wallet      0.0600       0.0360 share      0.0240
+                                          category: payments_billing      0.0300       0.1072 share     -0.0772
+                                                   category: lending      0.1800       0.0643 share      0.1157
+                                         category: investment_crypto      0.0300       0.0315 share     -0.0015
+                                                        language: en      0.6700       0.7115 share     -0.0415
+                                                   language: taglish      0.2600       0.2394 share      0.0206
+                                                        language: tl      0.0700       0.0491 share      0.0209
+                                                        source: isda      0.3300       0.1989 share      0.1311
+                                                   source: web_group      0.6100       0.3507 share      0.2593
+                                               source: web_synthetic      0.0600       0.4504 share     -0.3904
+                                       message length (tokens), mean     26.8900      20.0930  mean      6.7970
+                             Link RF's P (messages with a URL), mean      0.2565       0.8816  mean     -0.6251
+Link RF's P < 0.5 (RF said legitimate), share of messages with a URL      0.7700       0.0778 share      0.6922
+                                                      characteristic  FP (n=183)  TN (n=3540)  kind  difference
+                                                      urgent wording      0.4098       0.2237 share      0.1861
+                                          OTP / verification phrases      0.2240       0.1251 share      0.0989
+                                                     financial terms      0.3661       0.3071 share      0.0591
+                                                      reward wording      0.4699       0.1802 share      0.2897
+                       neutral wording (none of the four word lists)      0.2350       0.3952 share     -0.1602
+                                       no URL (missing URL evidence)      0.0055       0.2294 share     -0.2239
+                                                inaccessible webpage      0.6721       0.2486 share      0.4235
+                                                  accessible webpage      0.3224       0.5220 share     -0.1996
+                                                      shortened link      0.0000       0.0040 share     -0.0040
+                                                      category: none      0.3497       0.6797 share     -0.3299
+                                                  category: gambling      0.4262       0.0299 share      0.3963
+                                                   category: banking      0.0546       0.0647 share     -0.0100
+                                                  category: e-wallet      0.0656       0.0839 share     -0.0183
+                                          category: payments_billing      0.0219       0.0794 share     -0.0575
+                                                   category: lending      0.0656       0.0525 share      0.0130
+                                         category: investment_crypto      0.0164       0.0099 share      0.0065
+                                                        language: en      0.6885       0.6449 share      0.0436
+                                                   language: taglish      0.2514       0.2709 share     -0.0195
+                                                        language: tl      0.0601       0.0842 share     -0.0241
+                                                        source: isda      0.1202       0.3088 share     -0.1885
+                                                   source: web_group      0.4317       0.0178 share      0.4139
+                                               source: web_legit_lab      0.4481       0.6734 share     -0.2254
+                                       message length (tokens), mean     23.3661      21.8353  mean      1.5308
+                             Link RF's P (messages with a URL), mean      0.4119       0.1569  mean      0.2550
+Link RF's P < 0.5 (RF said legitimate), share of messages with a URL      0.6667       0.9607 share     -0.2941
+               value     group   TP  FN   TN  FP  error rate
+  accessible webpage condition 1663  52 1848  59      0.0306
+inaccessible webpage condition 1182  19  880 123      0.0644
+              no URL condition   46  29  812   1      0.0338
+             banking  category  334  17  229  10      0.0458
+            e-wallet  category  104   6  297  12      0.0430
+            gambling  category  947  24  106  78      0.0883
+   investment_crypto  category   91   3   35   3      0.0455
+             lending  category  186  18  186  12      0.0746
+                none  category  919  29 2406  64      0.0272
+    payments_billing  category  310   3  281   4      0.0117
+                  en  language 2057  67 2283 126      0.0426
+             taglish  language  692  26  959  46      0.0418
+                  tl  language  142   7  298  11      0.0393
+                isda    source  575  33 1093  22      0.0319
+           web_group    source 1014  61   63  79      0.1150
+       web_legit_lab    source    0   0 2384  82      0.0333
+       web_synthetic    source 1302   6    0   0      0.0046
+outcome                                                                                                                                                                                                                                                                                                        message (anonymised)  E2 mean P(smishing)  Link RF's P            condition         category
+     TP                                                                                                                                                    Flash Express: your parcel PH[NUMBER] is stuck at the Pasig hub because the barangay in your address is missing. Update it here to resume delivery: [link: pencilmp.com]                0.959        0.816   accessible webpage         gambling
+     TP                                                                                                                                                                                                                Pinata Wins Swerte today! First 100O only: 3O FREE SP1NS + P12,888 BONUS. Habol na: [link: nn33koccc.it.com]                0.978        0.936   accessible webpage         gambling
+     TP                                                                                                                                                                                           Your pre-qualified business loan of â‚±500,000 is waiting. Upload two valid IDs here to proceed with the release: [link: kimi.page]                0.971        0.847   accessible webpage          lending
+     TP                                                                                                                                                                                               JUAN C., GoJackpot's thrill begins! Get 100% Welcome Bonus + 3% Deposit Bonus. Claim P777 and play at [link: betfilvips3.com]                0.974        0.999 inaccessible webpage         gambling
+     TP                                                                                              DEAR VIP JUAN C., SABONG PH is Back here in SBET! PH's Cockfighting officially here in SBET and Slot Machines! Register now and claim up to 88k Prizes plus Free Bet 100 Credit. Sign up now! [link: sbetpremyo.com] SABONGNOW                0.981        0.980 inaccessible webpage         gambling
+     TP                                                                                                                                                                                                                    Short sa budget? P5oK loan in 5 mins! No hiddenfees & 7-day interest offset. Apply: [link: juanhand.com]                0.876        0.589 inaccessible webpage          lending
+     TP                                                                                                                                                                                          JUAN C. Be one of our Highest earning Player at W+ best online casino! Sign up and get [NUMBER] Bonus at w42u . com 6:23 AM Ry + |                0.856        0.000               no URL         gambling
+     TP                                                                                                                                                                                         JUAN C.,, jackpot city REWARD CLUB! be our vip members and win more. Sign up now and get 20P and [NUMBER]CASH! jackpotcityjili.ccom                0.948        0.000               no URL         gambling
+     TN Get P3,000 eGC when you apply for a BPI Mastercard Credit Card online. Use promo code GCSH when you apply. Use your eGC for food delivery, grocery, shopping and more! Apply here [link: bpi.com.ph].  Visit [link: bpi.com.ph] Promo period: Aug 3-Nov 3, [NUMBER]. Per DTI [NUMBER] No advisories? Tap [link: bpi.com.ph]                0.067        0.341   accessible webpage          banking
+     TN                                                                                                                                                                                               Your Shopee order [NUMBER]KX7RT has been shipped via SPX Express. Track it at [link: shopee.ph] Expected delivery: Nov 23-25.                0.034        0.284   accessible webpage             none
+     TN                                                                                                                                                                                MERALCO: We received your payment of PHP 4,316.52 for CAN ending [NUMBER] on 11/19/[NUMBER]. Thank you! Bill history: [link: meralco.com.ph]                0.050        0.068   accessible webpage payments_billing
+     TN                                                                                                                                                                            Manila Water: Scheduled water interruption in Brgy. San Antonio, Pasig on Nov 22, 10PM to 4AM. Please store water ahead. [link: manilawater.com]                0.042        0.074 inaccessible webpage             none
+     TN                                                                                                                                                                                            04Aug 22:31: GIGA VIDEO 50 loaded to [PHONE]. Ref:EV9H44BTF0B8. Use GigaLife App for the best promos & deals! [link: onelink.me]                0.043        0.165 inaccessible webpage             none
+     TN                                                                                                                                                                                                                                       As promised, here's the leche flan recipe I was telling you about! [link: reddit.com]                0.057        0.130 inaccessible webpage             none
+     TN                                                                                                                                                                                                                                     Hello! You just opened your GCash Gift with PHP 100.00 from [PHONE]! Ref. No. [NUMBER].                0.155        0.000               no URL         e-wallet
+     TN                                                                                                                                                               Ready ka na ba? Andito na ang mas pinasayang GIGASURF 99! Enjoy 2GB data PLUS 1hr for Video Every Day for 7 days! I-dial ang *121# to get it now! DTI[NUMBER]                0.034        0.000               no URL             none
+     FP                                                                                                                                                                                                                          Kaya Reg & DL today para makuha ang free 18P. High rebate & legit. Play na: [link: tablephwin.com]                0.983        0.980   accessible webpage         gambling
+     FP                                                                                                                                                              ColorGame jackpot reached 179M and climbing every round. Bagong ColorGame tables are open-pasok agad,walang [link: hintayan.play] now at [link: hintayan.play]                0.961        0.997 inaccessible webpage         gambling
+     FP                                                                                                                                                                                                                       ikaw ang napili today! Wild Bountygives 30 FREE SP1NS 120% extra b0nus for you: [link: taguigcom.cam]                0.953        0.994   accessible webpage         gambling
+     FP                                                                                                                                                                 Your loan application for PHP 10,000 has expired. Reapply today in [link: finbro.ph] with promocode REAPPLY50 to enjoy 50% off BAP fee. Get your FUNDS now!                0.945        0.726   accessible webpage          lending
+     FP                                                                                                                                                                                  Hate fees? Cash in to your PayMaya account FREE of charge via BPI linked account, Ministop & Smart Padala. Cash in now:[link: paymaya.com]                0.937        0.797 inaccessible webpage         e-wallet
+     FP                                                                                                                                                                        Boss ! Your EXCLUSIVE deposit coupon reward is ready! Log in to your wallet and claim it now.Get 2% Unlimited Cashback + 2% Slot [link: ptgaming.ph]                0.936        0.636 inaccessible webpage         gambling
+     FN                                                                                                                                                                    You have paid P549.00 to [link: netflix.com] on 06-30-21 02:13 PM via GCash American Express Virtual Pay. Ref. No. [NUMBER]. Your new balance is P116.00                0.040        0.080   accessible webpage         e-wallet
+     FN                                                                                                                                                                                                                                Load (All Network) P50 Prepaid Load Code: 733 966 718 Valid: 05/04/27 [link: sharetreats.ph]                0.068        0.740   accessible webpage             none
+     FN                                                                                                                                                                                         Get exclusive discounts on the latest gadgets! Hurry, limited stocks only! ðŸ“±ðŸ’¥ Visit our website now! [link: example.com] #TechDeals                0.076        0.268   accessible webpage             none
+     FN                                                                                                                                                                                      Catch your favorite streamers live! Buy & get bonuses for your KUMU coins via GCash. No advisories? Opt out via our GCash Help Center.                0.077        0.000               no URL         gambling
+     FN               RUSH invites you to share your beauty goals!\nAnswer this AI quiz featuring Unilever's U-Coin and get rewarded with 50 U-COINS to exchange for FREE GCash credits, online vouchers, shopping coupons, mobile load, mobile data, and more! Get rewarded now:\n[link: bit.ly]\n\nNo msgs? Text STOP to [NUMBER]                0.102        0.588 inaccessible webpage         e-wallet
+     FN                                                                                                                                                                                                                                                            Salamat sa pag suporta sa casino, gusto mo ba kumita ng REWARDS?                0.115        0.000               no URL         gambling
+     FN                                                                                                                                        NN â€˜ / Wednesday, July 22, [NUMBER] we offer u cashloan with our bank only 1.3 to 1.5%monthly qualifcation with basic income 20k and up pls reply fu intrestd 4 more details 1:51 AM                0.123        0.000               no URL          lending
+     FN                                                                                                                                                                              Familiar with this 7x CBA Champion and previous NBA pick? Kaya mo bang hulaan? Take your best guess and drop youranswer here [link: applus.ph]                0.165        0.550 inaccessible webpage         gambling
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step9\Classification_Error_Analysis.xlsx
+=== 10:16:47 step10
+                             Comparison  Seed  N (paired messages)  b (Proposed right, baseline wrong)  c (Proposed wrong, baseline right)  Chi-square  p-value Decision (alpha = 0.05) More correct among disagreements  Exact binomial p (cross-check)
+            Proposed Model vs. CNN-only    42                 6714                                 161                                 124      4.5474   0.0330               Reject H0                   Proposed Model                          0.0328
+            Proposed Model vs. CNN-only   123                 6714                                 154                                 142      0.4088   0.5226       Fail to reject H0                   Proposed Model                          0.5227
+            Proposed Model vs. CNN-only  2024                 6714                                 131                                 128      0.0154   0.9011       Fail to reject H0                   Proposed Model                          0.9011
+Proposed Model vs. Concatenation Fusion    42                 6714                                 162                                 110      9.5625   0.0020               Reject H0                   Proposed Model                          0.0019
+Proposed Model vs. Concatenation Fusion   123                 6714                                 120                                 102      1.3018   0.2539       Fail to reject H0                   Proposed Model                          0.2538
+Proposed Model vs. Concatenation Fusion  2024                 6714                                 100                                 120      1.6409   0.2002       Fail to reject H0             Concatenation Fusion                          0.2001
+          Proposed Model vs. KNN-RF-ETC    42                 6714                                1129                                 186    674.8015   0.0000               Reject H0                   Proposed Model                          0.0000
+          Proposed Model vs. KNN-RF-ETC   123                 6714                                1117                                 198    640.8548   0.0000               Reject H0                   Proposed Model                          0.0000
+          Proposed Model vs. KNN-RF-ETC  2024                 6714                                1154                                 185    699.7939   0.0000               Reject H0                   Proposed Model                          0.0000
+                             Comparison  Seed  p-value (uncorrected)  p-value (Bonferroni, 9 tests)  p-value (Holm, 9 tests) Decision (uncorrected) Decision (Bonferroni)   Decision (Holm)
+            Proposed Model vs. CNN-only    42                 0.0330                         0.2967                   0.1648              Reject H0     Fail to reject H0 Fail to reject H0
+            Proposed Model vs. CNN-only   123                 0.5226                         1.0000                   1.0000      Fail to reject H0     Fail to reject H0 Fail to reject H0
+            Proposed Model vs. CNN-only  2024                 0.9011                         1.0000                   1.0000      Fail to reject H0     Fail to reject H0 Fail to reject H0
+Proposed Model vs. Concatenation Fusion    42                 0.0020                         0.0179                   0.0119              Reject H0             Reject H0         Reject H0
+Proposed Model vs. Concatenation Fusion   123                 0.2539                         1.0000                   0.8008      Fail to reject H0     Fail to reject H0 Fail to reject H0
+Proposed Model vs. Concatenation Fusion  2024                 0.2002                         1.0000                   0.8008      Fail to reject H0     Fail to reject H0 Fail to reject H0
+          Proposed Model vs. KNN-RF-ETC    42                 0.0000                         0.0000                   0.0000              Reject H0             Reject H0         Reject H0
+          Proposed Model vs. KNN-RF-ETC   123                 0.0000                         0.0000                   0.0000              Reject H0             Reject H0         Reject H0
+          Proposed Model vs. KNN-RF-ETC  2024                 0.0000                         0.0000                   0.0000              Reject H0             Reject H0         Reject H0
+wrote D:\Le-Jet\experiments\film\lejet_final_dataset\step10\McNemar_Test_Results.xlsx
+=== 10:16:57 ALL_DONE

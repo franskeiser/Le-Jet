@@ -68,12 +68,16 @@ EXPECTED_TRAINABLE = 70658            # section A5, embedding not included
 
 def expected_trainable(embedding_dim: int = 300, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
                        link_dim: int = LINK_DIM, dense_units: int = DENSE_UNITS, use_beta: bool = True,
-                       use_average: bool = True) -> int:
+                       use_average: bool = True, generator_hidden: int = 0, head_link: bool = False) -> int:
     """Trainable parameters of E2 without the embedding: conv + generator + dense + output (section A5)."""
     outputs = (2 if use_beta else 1) * num_filters
+    generator_in = link_dim + (num_filters if use_average else 0)
+    generator = (generator_in * outputs + outputs if not generator_hidden
+                 else generator_in * generator_hidden + generator_hidden + generator_hidden * outputs + outputs)
+    head_in = num_filters + (LINK_DIM + 1 if head_link else 0)
     return (embedding_dim * kernel_size * num_filters + num_filters          # conv
-            + (link_dim + (num_filters if use_average else 0)) * outputs + outputs   # generator
-            + num_filters * dense_units + dense_units                        # dense 64
+            + generator                                                      # generator
+            + head_in * dense_units + dense_units                            # dense 64
             + dense_units * 2 + 2)                                           # output
 
 
@@ -225,7 +229,8 @@ def start_matches_baseline(model: FiLMTextCNN, seed: int, fold: int, pilot: bool
 def model_options(model: FiLMTextCNN) -> dict:
     return {"gamma_mode": model.gamma_mode, "mask_padding": model.mask_padding, "average_after_relu": model.average_after_relu,
             "use_beta": model.use_beta, "freeze_embedding": model.freeze_embedding, "bypass_no_link": model.bypass_no_link,
-            "use_average": model.use_average}
+            "use_average": model.use_average, "text_dropout": model.text_dropout, "generator_hidden": model.generator_hidden,
+            "head_link": model.head_link}
 
 
 def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epochs: int = fm.EPOCHS,
@@ -267,14 +272,23 @@ def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epoch
     return row, result.log.assign(seed=seed, fold=fold), result.filters.assign(seed=seed, fold=fold)
 
 
+# How E2's modality dropout hides the text (FiLMTextCNN text_dropout). ADOPTED 2026-11-22 (Franz): "input", variant D1 of the validation
+# study (scripts/film_upgrade_validation.py, docs/validation_only_improvement_plan.md Phase C). Hiding the pooled numbers (the original,
+# "pooled") also hid the link in FiLM, while the baselines' text dropout keeps their link numbers; "input" hides the words before the Conv
+# and lets gamma and beta act, the same meaning as in the baselines. Models trained before 2026-11-22 used "pooled".
+TEXT_DROPOUT = "input"
+
+
 def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, warm_start: bool = True,
-              epochs: int = fm.EPOCHS, bypass: bool = True, seq_len: int | None = None) -> pd.DataFrame:
+              epochs: int = fm.EPOCHS, bypass: bool = True, seq_len: int | None = None,
+              text_dropout: str = TEXT_DROPOUT) -> pd.DataFrame:
     dataset = tc.dataset_path(pilot)
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
     rows, logs, filters = [], [], []
     for seed in seeds:
         for fold in folds:
-            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, seq_len, bypass_no_link=bypass)
+            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, seq_len, bypass_no_link=bypass,
+                                         text_dropout=text_dropout)
             rows.append(row)
             logs.append(log)
             filters.append(table)
@@ -351,6 +365,8 @@ def main(argv: List[str] | None = None) -> None:
                     help="train: from scratch (default, decision D7) or from the retrained baseline (the warm-start ablation); check: which set")
     ap.add_argument("--seq-len", type=int, default=None,
                     help="train: another message length, ablations only (default: SEQ_LEN_L = 50, docs/ARCHITECTURE.md 7.1)")
+    ap.add_argument("--text-dropout", choices=["input", "pooled"], default=TEXT_DROPOUT,
+                    help="train: how modality dropout hides the text (default: input, adopted 2026-11-22; pooled = the models before)")
     ap.add_argument("--no-bypass", action="store_true",
                     help="train / check E2 WITHOUT the has_url bypass (the ablation): the generator reads the link numbers of every message")
     args = ap.parse_args(argv)
@@ -365,7 +381,8 @@ def main(argv: List[str] | None = None) -> None:
                 print(f"  seed {r['seed']} fold {r['fold']}: failed {[c for c in checks if not r[c]]}")
             sys.exit(1)
     elif args.step == "train":
-        summary = run_train(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass, seq_len=args.seq_len)
+        summary = run_train(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass, seq_len=args.seq_len,
+                            text_dropout=args.text_dropout)
         print(f"\n{len(summary)} E2 models trained; mean val F1 {summary['val_f1'].mean():.3f} (std {summary['val_f1'].std():.3f})")
     else:
         summary = run_check(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass)

@@ -3,6 +3,9 @@
 Written by Franz's Claude Code session. Everything here is in the working tree of local `main` and is **not committed or pushed**.
 Plain language on purpose. Numbers are from the files named in each section.
 
+> **Update (2026-11-22, later): D1 adopted.** The Proposed model was retrained with a fix to its text dropout and Steps 4-10 were rerun
+> (4th test read). It is now the best of the four on accuracy and F1 and wins 5 of the 9 McNemar tests. See section 13. Sections 4-8 describe the model before the fix.
+
 ---
 
 ## 1. The short version
@@ -183,3 +186,45 @@ bash logs/final_training/rerun_textfix.sh
 | Rerun script and log | `logs/final_training/rerun_textfix.sh`, `rerun_textfix.log` |
 | Group mate's open question and our answer | `docs/ARCHITECTURE.md` section 8.1 |
 | The 17 original bare-link messages | `experiments/film/lejet_final_dataset/validation_study/bare_link_messages.csv` (old texts) |
+
+## 13. D1 adopted: the Proposed model retrained (2026-11-22, Franz's decision)
+
+**What changed.** While training, every model has its text hidden for 10% of messages (modality dropout). The baselines hide only the text
+and keep their link numbers. In FiLM the link acts only through the text numbers, so hiding those numbers also hid the link: on those
+messages the model learned nothing, and it never practised "the text says little, trust the link". D1 hides the **words before the Conv**
+instead, so the link's gamma and beta still act. Same data, folds, seeds, recipe and architecture otherwise
+(`FiLMTextCNN(text_dropout="input")`; `src/unified/film.py` now trains with it by default, `TEXT_DROPOUT = "input"`).
+
+**How it was chosen.** On validation rows only, among 5 candidates fixed in advance (docs/validation_only_improvement_plan.md, Phase C):
+validation balanced accuracy .941 -> .950, better in 12 of 15 runs. It did not pass the study's full keep rule (it was projected behind
+CNN-only in seed 42); Franz chose to adopt it anyway. The retrained models equal the study's D1 models exactly.
+
+**Test folds read a 4th time** (`compare/test_reads.log`, 10:13 and 10:14). Disclose this in Chapter 3. The baselines were not retrained;
+their Step 5 predictions are byte-for-byte unchanged. Old Proposed models: `D:/LeJetData/model_backups/film_scratch_before_D1_20261122/`.
+Rerun: `bash logs/final_training/rerun_D1.sh` (logs `rerun_D1_train.log`, `rerun_D1_steps.log`).
+
+**Step 7** (mean ± SD over 3 seeds):
+
+| Model | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|
+| **Proposed (D1)** | **.954 ± .001** | .936 | **.962** | **.949 ± .001** |
+| Concatenation Fusion | .951 ± .005 | .931 | .962 | .946 |
+| CNN-only | .951 ± .002 | **.946** | .944 | .945 |
+| KNN-RF-ETC | .813 | .720 | .951 | .819 |
+
+(Before D1: Proposed .945 accuracy / .940 F1.) Per seed the Proposed model is best in seeds 42 and 123; in seed 2024 Concatenation is higher (.956 vs .953).
+
+**Step 10, McNemar** (b = Proposed right and baseline wrong, c = the reverse; uncorrected p, then Holm over 9 tests):
+
+| Comparison | Seed 42 | Seed 123 | Seed 2024 |
+|---|---|---|---|
+| vs CNN-only | b 161 / c 124, **p .033** (Holm .165) | 154 / 142, p .52 | 131 / 128, p .90 |
+| vs Concatenation | b 162 / c 110, **p .002** (Holm .012) | 120 / 102, p .25 | 100 / 120, p .20 (Concat ahead, n.s.) |
+| vs KNN-RF-ETC | p < .001 | p < .001 | p < .001 |
+
+Reading: uncorrected, the Proposed model is significantly better in 5 of 9 tests (all 3 KNN-RF-ETC, CNN-only and Concatenation in seed 42).
+None is significantly against it (before D1: 2 were). With Holm or Bonferroni only Concatenation seed 42 and the KNN-RF-ETC tests stay significant.
+The goal "significant in all nine" is **not** met: against CNN-only and Concatenation the differences in seeds 123 and 2024 are within noise.
+
+**Step 6** component checks (F1): reference .949, text-only CNN .910, FiLM neutralised .735, shuffled RF outputs .794: every part still matters.
+**Step 8** (F1, Proposed vs best baseline): accessible webpage .963 vs .960 (best), inaccessible .940 vs .941, no URL .746 vs .768 (75 smishing only).

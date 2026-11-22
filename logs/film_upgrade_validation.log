@@ -1,0 +1,119 @@
+seed 42 fold 0 control : val bal-acc 0.8780 | false alarms 49 (lab 5) misses 44 | best epoch 4 of 8
+seed 42 fold 0 D1      : val bal-acc 0.8886 | false alarms 40 (lab 2) misses 44 | best epoch 7 of 11
+seed 42 fold 0 D1F2    : val bal-acc 0.8502 | false alarms 49 (lab 3) misses 63 | best epoch 1 of 5
+seed 42 fold 0 D1F3    : val bal-acc 0.8844 | false alarms 20 (lab 2) misses 63 | best epoch 4 of 8
+seed 42 fold 0 D1F23   : val bal-acc 0.8741 | false alarms 30 (lab 2) misses 62 | best epoch 4 of 8
+seed 42 fold 0 D1F1    : val bal-acc 0.8806 | false alarms 22 (lab 2) misses 64 | best epoch 6 of 10
+seed 42 fold 1 control : val bal-acc 0.9432 | false alarms 26 (lab 17) misses 18 | best epoch 4 of 8
+seed 42 fold 1 D1      : val bal-acc 0.9546 | false alarms 20 (lab 12) misses 15 | best epoch 4 of 8
+seed 42 fold 1 D1F2    : val bal-acc 0.9406 | false alarms 12 (lab 5) misses 31 | best epoch 4 of 8
+seed 42 fold 1 D1F3    : val bal-acc 0.9458 | false alarms 15 (lab 7) misses 25 | best epoch 4 of 8
+seed 42 fold 1 D1F23   : val bal-acc 0.9359 | false alarms 11 (lab 5) misses 35 | best epoch 3 of 7
+seed 42 fold 1 D1F1    : val bal-acc 0.9529 | false alarms 14 (lab 7) misses 21 | best epoch 3 of 7
+seed 42 fold 2 control : val bal-acc 0.9557 | false alarms 19 (lab 15) misses 15 | best epoch 3 of 7
+seed 42 fold 2 D1      : val bal-acc 0.9393 | false alarms 23 (lab 14) misses 23 | best epoch 3 of 7
+seed 42 fold 2 D1F2    : val bal-acc 0.9279 | false alarms 19 (lab 9) misses 34 | best epoch 3 of 7
+seed 42 fold 2 D1F3    : val bal-acc 0.9268 | false alarms 20 (lab 11) misses 34 | best epoch 3 of 7
+seed 42 fold 2 D1F23   : val bal-acc 0.9159 | false alarms 23 (lab 14) misses 39 | best epoch 3 of 7
+seed 42 fold 2 D1F1    : val bal-acc 0.9340 | false alarms 25 (lab 14) misses 25 | best epoch 3 of 7
+seed 42 fold 3 control : val bal-acc 0.9551 | false alarms 17 (lab 9) misses 17 | best epoch 2 of 6
+seed 42 fold 3 D1      : val bal-acc 0.9546 | false alarms 15 (lab 7) misses 19 | best epoch 4 of 8
+seed 42 fold 3 D1F2    : val bal-acc 0.9508 | false alarms 17 (lab 7) misses 20 | best epoch 2 of 6
+seed 42 fold 3 D1F3    : val bal-acc 0.9502 | false alarms 15 (lab 6) misses 22 | best epoch 3 of 7
+seed 42 fold 3 D1F23   : val bal-acc 0.9399 | false alarms 20 (lab 10) misses 25 | best epoch 2 of 6
+seed 42 fold 3 D1F1    : val bal-acc 0.9581 | false alarms 12 (lab 4) misses 19 | best epoch 3 of 7
+seed 42 fold 4 control : val bal-acc 0.9340 | false alarms 30 (lab 19) misses 21 | best epoch 2 of 6
+seed 42 fold 4 D1      : val bal-acc 0.9505 | false alarms 16 (lab 8) misses 21 | best epoch 16 of 20
+seed 42 fold 4 D1F2    : val bal-acc 0.9426 | false alarms 14 (lab 4) misses 28 | best epoch 3 of 7
+seed 42 fold 4 D1F3    : val bal-acc 0.9467 | false alarms 18 (lab 8) misses 22 | best epoch 3 of 7
+seed 42 fold 4 D1F23   : val bal-acc 0.9473 | false alarms 15 (lab 5) misses 24 | best epoch 2 of 6
+seed 42 fold 4 D1F1    : val bal-acc 0.9455 | false alarms 19 (lab 8) misses 22 | best epoch 6 of 10
+seed 123 fold 0 control : val bal-acc 0.9104 | false alarms 24 (lab 6) misses 42 | best epoch 2 of 6
+seed 123 fold 0 D1      : val bal-acc 0.9320 | false alarms 33 (lab 3) misses 20 | best epoch 9 of 13
+seed 123 fold 0 D1F2    : val bal-acc 0.8913 | false alarms 54 (lab 2) misses 31 | best epoch 4 of 8
+seed 123 fold 0 D1F3    : val bal-acc 0.9423 | false alarms 23 (lab 0) misses 21 | best epoch 4 of 8
+seed 123 fold 0 D1F23   : val bal-acc 0.8981 | false alarms 37 (lab 2) misses 40 | best epoch 6 of 10
+seed 123 fold 0 D1F1    : val bal-acc 0.9458 | false alarms 20 (lab 2) misses 21 | best epoch 4 of 8
+seed 123 fold 1 control : val bal-acc 0.9671 | false alarms 18 (lab 11) misses 8 | best epoch 4 of 8
+seed 123 fold 1 D1      : val bal-acc 0.9619 | false alarms 20 (lab 12) misses 10 | best epoch 4 of 8
+seed 123 fold 1 D1F2    : val bal-acc 0.9637 | false alarms 11 (lab 5) misses 16 | best epoch 2 of 6
+seed 123 fold 1 D1F3    : val bal-acc 0.9545 | false alarms 20 (lab 13) misses 15 | best epoch 4 of 8
+seed 123 fold 1 D1F23   : val bal-acc 0.9601 | false alarms 14 (lab 8) misses 16 | best epoch 2 of 6
+seed 123 fold 1 D1F1    : val bal-acc 0.9631 | false alarms 14 (lab 7) misses 14 | best epoch 2 of 6
+seed 123 fold 2 control : val bal-acc 0.9800 | false alarms 12 (lab 9) misses 4 | best epoch 5 of 9
+seed 123 fold 2 D1      : val bal-acc 0.9880 | false alarms 4 (lab 3) misses 5 | best epoch 5 of 9
+seed 123 fold 2 D1F2    : val bal-acc 0.9886 | false alarms 6 (lab 5) misses 3 | best epoch 4 of 8
+seed 123 fold 2 D1F3    : val bal-acc 0.9868 | false alarms 5 (lab 4) misses 5 | best epoch 6 of 10
+seed 123 fold 2 D1F23   : val bal-acc 0.9800 | false alarms 12 (lab 11) misses 4 | best epoch 6 of 10
+seed 123 fold 2 D1F1    : val bal-acc 0.9856 | false alarms 6 (lab 4) misses 5 | best epoch 5 of 9
+seed 123 fold 3 control : val bal-acc 0.9549 | false alarms 11 (lab 8) misses 22 | best epoch 5 of 9
+seed 123 fold 3 D1      : val bal-acc 0.9599 | false alarms 13 (lab 7) misses 17 | best epoch 10 of 14
+seed 123 fold 3 D1F2    : val bal-acc 0.9511 | false alarms 13 (lab 5) misses 23 | best epoch 3 of 7
+seed 123 fold 3 D1F3    : val bal-acc 0.9491 | false alarms 11 (lab 5) misses 26 | best epoch 5 of 9
+seed 123 fold 3 D1F23   : val bal-acc 0.9441 | false alarms 19 (lab 13) misses 23 | best epoch 6 of 10
+seed 123 fold 3 D1F1    : val bal-acc 0.9584 | false alarms 18 (lab 13) misses 14 | best epoch 6 of 10
+seed 123 fold 4 control : val bal-acc 0.9437 | false alarms 18 (lab 11) misses 24 | best epoch 5 of 9
+seed 123 fold 4 D1      : val bal-acc 0.9493 | false alarms 17 (lab 9) misses 21 | best epoch 2 of 6
+seed 123 fold 4 D1F2    : val bal-acc 0.9540 | false alarms 13 (lab 5) misses 21 | best epoch 3 of 7
+seed 123 fold 4 D1F3    : val bal-acc 0.9534 | false alarms 21 (lab 13) misses 15 | best epoch 2 of 6
+seed 123 fold 4 D1F23   : val bal-acc 0.9400 | false alarms 15 (lab 9) misses 29 | best epoch 3 of 7
+seed 123 fold 4 D1F1    : val bal-acc 0.9531 | false alarms 20 (lab 13) misses 16 | best epoch 3 of 7
+seed 2024 fold 0 control : val bal-acc 0.9080 | false alarms 41 (lab 6) misses 30 | best epoch 7 of 11
+seed 2024 fold 0 D1      : val bal-acc 0.9285 | false alarms 31 (lab 4) misses 24 | best epoch 5 of 9
+seed 2024 fold 0 D1F2    : val bal-acc 0.9019 | false alarms 40 (lab 5) misses 35 | best epoch 4 of 8
+seed 2024 fold 0 D1F3    : val bal-acc 0.9174 | false alarms 38 (lab 15) misses 26 | best epoch 4 of 8
+seed 2024 fold 0 D1F23   : val bal-acc 0.9078 | false alarms 35 (lab 7) misses 35 | best epoch 5 of 9
+seed 2024 fold 0 D1F1    : val bal-acc 0.9109 | false alarms 46 (lab 5) misses 24 | best epoch 5 of 9
+seed 2024 fold 1 control : val bal-acc 0.9539 | false alarms 23 (lab 12) misses 13 | best epoch 6 of 10
+seed 2024 fold 1 D1      : val bal-acc 0.9715 | false alarms 13 (lab 7) misses 9 | best epoch 10 of 14
+seed 2024 fold 1 D1F2    : val bal-acc 0.9578 | false alarms 11 (lab 2) misses 20 | best epoch 2 of 6
+seed 2024 fold 1 D1F3    : val bal-acc 0.9704 | false alarms 9 (lab 3) misses 13 | best epoch 5 of 9
+seed 2024 fold 1 D1F23   : val bal-acc 0.9602 | false alarms 9 (lab 3) misses 20 | best epoch 5 of 9
+seed 2024 fold 1 D1F1    : val bal-acc 0.9657 | false alarms 8 (lab 2) misses 17 | best epoch 10 of 14
+seed 2024 fold 2 control : val bal-acc 0.9632 | false alarms 19 (lab 11) misses 10 | best epoch 2 of 6
+seed 2024 fold 2 D1      : val bal-acc 0.9652 | false alarms 16 (lab 7) misses 11 | best epoch 2 of 6
+seed 2024 fold 2 D1F2    : val bal-acc 0.9672 | false alarms 23 (lab 13) misses 4 | best epoch 4 of 8
+seed 2024 fold 2 D1F3    : val bal-acc 0.9599 | false alarms 23 (lab 7) misses 9 | best epoch 2 of 6
+seed 2024 fold 2 D1F23   : val bal-acc 0.9652 | false alarms 26 (lab 13) misses 3 | best epoch 4 of 8
+seed 2024 fold 2 D1F1    : val bal-acc 0.9556 | false alarms 28 (lab 8) misses 8 | best epoch 2 of 6
+seed 2024 fold 3 control : val bal-acc 0.9414 | false alarms 30 (lab 22) misses 16 | best epoch 3 of 7
+seed 2024 fold 3 D1      : val bal-acc 0.9482 | false alarms 18 (lab 10) misses 21 | best epoch 6 of 10
+seed 2024 fold 3 D1F2    : val bal-acc 0.9473 | false alarms 15 (lab 7) misses 24 | best epoch 2 of 6
+seed 2024 fold 3 D1F3    : val bal-acc 0.9540 | false alarms 18 (lab 9) misses 17 | best epoch 1 of 5
+seed 2024 fold 3 D1F23   : val bal-acc 0.9479 | false alarms 17 (lab 8) misses 22 | best epoch 1 of 5
+seed 2024 fold 3 D1F1    : val bal-acc 0.9567 | false alarms 17 (lab 9) misses 16 | best epoch 9 of 13
+seed 2024 fold 4 control : val bal-acc 0.9256 | false alarms 26 (lab 20) misses 30 | best epoch 1 of 5
+seed 2024 fold 4 D1      : val bal-acc 0.9504 | false alarms 21 (lab 14) misses 17 | best epoch 6 of 10
+seed 2024 fold 4 D1F2    : val bal-acc 0.9341 | false alarms 15 (lab 9) misses 33 | best epoch 4 of 8
+seed 2024 fold 4 D1F3    : val bal-acc 0.9387 | false alarms 21 (lab 14) misses 25 | best epoch 1 of 5
+seed 2024 fold 4 D1F23   : val bal-acc 0.9432 | false alarms 16 (lab 9) misses 26 | best epoch 1 of 5
+seed 2024 fold 4 D1F1    : val bal-acc 0.9437 | false alarms 18 (lab 12) misses 24 | best epoch 4 of 8
+
+control replay: largest gap to the recorded Proposed validation balanced accuracy = 0.000000 (must be 0)
+baselines' mean validation balanced accuracy: CNN-only 0.9482, Concat 0.9464
+
+variant  val_bal_acc  val_f1  wins_vs_control  false_alarms_per_fold  misses_per_fold  legit_lab_FA bare_link_FA  worst_seed_b_minus_c  kept
+control       0.9410  0.9343                0                   24.2             20.9           181          0/0                   -56 False
+     D1       0.9495  0.9439               12                   20.0             18.5           119          0/0                   -36 False
+   D1F2       0.9379  0.9315                7                   20.8             25.7            86          0/0                   -87 False
+   D1F3       0.9454  0.9394               10                   18.5             22.5           117          0/0                   -54 False
+  D1F23       0.9373  0.9306                5                   19.9             26.9           119          0/0                   -84 False
+   D1F1       0.9473  0.9415               12                   19.1             20.7           110          0/0                   -43 False
+
+projected McNemar per seed (validation rows, proxy):
+seed              42    123   2024
+variant baseline                  
+D1      CNN-only -36.0   5.0  33.0
+        Concat     1.0  27.0  16.0
+D1F1    CNN-only -43.0  17.0   8.0
+        Concat    -6.0  39.0  -9.0
+D1F2    CNN-only -87.0 -26.0  -6.0
+        Concat   -50.0  -4.0 -23.0
+D1F23   CNN-only -84.0 -44.0   5.0
+        Concat   -47.0 -22.0 -12.0
+D1F3    CNN-only -54.0   3.0  15.0
+        Concat   -17.0  25.0  -2.0
+control CNN-only -56.0 -18.0 -24.0
+        Concat   -19.0   4.0 -41.0
+
+KEPT: none (no candidate passes the keep rule; stop and report)
