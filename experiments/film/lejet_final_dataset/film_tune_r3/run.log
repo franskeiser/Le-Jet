@@ -1,0 +1,202 @@
+seed 42 fold 0 D1   : val bal-acc 0.8886 | FA 40 miss 44 | best epoch 7 of 11
+seed 42 fold 0 T0   : val bal-acc 0.9008 | FA 47 miss 30 | best epoch 3 of 7
+seed 42 fold 0 T5   : val bal-acc 0.8749 | FA 38 miss 55 | best epoch 4 of 8
+seed 42 fold 0 P10  : val bal-acc 0.8875 | FA 36 miss 48 | best epoch 7 of 11
+seed 42 fold 0 GF   : val bal-acc 0.8895 | FA 38 miss 45 | best epoch 7 of 11
+seed 42 fold 0 H32G3: val bal-acc 0.8905 | FA 21 miss 58 | best epoch 4 of 8
+seed 42 fold 1 D1   : val bal-acc 0.9546 | FA 20 miss 15 | best epoch 4 of 8
+seed 42 fold 1 T0   : val bal-acc 0.9408 | FA 28 miss 18 | best epoch 3 of 7
+seed 42 fold 1 T5   : val bal-acc 0.9517 | FA 20 miss 17 | best epoch 4 of 8
+seed 42 fold 1 P10  : val bal-acc 0.9493 | FA 17 miss 21 | best epoch 3 of 7
+seed 42 fold 1 GF   : val bal-acc 0.9531 | FA 20 miss 16 | best epoch 4 of 8
+seed 42 fold 1 H32G3: val bal-acc 0.9549 | FA 16 miss 18 | best epoch 4 of 8
+seed 42 fold 2 D1   : val bal-acc 0.9379 | FA 23 miss 24 | best epoch 3 of 7
+seed 42 fold 2 T0   : val bal-acc 0.9565 | FA 27 miss 8 | best epoch 3 of 7
+seed 42 fold 2 T5   : val bal-acc 0.9481 | FA 23 miss 17 | best epoch 3 of 7
+seed 42 fold 2 P10  : val bal-acc 0.9400 | FA 15 miss 29 | best epoch 3 of 7
+seed 42 fold 2 GF   : val bal-acc 0.9425 | FA 24 miss 20 | best epoch 3 of 7
+seed 42 fold 2 H32G3: val bal-acc 0.9323 | FA 29 miss 23 | best epoch 3 of 7
+seed 42 fold 3 D1   : val bal-acc 0.9546 | FA 15 miss 19 | best epoch 4 of 8
+seed 42 fold 3 T0   : val bal-acc 0.9487 | FA 20 miss 19 | best epoch 4 of 8
+seed 42 fold 3 T5   : val bal-acc 0.9558 | FA 14 miss 19 | best epoch 4 of 8
+seed 42 fold 3 P10  : val bal-acc 0.9575 | FA 15 miss 17 | best epoch 2 of 6
+seed 42 fold 3 GF   : val bal-acc 0.9590 | FA 15 miss 16 | best epoch 2 of 6
+seed 42 fold 3 H32G3: val bal-acc 0.9610 | FA 17 miss 13 | best epoch 2 of 6
+seed 42 fold 4 D1   : val bal-acc 0.9478 | FA 17 miss 22 | best epoch 13 of 17
+seed 42 fold 4 T0   : val bal-acc 0.9337 | FA 29 miss 22 | best epoch 2 of 6
+seed 42 fold 4 T5   : val bal-acc 0.9358 | FA 26 miss 23 | best epoch 2 of 6
+seed 42 fold 4 P10  : val bal-acc 0.9484 | FA 19 miss 20 | best epoch 8 of 12
+seed 42 fold 4 GF   : val bal-acc 0.9432 | FA 16 miss 26 | best epoch 7 of 11
+seed 42 fold 4 H32G3: val bal-acc 0.9493 | FA 17 miss 21 | best epoch 5 of 9
+seed 123 fold 0 D1   : val bal-acc 0.9320 | FA 33 miss 20 | best epoch 9 of 13
+seed 123 fold 0 T0   : val bal-acc 0.9063 | FA 30 miss 40 | best epoch 2 of 6
+seed 123 fold 0 T5   : val bal-acc 0.9233 | FA 33 miss 26 | best epoch 6 of 10
+seed 123 fold 0 P10  : val bal-acc 0.9188 | FA 38 miss 25 | best epoch 4 of 8
+seed 123 fold 0 GF   : val bal-acc 0.9467 | FA 23 miss 18 | best epoch 18 of 22
+seed 123 fold 0 H32G3: val bal-acc 0.9417 | FA 21 miss 23 | best epoch 3 of 7
+seed 123 fold 1 D1   : val bal-acc 0.9619 | FA 20 miss 10 | best epoch 4 of 8
+seed 123 fold 1 T0   : val bal-acc 0.9581 | FA 17 miss 15 | best epoch 3 of 7
+seed 123 fold 1 T5   : val bal-acc 0.9657 | FA 18 miss 9 | best epoch 4 of 8
+seed 123 fold 1 P10  : val bal-acc 0.9651 | FA 16 miss 11 | best epoch 4 of 8
+seed 123 fold 1 GF   : val bal-acc 0.9633 | FA 20 miss 9 | best epoch 4 of 8
+seed 123 fold 1 H32G3: val bal-acc 0.9604 | FA 15 miss 15 | best epoch 4 of 8
+seed 123 fold 2 D1   : val bal-acc 0.9880 | FA 4 miss 5 | best epoch 5 of 9
+seed 123 fold 2 T0   : val bal-acc 0.9836 | FA 9 miss 4 | best epoch 13 of 17
+seed 123 fold 2 T5   : val bal-acc 0.9824 | FA 10 miss 4 | best epoch 5 of 9
+seed 123 fold 2 P10  : val bal-acc 0.9889 | FA 2 miss 6 | best epoch 5 of 9
+seed 123 fold 2 GF   : val bal-acc 0.9868 | FA 5 miss 5 | best epoch 5 of 9
+seed 123 fold 2 H32G3: val bal-acc 0.9818 | FA 8 miss 6 | best epoch 6 of 10
+seed 123 fold 3 D1   : val bal-acc 0.9622 | FA 11 miss 17 | best epoch 10 of 14
+seed 123 fold 3 T0   : val bal-acc 0.9505 | FA 21 miss 17 | best epoch 3 of 7
+seed 123 fold 3 T5   : val bal-acc 0.9567 | FA 17 miss 16 | best epoch 6 of 10
+seed 123 fold 3 P10  : val bal-acc 0.9540 | FA 18 miss 17 | best epoch 6 of 10
+seed 123 fold 3 GF   : val bal-acc 0.9625 | FA 12 miss 16 | best epoch 10 of 14
+seed 123 fold 3 H32G3: val bal-acc 0.9570 | FA 13 miss 19 | best epoch 5 of 9
+seed 123 fold 4 D1   : val bal-acc 0.9493 | FA 17 miss 21 | best epoch 2 of 6
+seed 123 fold 4 T0   : val bal-acc 0.9484 | FA 19 miss 20 | best epoch 4 of 8
+seed 123 fold 4 T5   : val bal-acc 0.9499 | FA 14 miss 23 | best epoch 6 of 10
+seed 123 fold 4 P10  : val bal-acc 0.9564 | FA 11 miss 21 | best epoch 4 of 8
+seed 123 fold 4 GF   : val bal-acc 0.9504 | FA 21 miss 17 | best epoch 2 of 6
+seed 123 fold 4 H32G3: val bal-acc 0.9455 | FA 19 miss 22 | best epoch 3 of 7
+seed 2024 fold 0 D1   : val bal-acc 0.9253 | FA 35 miss 23 | best epoch 5 of 9
+seed 2024 fold 0 T0   : val bal-acc 0.9212 | FA 31 miss 29 | best epoch 5 of 9
+seed 2024 fold 0 T5   : val bal-acc 0.9168 | FA 36 miss 28 | best epoch 5 of 9
+seed 2024 fold 0 P10  : val bal-acc 0.9247 | FA 28 miss 29 | best epoch 5 of 9
+seed 2024 fold 0 GF   : val bal-acc 0.9291 | FA 23 miss 30 | best epoch 5 of 9
+seed 2024 fold 0 H32G3: val bal-acc 0.9335 | FA 23 miss 27 | best epoch 4 of 8
+seed 42 fold 0 D1   : val bal-acc 0.8886 | FA 40 miss 44 | best epoch 7 of 11
+seed 42 fold 0 T0   : val bal-acc 0.9008 | FA 47 miss 30 | best epoch 3 of 7
+seed 42 fold 0 T5   : val bal-acc 0.8749 | FA 38 miss 55 | best epoch 4 of 8
+seed 42 fold 0 P10  : val bal-acc 0.8875 | FA 36 miss 48 | best epoch 7 of 11
+seed 42 fold 0 GF   : val bal-acc 0.8895 | FA 38 miss 45 | best epoch 7 of 11
+seed 42 fold 0 H32G3: val bal-acc 0.8905 | FA 21 miss 58 | best epoch 4 of 8
+seed 42 fold 0 G3GF : val bal-acc 0.8949 | FA 26 miss 51 | best epoch 4 of 8
+seed 42 fold 1 D1   : val bal-acc 0.9546 | FA 20 miss 15 | best epoch 4 of 8
+seed 42 fold 1 T0   : val bal-acc 0.9408 | FA 28 miss 18 | best epoch 3 of 7
+seed 42 fold 1 T5   : val bal-acc 0.9517 | FA 20 miss 17 | best epoch 4 of 8
+seed 42 fold 1 P10  : val bal-acc 0.9493 | FA 17 miss 21 | best epoch 3 of 7
+seed 42 fold 1 GF   : val bal-acc 0.9531 | FA 20 miss 16 | best epoch 4 of 8
+seed 42 fold 1 H32G3: val bal-acc 0.9549 | FA 16 miss 18 | best epoch 4 of 8
+seed 42 fold 1 G3GF : val bal-acc 0.9543 | FA 19 miss 16 | best epoch 4 of 8
+seed 42 fold 2 D1   : val bal-acc 0.9379 | FA 23 miss 24 | best epoch 3 of 7
+seed 42 fold 2 T0   : val bal-acc 0.9565 | FA 27 miss 8 | best epoch 3 of 7
+seed 42 fold 2 T5   : val bal-acc 0.9481 | FA 23 miss 17 | best epoch 3 of 7
+seed 42 fold 2 P10  : val bal-acc 0.9400 | FA 15 miss 29 | best epoch 3 of 7
+seed 42 fold 2 GF   : val bal-acc 0.9425 | FA 24 miss 20 | best epoch 3 of 7
+seed 42 fold 2 H32G3: val bal-acc 0.9323 | FA 29 miss 23 | best epoch 3 of 7
+seed 42 fold 2 G3GF : val bal-acc 0.9425 | FA 24 miss 20 | best epoch 3 of 7
+seed 42 fold 3 D1   : val bal-acc 0.9546 | FA 15 miss 19 | best epoch 4 of 8
+seed 42 fold 3 T0   : val bal-acc 0.9487 | FA 20 miss 19 | best epoch 4 of 8
+seed 42 fold 3 T5   : val bal-acc 0.9558 | FA 14 miss 19 | best epoch 4 of 8
+seed 42 fold 3 P10  : val bal-acc 0.9575 | FA 15 miss 17 | best epoch 2 of 6
+seed 42 fold 3 GF   : val bal-acc 0.9590 | FA 15 miss 16 | best epoch 2 of 6
+seed 42 fold 3 H32G3: val bal-acc 0.9610 | FA 17 miss 13 | best epoch 2 of 6
+seed 42 fold 3 G3GF : val bal-acc 0.9534 | FA 16 miss 19 | best epoch 2 of 6
+seed 42 fold 4 D1   : val bal-acc 0.9478 | FA 17 miss 22 | best epoch 13 of 17
+seed 42 fold 4 T0   : val bal-acc 0.9337 | FA 29 miss 22 | best epoch 2 of 6
+seed 42 fold 4 T5   : val bal-acc 0.9358 | FA 26 miss 23 | best epoch 2 of 6
+seed 42 fold 4 P10  : val bal-acc 0.9484 | FA 19 miss 20 | best epoch 8 of 12
+seed 42 fold 4 GF   : val bal-acc 0.9432 | FA 16 miss 26 | best epoch 7 of 11
+seed 42 fold 4 H32G3: val bal-acc 0.9493 | FA 17 miss 21 | best epoch 5 of 9
+seed 42 fold 4 G3GF : val bal-acc 0.9490 | FA 16 miss 22 | best epoch 7 of 11
+seed 123 fold 0 D1   : val bal-acc 0.9320 | FA 33 miss 20 | best epoch 9 of 13
+seed 123 fold 0 T0   : val bal-acc 0.9063 | FA 30 miss 40 | best epoch 2 of 6
+seed 123 fold 0 T5   : val bal-acc 0.9233 | FA 33 miss 26 | best epoch 6 of 10
+seed 123 fold 0 P10  : val bal-acc 0.9188 | FA 38 miss 25 | best epoch 4 of 8
+seed 123 fold 0 GF   : val bal-acc 0.9467 | FA 23 miss 18 | best epoch 18 of 22
+seed 123 fold 0 H32G3: val bal-acc 0.9417 | FA 21 miss 23 | best epoch 3 of 7
+seed 123 fold 0 G3GF : val bal-acc 0.9350 | FA 33 miss 18 | best epoch 9 of 13
+seed 123 fold 1 D1   : val bal-acc 0.9619 | FA 20 miss 10 | best epoch 4 of 8
+seed 123 fold 1 T0   : val bal-acc 0.9581 | FA 17 miss 15 | best epoch 3 of 7
+seed 123 fold 1 T5   : val bal-acc 0.9657 | FA 18 miss 9 | best epoch 4 of 8
+seed 123 fold 1 P10  : val bal-acc 0.9651 | FA 16 miss 11 | best epoch 4 of 8
+seed 123 fold 1 GF   : val bal-acc 0.9633 | FA 20 miss 9 | best epoch 4 of 8
+seed 123 fold 1 H32G3: val bal-acc 0.9604 | FA 15 miss 15 | best epoch 4 of 8
+seed 123 fold 1 G3GF : val bal-acc 0.9668 | FA 17 miss 9 | best epoch 4 of 8
+seed 123 fold 2 D1   : val bal-acc 0.9880 | FA 4 miss 5 | best epoch 5 of 9
+seed 123 fold 2 T0   : val bal-acc 0.9836 | FA 9 miss 4 | best epoch 13 of 17
+seed 123 fold 2 T5   : val bal-acc 0.9824 | FA 10 miss 4 | best epoch 5 of 9
+seed 123 fold 2 P10  : val bal-acc 0.9889 | FA 2 miss 6 | best epoch 5 of 9
+seed 123 fold 2 GF   : val bal-acc 0.9868 | FA 5 miss 5 | best epoch 5 of 9
+seed 123 fold 2 H32G3: val bal-acc 0.9818 | FA 8 miss 6 | best epoch 6 of 10
+seed 123 fold 2 G3GF : val bal-acc 0.9856 | FA 6 miss 5 | best epoch 5 of 9
+seed 123 fold 3 D1   : val bal-acc 0.9622 | FA 11 miss 17 | best epoch 10 of 14
+seed 123 fold 3 T0   : val bal-acc 0.9505 | FA 21 miss 17 | best epoch 3 of 7
+seed 123 fold 3 T5   : val bal-acc 0.9567 | FA 17 miss 16 | best epoch 6 of 10
+seed 123 fold 3 P10  : val bal-acc 0.9540 | FA 18 miss 17 | best epoch 6 of 10
+seed 123 fold 3 GF   : val bal-acc 0.9625 | FA 12 miss 16 | best epoch 10 of 14
+seed 123 fold 3 H32G3: val bal-acc 0.9570 | FA 13 miss 19 | best epoch 5 of 9
+seed 123 fold 3 G3GF : val bal-acc 0.9617 | FA 9 miss 19 | best epoch 8 of 12
+seed 123 fold 4 D1   : val bal-acc 0.9493 | FA 17 miss 21 | best epoch 2 of 6
+seed 123 fold 4 T0   : val bal-acc 0.9484 | FA 19 miss 20 | best epoch 4 of 8
+seed 123 fold 4 T5   : val bal-acc 0.9499 | FA 14 miss 23 | best epoch 6 of 10
+seed 123 fold 4 P10  : val bal-acc 0.9564 | FA 11 miss 21 | best epoch 4 of 8
+seed 123 fold 4 GF   : val bal-acc 0.9504 | FA 21 miss 17 | best epoch 2 of 6
+seed 123 fold 4 H32G3: val bal-acc 0.9455 | FA 19 miss 22 | best epoch 3 of 7
+seed 123 fold 4 G3GF : val bal-acc 0.9593 | FA 11 miss 19 | best epoch 6 of 10
+seed 2024 fold 0 D1   : val bal-acc 0.9253 | FA 35 miss 23 | best epoch 5 of 9
+seed 2024 fold 0 T0   : val bal-acc 0.9212 | FA 31 miss 29 | best epoch 5 of 9
+seed 2024 fold 0 T5   : val bal-acc 0.9168 | FA 36 miss 28 | best epoch 5 of 9
+seed 2024 fold 0 P10  : val bal-acc 0.9247 | FA 28 miss 29 | best epoch 5 of 9
+seed 2024 fold 0 GF   : val bal-acc 0.9291 | FA 23 miss 30 | best epoch 5 of 9
+seed 2024 fold 0 H32G3: val bal-acc 0.9335 | FA 23 miss 27 | best epoch 4 of 8
+seed 2024 fold 0 G3GF : val bal-acc 0.9250 | FA 34 miss 24 | best epoch 5 of 9
+seed 2024 fold 1 D1   : val bal-acc 0.9715 | FA 13 miss 9 | best epoch 10 of 14
+seed 2024 fold 1 T0   : val bal-acc 0.9484 | FA 24 miss 16 | best epoch 2 of 6
+seed 2024 fold 1 T5   : val bal-acc 0.9636 | FA 16 miss 12 | best epoch 6 of 10
+seed 2024 fold 1 P10  : val bal-acc 0.9724 | FA 11 miss 10 | best epoch 9 of 13
+seed 2024 fold 1 GF   : val bal-acc 0.9718 | FA 14 miss 8 | best epoch 9 of 13
+seed 2024 fold 1 H32G3: val bal-acc 0.9648 | FA 10 miss 16 | best epoch 2 of 6
+seed 2024 fold 1 G3GF : val bal-acc 0.9678 | FA 10 miss 14 | best epoch 5 of 9
+seed 2024 fold 2 D1   : val bal-acc 0.9652 | FA 16 miss 11 | best epoch 2 of 6
+seed 2024 fold 2 T0   : val bal-acc 0.9608 | FA 21 miss 10 | best epoch 2 of 6
+seed 2024 fold 2 T5   : val bal-acc 0.9629 | FA 18 miss 11 | best epoch 2 of 6
+seed 2024 fold 2 P10  : val bal-acc 0.9716 | FA 18 miss 5 | best epoch 4 of 8
+seed 2024 fold 2 GF   : val bal-acc 0.9664 | FA 15 miss 11 | best epoch 2 of 6
+seed 2024 fold 2 H32G3: val bal-acc 0.9623 | FA 16 miss 13 | best epoch 2 of 6
+seed 2024 fold 2 G3GF : val bal-acc 0.9641 | FA 17 miss 11 | best epoch 2 of 6
+seed 2024 fold 3 D1   : val bal-acc 0.9485 | FA 19 miss 20 | best epoch 6 of 10
+seed 2024 fold 3 T0   : val bal-acc 0.9414 | FA 25 miss 20 | best epoch 4 of 8
+seed 2024 fold 3 T5   : val bal-acc 0.9485 | FA 19 miss 20 | best epoch 7 of 11
+seed 2024 fold 3 P10  : val bal-acc 0.9523 | FA 17 miss 19 | best epoch 6 of 10
+seed 2024 fold 3 GF   : val bal-acc 0.9558 | FA 19 miss 15 | best epoch 7 of 11
+seed 2024 fold 3 H32G3: val bal-acc 0.9517 | FA 15 miss 21 | best epoch 2 of 6
+seed 2024 fold 3 G3GF : val bal-acc 0.9464 | FA 27 miss 15 | best epoch 3 of 7
+seed 2024 fold 4 D1   : val bal-acc 0.9504 | FA 21 miss 17 | best epoch 6 of 10
+seed 2024 fold 4 T0   : val bal-acc 0.9281 | FA 40 miss 17 | best epoch 5 of 9
+seed 2024 fold 4 T5   : val bal-acc 0.9416 | FA 31 miss 15 | best epoch 6 of 10
+seed 2024 fold 4 P10  : val bal-acc 0.9472 | FA 20 miss 20 | best epoch 5 of 9
+seed 2024 fold 4 GF   : val bal-acc 0.9502 | FA 20 miss 18 | best epoch 6 of 10
+seed 2024 fold 4 H32G3: val bal-acc 0.9484 | FA 19 miss 20 | best epoch 4 of 8
+seed 2024 fold 4 G3GF : val bal-acc 0.9431 | FA 26 miss 18 | best epoch 6 of 10
+
+D1 replay: largest gap to film_upgrade D1 = 0.003233 (must be 0)
+
+variant  val_bal_acc  val_f1  wins_vs_D1  FA_per_fold  miss_per_fold  sum_b_minus_c  worst_seed_b_minus_c  kept
+     D1       0.9492  0.9435           0         20.3           18.5             38                   -39 False
+     T0       0.9418  0.9351           2         25.9           19.0           -146                   -48 False
+     T5       0.9452  0.9389           4         22.2           19.7            -56                   -52 False
+    P10       0.9489  0.9434           9         18.7           19.9             42                   -37 False
+     GF       0.9514  0.9459          11         19.0           18.0             90                   -36  True
+  H32G3       0.9490  0.9435           7         17.3           21.0             52                   -33 False
+   G3GF       0.9499  0.9443           6         19.4           18.7             58                   -29  True
+
+projected McNemar b - c per seed (validation rows, proxy):
+seed              42    123   2024
+variant baseline                  
+D1      CNN-only -39.0   7.0  30.0
+        Concat    -2.0  29.0  13.0
+G3GF    CNN-only -29.0  19.0  18.0
+        Concat     8.0  41.0   1.0
+GF      CNN-only -36.0  19.0  41.0
+        Concat     1.0  41.0  24.0
+H32G3   CNN-only -33.0   4.0  34.0
+        Concat     4.0  26.0  17.0
+P10     CNN-only -37.0   0.0  37.0
+        Concat     0.0  22.0  20.0
+T0      CNN-only -48.0 -27.0 -19.0
+        Concat   -11.0  -5.0 -36.0
+T5      CNN-only -52.0  -5.0   8.0
+        Concat   -15.0  17.0  -9.0
+
+KEPT: G3GF, GF

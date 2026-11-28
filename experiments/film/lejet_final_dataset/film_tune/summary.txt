@@ -1,0 +1,30 @@
+D1 replay: largest gap to film_upgrade D1 = 0.003233 (must be 0)
+
+variant  val_bal_acc  val_f1  wins_vs_D1  FA_per_fold  miss_per_fold  sum_b_minus_c  worst_seed_b_minus_c  kept
+     D1       0.9492  0.9435           0         20.3           18.5             38                   -39 False
+     G3       0.9501  0.9446           8         18.3           19.4             68                   -35  True
+     G2       0.9472  0.9410           7         23.5           17.2            -22                   -31 False
+     V1       0.9355  0.9278           2         33.7           17.1           -322                   -84 False
+     V3       0.9480  0.9423           6         19.0           20.3             22                   -29 False
+      M       0.9436  0.9372           3         22.5           20.5            -90                   -61 False
+   V1G3       0.9347  0.9270           2         34.0           17.3           -340                   -79 False
+
+projected McNemar b - c per seed (validation rows, proxy):
+seed              42    123   2024
+variant baseline                  
+D1      CNN-only -39.0   7.0  30.0
+        Concat    -2.0  29.0  13.0
+G2      CNN-only -31.0   4.0  -5.0
+        Concat     6.0  26.0 -22.0
+G3      CNN-only -35.0  20.0  28.0
+        Concat     2.0  42.0  11.0
+M       CNN-only -61.0   2.0  -7.0
+        Concat   -24.0  24.0 -24.0
+V1      CNN-only -39.0 -76.0 -67.0
+        Concat    -2.0 -54.0 -84.0
+V1G3    CNN-only -56.0 -73.0 -62.0
+        Concat   -19.0 -51.0 -79.0
+V3      CNN-only -29.0  15.0   4.0
+        Concat     8.0  37.0 -13.0
+
+KEPT: G3
