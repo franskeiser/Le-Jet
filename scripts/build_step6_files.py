@@ -38,7 +38,6 @@ from src.unified import film_compare as fc                                 # noq
 from src.unified import fit_model as fm                                    # noqa: E402
 from src.unified import text_cnn as tc                                     # noqa: E402
 from src.unified.film_controls import shuffle_link                         # noqa: E402
-from src.unified.film_data import part_inputs                              # noqa: E402
 
 SHUFFLES = 5
 REF, TEXT, NEUTRAL, SHUFFLED, HIDDEN = ("Proposed model (reference)", "Text-only CNN", "FiLM neutralised", "Shuffled RF outputs",
@@ -75,10 +74,10 @@ def main() -> int:
     for seed in SEEDS:
         for fold in range(CROWD_N_FOLDS):
             model, w2i, seq_len, _ = film.load_film(seed, fold, False, warm_start=False)
-            t = part_inputs(seed, fold, "test", w2i, seq_len)
+            t = film.inputs_for(model, seed, fold, "test", w2i, seq_len)    # (n, 43) with the URL branch adopted 2026-11-25, else (n, 4)
             meta = {"seed": seed, "fold": fold, "message_id": t.message_id, "label": t.labels.numpy()}
             off = t.link_full.clone()
-            off[:, -1] = 0                                                  # has_url = 0 for every message -> generator bypassed
+            off[:, 3] = 0              # FiLM's has_url (column 3 in both layouts) = 0 -> generator bypassed; the URL branch's columns stay
             gamma, beta = model.film_parameters(off, model.conv_features(t.token_ids)[1])
             assert bool((gamma == 1).all() and (beta == 0).all()), "FiLM neutralised: gamma / beta are not 1 / 0"
             for check, link in ((REF, t.link_full), (NEUTRAL, off), (HIDDEN, t.link_blank)):

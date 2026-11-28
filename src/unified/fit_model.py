@@ -3,7 +3,7 @@ steps 3.3, 3.4 and 3.6).
 
 fit() trains a model with the shared recipe (the same one for every model of the study):
   * Adam, learning rate 1e-3, up to 30 epochs, batches of 64, patience 3 on validation balanced accuracy, the best epoch's
-    weights kept (saved to `checkpoint` and loaded back);
+    weights kept (saved to `checkpoint` and loaded back); `monitor="log_loss"` watches validation log loss instead (check R1 only);
   * cross-entropy with label smoothing 0.1 and inverse-frequency class weights from the training labels;
   * weight decay on Dense 64's weights, and on the generator's weights for E2 (the model's parameter_groups());
   * modality dropout, training only, redrawn every epoch from a generator seeded with the seed: a message's page is hidden with
@@ -38,7 +38,11 @@ from src.unified import text_cnn as tc
 from src.unified.text_cnn import BATCH_SIZE, EPOCHS, LR, PATIENCE
 
 P_PAGE_HIDDEN, P_TEXT_HIDDEN = 0.25, 0.10
-VAL_METRICS = ["val_accuracy", "val_balanced_accuracy", "val_precision", "val_recall", "val_f1", "val_log_loss"]
+# What early stopping watches on the validation part: (metric, +1 when higher is better / -1 when lower is better). The recipe of every
+# recorded model is "balanced_accuracy" (the default). "log_loss" is the smoother alternative of the shared-recipe check R1
+# (scripts/recipe_r1_validation.py); it is applied to every model alike or to none.
+MONITORS = {"balanced_accuracy": ("val_balanced_accuracy", 1.0), "log_loss": ("val_log_loss", -1.0)}
+VAL_METRICS =["val_accuracy", "val_balanced_accuracy", "val_precision", "val_recall", "val_f1", "val_log_loss"]
 MOVED = 0.05          # a filter counts as moved when its mean |gamma - 1| or mean |beta| on the validation messages exceeds this
 
 
@@ -93,6 +97,40 @@ def film_stats(model, token_ids: torch.Tensor, link: torch.Tensor) -> tuple[dict
 
 
 # ------------------------------------------------------------------ training
+def scaled_groups(model: nn.Module, groups: list[dict], lr: float, generator_lr_scale: float) -> list[dict]:
+    """`groups` unchanged when generator_lr_scale is 1.0. Otherwise every generator parameter (weights and biases, FiLM only) is moved
+    into a group of its own with lr * generator_lr_scale and the weight decay it had."""
+    if generator_lr_scale == 1.0:
+        return groups
+    if not hasattr(model, "generator"):
+        raise ValueError("generator_lr_scale needs a model with a generator (FiLM)")
+    generator = {id(p) for p in model.generator.parameters()}
+    out = []
+    for g in groups:
+        rest = [p for p in g["params"] if id(p) not in generator]
+        mine = [p for p in g["params"] if id(p) in generator]
+        if rest:
+            out.append({**g, "params": rest})
+        if mine:
+            out.append({**g, "params": mine, "lr": lr * generator_lr_scale})
+    return out
+
+
+class FocalLoss(nn.Module):
+    """Focal loss (Lin et al. 2017), gamma 2, with the same inverse-frequency class weights as alpha; no label smoothing.
+    Roadmap item M6, validation-only tuning; the recorded recipe uses cross-entropy."""
+
+    def __init__(self, weight: torch.Tensor, gamma: float = 2.0):
+        super().__init__()
+        self.register_buffer("weight", weight)
+        self.gamma = gamma
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        log_p = torch.log_softmax(logits, dim=1).gather(1, target[:, None]).squeeze(1)
+        w = self.weight[target]
+        return (w * (1 - log_p.exp()) ** self.gamma * -log_p).sum() / w.sum()
+
+
 class FitResult(NamedTuple):
     metrics: dict                    # the best epoch's validation metrics
     best_epoch: int
@@ -104,16 +142,32 @@ class FitResult(NamedTuple):
 
 def fit(model: nn.Module, train: tuple, val: tuple, seed: int, checkpoint: Path, epochs: int = EPOCHS, lr: float = LR,
         patience: int = PATIENCE, weight_decay: float = DENSE_WEIGHT_DECAY, generator_weight_decay: float | None = None,
-        p_page_hidden: float = P_PAGE_HIDDEN, p_text_hidden: float = P_TEXT_HIDDEN) -> FitResult:
+        p_page_hidden: float = P_PAGE_HIDDEN, p_text_hidden: float = P_TEXT_HIDDEN,
+        monitor: str = "balanced_accuracy", generator_lr_scale: float = 1.0, label_smoothing: float = LABEL_SMOOTHING,
+        batch_size: int = BATCH_SIZE, loss: str = "cross_entropy") -> FitResult:
     """Trains `model` in place. train = (token ids, full link numbers, page-hidden link numbers, labels); val = (token ids,
-    link numbers, labels). The best epoch is saved to `checkpoint` and loaded back."""
+    link numbers, labels). The best epoch by `monitor` (MONITORS) is saved to `checkpoint` and loaded back; training stops after
+    `patience` epochs without a better one. `monitor` changes only which epoch is kept and when to stop, never the training itself.
+    generator_lr_scale (FiLM only): the generator's weights and biases learn at lr * scale; 1.0 (default) leaves the optimizer exactly as
+    recorded. label_smoothing and batch_size default to the recorded recipe. The non-default values exist for validation-only tuning
+    studies (scripts/tune_validation.py)."""
+    if monitor not in MONITORS:
+        raise ValueError(f"monitor must be one of {sorted(MONITORS)}, got {monitor!r}")
+    watched, sign = MONITORS[monitor]
     ids, link_full, link_blank, y = train
     torch.manual_seed(seed)                                   # the dropout layers' draws
     gen = torch.Generator().manual_seed(seed)                 # modality dropout and the batch order
-    optimizer = torch.optim.Adam(model.parameter_groups(weight_decay, generator_weight_decay), lr=lr)
-    criterion = nn.CrossEntropyLoss(weight=class_weights(y), label_smoothing=LABEL_SMOOTHING)
+    optimizer = torch.optim.Adam(scaled_groups(model, model.parameter_groups(weight_decay, generator_weight_decay), lr,
+                                               generator_lr_scale), lr=lr)
+    if loss == "cross_entropy":
+        criterion = nn.CrossEntropyLoss(weight=class_weights(y), label_smoothing=label_smoothing)
+    elif loss == "focal":
+        criterion = FocalLoss(class_weights(y))
+    else:
+        raise ValueError(f"loss must be 'cross_entropy' or 'focal', got {loss!r}")
     is_film = hasattr(model, "explain")
-    best, best_state, best_epoch, best_metrics, bad, epoch, rows = -1.0, None, -1, None, 0, -1, []
+    penalty = getattr(model, "training_penalty", None)        # Phase J (scripts/tune_validation.py): FiLM-off / teacher losses
+    best, best_state, best_epoch, best_metrics, bad, epoch, rows = float("-inf"), None, -1, None, 0, -1, []
     start = time.perf_counter()
     for epoch in range(epochs):
         model.train()
@@ -122,10 +176,12 @@ def fit(model: nn.Module, train: tuple, val: tuple, seed: int, checkpoint: Path,
         text_keep = (torch.rand(len(y), generator=gen) >= p_text_hidden).float()
         order = torch.randperm(len(y), generator=gen)
         loss_sum = 0.0
-        for first in range(0, len(order), BATCH_SIZE):
-            batch = order[first:first + BATCH_SIZE]
+        for first in range(0, len(order), batch_size):
+            batch = order[first:first + batch_size]
             optimizer.zero_grad()
             loss = criterion(model(ids[batch], link[batch], text_keep[batch]), y[batch])
+            if penalty is not None:                          # training-only extra loss (validation studies); no recorded model has one
+                loss = loss + penalty(criterion, y[batch])
             loss.backward()
             optimizer.step()
             loss_sum += float(loss.detach()) * len(batch)
@@ -134,8 +190,8 @@ def fit(model: nn.Module, train: tuple, val: tuple, seed: int, checkpoint: Path,
         if is_film:
             row.update(film_stats(model, val[0], val[1])[0])
         rows.append(row)
-        if metrics["val_balanced_accuracy"] > best:
-            best, best_state, best_epoch, best_metrics, bad = metrics["val_balanced_accuracy"], copy.deepcopy(model.state_dict()), epoch, metrics, 0
+        if sign * metrics[watched] > best:
+            best, best_state, best_epoch, best_metrics, bad = sign * metrics[watched], copy.deepcopy(model.state_dict()), epoch, metrics, 0
         else:
             bad += 1
             if bad >= patience:

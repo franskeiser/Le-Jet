@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.config import DENSE_UNITS, KERNEL_SIZE, NUM_FILTERS
+from src.features.model import conv_blocks
 from src.features.model.film_cnn import LINK_DIM
 
 
@@ -25,6 +26,7 @@ class ConcatTextCNN(nn.Module):
         super().__init__()
         self.num_filters, self.kernel_size, self.link_dim = num_filters, kernel_size, link_dim
         self.freeze_embedding = freeze_embedding
+        self.widths, self.per_width = None, None              # set by use_widths (several Conv widths)
         self.embedding = embedding_layer
         self.embedding.weight.requires_grad = not freeze_embedding
         self.conv = nn.Conv1d(embedding_layer.embedding_dim, num_filters, kernel_size=kernel_size)
@@ -32,6 +34,11 @@ class ConcatTextCNN(nn.Module):
         self.dense = nn.Linear(num_filters + link_dim, dense_units)
         self.dropout_head = nn.Dropout(0.5)
         self.output = nn.Linear(dense_units, 2)
+
+    def use_widths(self, widths, per_width: int) -> None:
+        """Several Conv widths instead of one (conv_blocks.MultiWidthConv; adopted 2026-11-25: widths 3, 4, 5 x 64). Build the model
+        with num_filters = len(widths) x per_width first, as concat_control.build_control does."""
+        conv_blocks.use_widths(self, widths, per_width)
 
     def encode(self, token_ids: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
         # The pooled text numbers (batch, filters). text_keep: optional (batch,) of 1 / 0; a 0 hides that message's text numbers

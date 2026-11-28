@@ -115,6 +115,16 @@ def log_read(dataset: Path, models: List[str], seeds: List[int], folds: List[int
                   f"read_test_flag={read_test} models={models}\n")
 
 
+def inputs_of(name: str, model, seed: int, fold: int, part: str, vocab: Dict[str, int], seq_len: int, pilot: bool = False):
+    """The PartData `model` reads: CNN-only's raw (n, 39) link, the Proposed model's (n, 43) link when it has the URL branch (adopted
+    2026-11-25, film.inputs_for), else film_data.part_inputs. Same rows and order for every model."""
+    if name == RAW_CNN:
+        return rc.raw_part_inputs(seed, fold, part, vocab, seq_len, pilot)
+    if getattr(model, "url_branch_units", 0):
+        return film.inputs_for(model, seed, fold, part, vocab, seq_len, pilot)
+    return part_inputs(seed, fold, part, vocab, seq_len, pilot)
+
+
 def predict(model, name: str, test, condition: str) -> np.ndarray:
     """P(smishing) of every test message. The baseline ignores the link; the others read the numbers of `condition`."""
     link = test.link_blank if condition == "page hidden" else test.link_full
@@ -131,10 +141,11 @@ def test_predictions(pilot: bool, seeds: List[int], folds: List[int], names: Lis
             base_vocab, base_len = loaded[BASELINE][1], loaded[BASELINE][2]
             assert all(v == base_vocab and l == base_len for _, v, l in loaded.values()), "the models disagree on the fold's vocabulary"
             test = part_inputs(seed, fold, "test", base_vocab, base_len, pilot)
-            raw_test = rc.raw_part_inputs(seed, fold, "test", base_vocab, base_len, pilot) if RAW_CNN in loaded else None
             for name, (model, _, _) in loaded.items():
+                data = test if (name != RAW_CNN and not getattr(model, "url_branch_units", 0)) else                     inputs_of(name, model, seed, fold, "test", base_vocab, base_len, pilot)
+                assert np.array_equal(data.message_id, test.message_id)
                 for condition in CONDITIONS:
-                    p = predict(model, name, raw_test if name == RAW_CNN else test, condition)
+                    p = predict(model, name, data, condition)
                     rows.append(pd.DataFrame({"seed": seed, "fold": fold, "message_id": test.message_id, "label": test.labels.numpy(),
                                               "model": name, "condition": condition, "p_smishing": p, "pred": (p >= 0.5).astype(int),
                                               "has_url": test.link_full[:, 3].numpy().astype(int),

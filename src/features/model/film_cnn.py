@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.config import DENSE_UNITS, KERNEL_SIZE, NUM_FILTERS
+from src.features.model import conv_blocks
+from src.features.model.raw_cnn import BRANCH_WIDTH, RAW_WIDTH, scale_raw_link
 
 # The three numbers the Link RF gives E2 for each message, in this order (src/unified/film_inputs.py E2_LINK).
 LINK_DIM = 3
@@ -87,6 +89,18 @@ class FiLMTextCNN(nn.Module):
                           attached before Dense 64, as in the concatenation control (has_url = 1 when it is not given).
       link_dim            3 (default) = [P, u, page_missing]. A larger value lets the generator read more link numbers placed after
                           those three (for example the Link RF's 37 contributions); has_url, when given, is still the last column.
+
+    Changes made after construction (adopted 2026-11-25 for the Proposed model after the validation-only tuning, configuration
+    `PG2_ln` of docs/validation_only_improvement_plan.md; all off by default, and then the model is exactly as above). Call them in
+    this order, as src/unified/film.py apply_architecture does:
+      use_widths(widths, per_width)  several Conv widths side by side (3, 4, 5 x 64 = 192 filters; build with num_filters = 192);
+                          FiLM then scales and shifts every filter of every width.
+      use_layer_norm()    layer norm across the filters at each position, before FiLM (no affine: FiLM supplies the scale and shift).
+      add_url_branch(mean, std, units)  CNN-only's URL branch beside FiLM: the 37 raw URL / page features prepared as CNN-only
+                          prepares them (raw_cnn.scale_raw_link, with the train part's mean / std as buffers) -> Dense (units) -> ReLU
+                          -> dropout 0.2, joined to the text numbers before Dense 64. The generator still reads only P, u,
+                          page_missing and the filter averages. `link` is then (batch, link_dim + 1 + 39):
+                          [P, u, page_missing, has_url, 37 raw features, page_missing, has_url] (film.inputs_for builds it).
     """
 
     def __init__(self, embedding_layer: nn.Embedding, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
@@ -110,6 +124,9 @@ class FiLMTextCNN(nn.Module):
         self.use_beta, self.freeze_embedding, self.bypass_no_link = use_beta, freeze_embedding, bypass_no_link
         self.use_average = use_average
         self.text_dropout, self.generator_hidden, self.head_link = text_dropout, generator_hidden, head_link
+        self.widths, self.per_width = None, None          # use_widths
+        self.layer_norm = False                           # use_layer_norm
+        self.url_branch_units = 0                         # add_url_branch
 
         # Fine-tuned for every model of the study (D6, changed 2026-10-20 from frozen). Its parameters are counted apart from
         # the 70,658 of the layers below (vocabulary size x 300 more), and it has its own optimizer group.
@@ -133,6 +150,39 @@ class FiLMTextCNN(nn.Module):
         self.dense = nn.Linear(num_filters + (LINK_DIM + 1 if head_link else 0), dense_units)
         self.dropout_head = nn.Dropout(0.5)
         self.output = nn.Linear(dense_units, 2)
+
+    # ------------------------------------------------------------------ changes after construction (adopted 2026-11-25)
+    def use_widths(self, widths, per_width: int) -> None:
+        """Several Conv widths instead of one (conv_blocks.MultiWidthConv). Build with num_filters = len(widths) x per_width first."""
+        if self.mask_padding:
+            raise ValueError("mask_padding assumes one Conv width; it cannot be combined with use_widths")
+        if self.layer_norm or self.url_branch_units:
+            raise ValueError("call use_widths before use_layer_norm and add_url_branch")
+        conv_blocks.use_widths(self, widths, per_width)
+
+    def use_layer_norm(self) -> None:
+        """Layer norm across the filters at each position of the Conv output, before FiLM (no affine)."""
+        if self.layer_norm or self.url_branch_units:
+            raise ValueError("use_layer_norm is called once, before add_url_branch")
+        self.conv = nn.Sequential(self.conv, conv_blocks.ChannelNorm(self.num_filters, affine=False))
+        self.layer_norm = True
+
+    def add_url_branch(self, feature_mean: torch.Tensor, feature_std: torch.Tensor, units: int = NUM_FILTERS) -> None:
+        """CNN-only's URL branch beside FiLM (see the class notes). Dense 64 is rebuilt to read the text numbers and the branch."""
+        if self.head_link:
+            raise ValueError("add_url_branch cannot be combined with head_link")
+        if self.url_branch_units:
+            raise ValueError("the URL branch is already there")
+        self.register_buffer("feature_mean", torch.as_tensor(feature_mean, dtype=torch.float32).clone())
+        self.register_buffer("feature_std", torch.as_tensor(feature_std, dtype=torch.float32).clone())
+        self.link_branch = nn.Linear(BRANCH_WIDTH, units)
+        self.dropout_branch = nn.Dropout(0.2)
+        self.dense = nn.Linear(self.num_filters + units, self.dense.out_features)
+        self.url_branch_units = int(units)
+
+    def link_width(self) -> int:
+        """How many link columns forward() takes: link_dim (+ has_url) (+ the 39 raw columns with a URL branch)."""
+        return self.link_dim + 1 + (RAW_WIDTH if self.url_branch_units else 0)
 
     def generator_layers(self) -> list:
         """The generator's Dense layers, first to last (one, or two when generator_hidden > 0)."""
@@ -163,6 +213,8 @@ class FiLMTextCNN(nn.Module):
                         has_url: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         # link: (batch, 3) = [P, u, page_missing], or (batch, 4) with has_url as the last column. Returns gamma and beta, each
         # (batch, filters). has_url: optional (batch,) of 1 / 0. A 0 gives gamma = 1, beta = 0 (no link: the filters are unchanged).
+        if self.url_branch_units and link.dim() == 2 and link.shape[1] == self.link_dim + 1 + RAW_WIDTH:
+            link = link[:, : self.link_dim + 1]                        # the generator reads [P, u, page_missing, has_url] only
         width_ok = link.dim() == 2 and link.shape[1] in (self.link_dim, self.link_dim + 1)
         if not width_ok or link.shape[0] != average.shape[0]:
             raise ValueError(f"link must be (batch, {self.link_dim}) or (batch, {self.link_dim + 1}) with has_url last, with the same "
@@ -211,6 +263,15 @@ class FiLMTextCNN(nn.Module):
     def forward(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None,
                 has_url: torch.Tensor | None = None) -> torch.Tensor:
         # Raw logits (batch, 2); no Softmax here, as in TextEncoder (the loss applies it).
+        if self.url_branch_units:
+            if link.dim() != 2 or link.shape[1] != self.link_width() or link.shape[0] != token_ids.shape[0]:
+                raise ValueError(f"with the URL branch, link must be (batch, {self.link_width()}) = [P, u, page_missing, has_url, 37 raw "
+                                 f"features, page_missing, has_url], got {tuple(link.shape)}")
+            # the branch runs before the text part, the order of the validated runs (the two dropouts draw in this order)
+            digested = self.dropout_branch(F.relu(self.link_branch(scale_raw_link(link[:, -RAW_WIDTH:], self.feature_mean,
+                                                                                  self.feature_std))))
+            return self.output(self.dropout_head(F.relu(self.dense(torch.cat([self.encode(token_ids, link, text_keep, has_url),
+                                                                               digested], dim=1)))))
         features = self.encode(token_ids, link, text_keep, has_url)
         if self.head_link:
             features = torch.cat([features, self.head_numbers(link, has_url)], dim=1)
@@ -243,10 +304,14 @@ class FiLMTextCNN(nn.Module):
         # Read-only: no gradients, and it does not change what the model predicts.
         pooled, position, x, gamma, beta = self._pool(token_ids, link, None, has_url)
         plain_pooled, plain_position = F.relu(x).max(dim=2)            # the same filters with gamma = 1 and beta = 0
-        steps = torch.arange(self.kernel_size, device=position.device)
-        index = (position.unsqueeze(-1) + steps).clamp(max=token_ids.shape[1] - 1)             # (batch, filters, k)
+        widths = conv_blocks.filter_widths(self).to(position.device)                           # (filters,) each filter's window
+        steps = torch.arange(int(widths.max()), device=position.device)
+        index = (position.unsqueeze(-1) + steps).clamp(max=token_ids.shape[1] - 1)             # (batch, filters, widest window)
         window_ids = token_ids.unsqueeze(1).expand(-1, self.num_filters, -1).gather(2, index)
+        inside = steps.unsqueeze(0) < widths.unsqueeze(1)                                      # (filters, widest): within its width
         pad = self.embedding.padding_idx
+        if pad is not None and not bool(inside.all()):
+            window_ids = torch.where(inside.unsqueeze(0), window_ids, torch.full_like(window_ids, pad))   # beyond a filter's width
         has_words = torch.ones_like(position, dtype=torch.bool) if pad is None else (window_ids != pad).any(dim=2)
         return FilterExplanation(pooled=pooled, position=position, window_ids=window_ids, window_has_words=has_words,
                                  gamma=gamma, beta=beta, plain_pooled=plain_pooled, plain_position=plain_position,

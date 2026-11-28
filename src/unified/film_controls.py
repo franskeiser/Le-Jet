@@ -94,7 +94,7 @@ def model_specs(pilot: bool, seeds: List[int], folds: List[int], with_ablations:
         kind, load = fc.LOADERS[name]
         if all(fm.checkpoint_path(dataset, kind, s, f).exists() for s in seeds for f in folds):
             part = rc.raw_part_inputs if name == fc.RAW_CNN else part_inputs
-            specs[name] = {"load": load, "part": part}
+            specs[name] = {"load": load, "part": part, "name": name}
     if with_ablations:
         for variant in fa.VARIANTS:
             if all(fm.checkpoint_path(dataset, fa.kind_of(variant), s, f).exists() for s in seeds for f in folds):
@@ -127,7 +127,8 @@ def collect(pilot: bool, specs: Dict[str, dict], seeds: List[int], folds: List[i
                     "has_url": base.link_full[:, 3].numpy().astype(int), "page_live": (1 - base.link_full[:, 2]).numpy().astype(int)}
             for name, spec in specs.items():
                 model = loaded[name][0]
-                test = spec["part"](seed, fold, "test", vocab, length, pilot)
+                test = (fc.inputs_of(name, model, seed, fold, "test", vocab, length, pilot) if getattr(model, "url_branch_units", 0)
+                        else spec["part"](seed, fold, "test", vocab, length, pilot))
                 assert np.array_equal(test.message_id, base.message_id), f"{name}: the test rows are not in the same order"
                 for condition, link in (("complete", test.link_full), ("page hidden", test.link_blank)):
                     p = probabilities(model, test, link)

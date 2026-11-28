@@ -86,6 +86,80 @@ def test_early_stopping_waits_for_patience_epochs_after_the_best(tmp_path):
     assert result.epochs_run < 30 and result.epochs_run == result.best_epoch + 1 + 2
 
 
+def test_the_default_monitor_is_balanced_accuracy_and_changes_nothing(tmp_path):
+    train, val = split(text_task)
+    common = dict(seed=1, lr=1e-2, patience=2, p_page_hidden=0.0, p_text_hidden=0.0, epochs=30)
+    a = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "a.pt", **common)
+    b = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "b.pt", monitor="balanced_accuracy", **common)
+    assert a.metrics == b.metrics and a.best_epoch == b.best_epoch and a.epochs_run == b.epochs_run
+    assert a.log.equals(b.log)
+
+
+def test_log_loss_monitor_keeps_the_lowest_loss_epoch_and_waits_patience_after_it(tmp_path):
+    train, val = split(text_task)
+    result = fm.fit(PlainTextCNN(embedding()), train, val, seed=1, checkpoint=tmp_path / "ll.pt", lr=1e-2, patience=3,
+                    p_page_hidden=0.0, p_text_hidden=0.0, epochs=30, monitor="log_loss")
+    losses = result.log["val_log_loss"].to_numpy()
+    assert result.best_epoch == int(np.argmin(losses))                                     # first epoch with the lowest loss
+    assert result.metrics["val_log_loss"] == losses.min()
+    assert result.epochs_run == 30 or result.epochs_run == result.best_epoch + 1 + 3
+    model = PlainTextCNN(embedding())
+    model.load_state_dict(torch.load(tmp_path / "ll.pt"))
+    assert fm.evaluate(model, *val)["val_log_loss"] == pytest.approx(losses.min(), abs=1e-9)   # the saved epoch is that one
+
+
+def test_the_monitor_changes_only_the_kept_epoch_not_the_training(tmp_path):
+    train, val = split(text_task)
+    common = dict(seed=1, lr=1e-2, patience=50, p_page_hidden=0.0, p_text_hidden=0.0, epochs=6)
+    a = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "a.pt", **common)
+    b = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "b.pt", monitor="log_loss", **common)
+    cols = ["epoch", "train_loss"] + fm.VAL_METRICS
+    assert a.log[cols].equals(b.log[cols])                                                 # same epochs, same numbers
+
+
+def film_model():
+    return FiLMTextCNN(embedding(), num_filters=8)
+
+
+def test_generator_lr_scale_one_leaves_the_groups_exactly_as_they_were():
+    model = film_model()
+    groups = model.parameter_groups(1e-4)
+    assert fm.scaled_groups(model, groups, 1e-3, 1.0) is groups
+
+
+def test_generator_lr_scale_moves_every_generator_parameter_and_only_those():
+    model = film_model()
+    groups = fm.scaled_groups(model, model.parameter_groups(1e-4), 1e-3, 5.0)
+    fast = [p for g in groups if g.get("lr") == pytest.approx(5e-3) for p in g["params"]]
+    assert {id(p) for p in fast} == {id(p) for p in model.generator.parameters()}
+    everything = [p for g in groups for p in g["params"]]
+    assert sorted(map(id, everything)) == sorted(id(p) for g in model.parameter_groups(1e-4) for p in g["params"])
+    decays = {id(p): g["weight_decay"] for g in groups for p in g["params"]}
+    assert decays[id(model.generator_layers()[0].weight)] == 1e-4 and decays[id(model.generator_layers()[0].bias)] == 0.0
+
+
+def test_generator_lr_scale_is_refused_for_a_model_without_a_generator(tmp_path):
+    train, val = split(text_task)
+    with pytest.raises(ValueError, match="generator"):
+        fm.fit(PlainTextCNN(embedding()), train, val, seed=1, checkpoint=tmp_path / "g.pt", generator_lr_scale=3.0)
+
+
+def test_label_smoothing_and_batch_size_defaults_are_the_recipe(tmp_path):
+    train, val = split(text_task)
+    common = dict(seed=1, lr=1e-2, patience=2, p_page_hidden=0.0, p_text_hidden=0.0, epochs=4)
+    a = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "a.pt", **common)
+    b = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "b.pt", label_smoothing=fm.LABEL_SMOOTHING,
+               batch_size=fm.BATCH_SIZE, generator_lr_scale=1.0, **common)
+    c = fm.fit(PlainTextCNN(embedding()), train, val, checkpoint=tmp_path / "c.pt", batch_size=32, **common)
+    assert a.log.equals(b.log) and not np.allclose(a.log["train_loss"], c.log["train_loss"])
+
+
+def test_an_unknown_monitor_is_refused(tmp_path):
+    train, val = split(text_task)
+    with pytest.raises(ValueError, match="monitor"):
+        fm.fit(PlainTextCNN(embedding()), train, val, seed=1, checkpoint=tmp_path / "x.pt", monitor="f1")
+
+
 def test_it_stops_after_the_epoch_limit_when_it_keeps_improving(tmp_path):
     train, val = split(text_task)
     result = fm.fit(PlainTextCNN(embedding()), train, val, seed=1, checkpoint=tmp_path / "l.pt", lr=1e-5, patience=50,
@@ -189,3 +263,21 @@ def test_paths_follow_the_dataset_name(tmp_path):
     assert fm.checkpoint_path(d, "cnn", 42, 3).name == "cnn_seed42_fold3.pt"
     assert fm.checkpoint_path(d, "film", 123, 0).parent.name == "crowd_pilot_synthetic"
     assert fm.out_dir(d, "train").parts[-3:] == ("film", "crowd_pilot_synthetic", "train")
+
+
+def test_focal_loss_with_gamma_zero_is_weighted_cross_entropy():
+    torch.manual_seed(0)
+    logits, target = torch.randn(10, 2), torch.randint(0, 2, (10,))
+    weight = torch.tensor([0.7, 1.3])
+    focal = fm.FocalLoss(weight, gamma=0.0)(logits, target)
+    assert torch.allclose(focal, torch.nn.CrossEntropyLoss(weight=weight)(logits, target))
+    assert fm.FocalLoss(weight)(logits, target) < focal                      # gamma 2 down-weights easy rows
+
+
+def test_focal_loss_trains_and_an_unknown_loss_is_refused(tmp_path):
+    train, val = split(text_task)
+    result = fm.fit(PlainTextCNN(embedding()), train, val, seed=1, checkpoint=tmp_path / "f.pt", lr=1e-2, loss="focal",
+                    p_page_hidden=0.0, p_text_hidden=0.0)
+    assert result.metrics["val_balanced_accuracy"] > 0.9
+    with pytest.raises(ValueError, match="loss"):
+        fm.fit(PlainTextCNN(embedding()), train, val, seed=1, checkpoint=tmp_path / "x.pt", loss="hinge")

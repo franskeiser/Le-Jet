@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.config import DENSE_UNITS, KERNEL_SIZE, NUM_FILTERS
+from src.features.model import conv_blocks
 from src.unified.prepare_web_37 import FEATURES_37, PAGE
 
 N_FEATURES = 37                  # the URL / page features the Link RF reads (prepare_web_37.FEATURES_37)
@@ -36,6 +37,20 @@ def log_columns(x: np.ndarray | torch.Tensor):
     return out
 
 
+def scale_raw_link(link: torch.Tensor, feature_mean: torch.Tensor, feature_std: torch.Tensor) -> torch.Tensor:
+    """(batch, 44) the URL branch's input from the (batch, 39) raw link [37 raw features, page_missing, has_url]: the 37 prepared
+    features (log, standardised with the train part's mean / std, -1 -> 0, clipped), page_missing, the 5 missing flags and has_url. All
+    zeros for a message with no link. Shared by CNN-only and the Proposed model's URL branch, so both read exactly the same numbers."""
+    has_url = link[:, N_FEATURES + 1:N_FEATURES + 2]
+    raw = torch.where(has_url == 1, link[:, :N_FEATURES], torch.zeros_like(link[:, :N_FEATURES]))   # a no-link NaN never travels
+    missing = raw == MISSING
+    scaled = ((log_columns(raw) - feature_mean) / feature_std).clamp(-CLIP, CLIP)
+    scaled = torch.where(missing, torch.zeros_like(scaled), scaled)
+    flags = missing[:, FLAG_INDEX].to(scaled.dtype)
+    out = torch.cat([scaled, link[:, N_FEATURES:N_FEATURES + 1], flags, has_url], dim=1)
+    return torch.where(has_url == 1, out, torch.zeros_like(out))
+
+
 class RawFeatureCNN(nn.Module):
     """The "CNN-only" baseline of the study (guide Step 4: SMS text + the 37 URL features, no Random Forest). docs/ARCHITECTURE.md.
 
@@ -64,6 +79,7 @@ class RawFeatureCNN(nn.Module):
         super().__init__()
         self.num_filters, self.kernel_size, self.branch_units = num_filters, kernel_size, branch_units
         self.freeze_embedding = freeze_embedding
+        self.widths, self.per_width = None, None              # set by use_widths (several Conv widths)
         self.embedding = embedding_layer
         self.embedding.weight.requires_grad = not freeze_embedding
         self.conv = nn.Conv1d(embedding_layer.embedding_dim, num_filters, kernel_size=kernel_size)
@@ -89,14 +105,12 @@ class RawFeatureCNN(nn.Module):
 
     def scaled_link(self, link: torch.Tensor) -> torch.Tensor:
         # (batch, 44): the 37 prepared features, page_missing, the 5 missing flags, has_url. All zeros for a message with no link.
-        has_url = link[:, N_FEATURES + 1:N_FEATURES + 2]
-        raw = torch.where(has_url == 1, link[:, :N_FEATURES], torch.zeros_like(link[:, :N_FEATURES]))   # a no-link NaN never travels
-        missing = raw == MISSING
-        scaled = ((log_columns(raw) - self.feature_mean) / self.feature_std).clamp(-CLIP, CLIP)
-        scaled = torch.where(missing, torch.zeros_like(scaled), scaled)
-        flags = missing[:, FLAG_INDEX].to(scaled.dtype)
-        out = torch.cat([scaled, link[:, N_FEATURES:N_FEATURES + 1], flags, has_url], dim=1)
-        return torch.where(has_url == 1, out, torch.zeros_like(out))
+        return scale_raw_link(link, self.feature_mean, self.feature_std)
+
+    def use_widths(self, widths, per_width: int) -> None:
+        """Several Conv widths instead of one (conv_blocks.MultiWidthConv; adopted 2026-11-25: widths 3, 4, 5 x 64). Build the model
+        with num_filters = len(widths) x per_width first, as raw_cnn_control.build_raw does."""
+        conv_blocks.use_widths(self, widths, per_width)
 
     def forward(self, token_ids: torch.Tensor, link: torch.Tensor, text_keep: torch.Tensor | None = None) -> torch.Tensor:
         # Raw logits (batch, 2); no Softmax here (the loss applies it). link: (batch, 39) = [37 raw features, page_missing, has_url].

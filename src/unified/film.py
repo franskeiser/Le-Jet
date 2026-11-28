@@ -37,6 +37,13 @@ Usage:
     python -m src.unified.film train --pilot                     # from scratch (D7); --warm-start baseline needs cnn_baseline first
     python -m src.unified.film check --pilot
     python -m src.unified.film train --pilot --seeds 42 --folds 0 --warm-start none
+    python -m src.unified.film train --preset tuned --resume --minutes 9      # the configuration adopted 2026-11-25 (TUNED)
+
+--preset tuned (adopted 2026-11-25 after the validation-only tuning, docs/validation_only_improvement_plan.md Phases E-G, `PG2_ln`):
+Conv widths 3, 4, 5 x 64 with FiLM on every filter, layer norm before FiLM, unbounded gamma, CNN-only's URL branch beside FiLM (the 37
+raw features), Adam lr 3e-3, patience 8, page hidden 0.10. Without --preset the recipe and model are the earlier ones.
+--resume trains cell by cell and skips cells already trained with the same configuration (cell_runs.py), --minutes stops before a cell
+that would end after the budget, --threads sets torch's CPU threads (the validated runs used 5).
 """
 from __future__ import annotations
 
@@ -55,15 +62,27 @@ from src.data.split_crowd import load_fold
 from src.features.model.film_cnn import LINK_DIM, FiLMTextCNN
 from src.features.model.fusion_data import encode_batch_tolerant
 from src.features.model.rf_extractor import p_and_u
+from src.unified import cell_runs
 from src.unified import cnn_baseline as cb
 from src.unified import fit_model as fm
 from src.unified import link_lane as ll
+from src.unified import raw_cnn_control as rc
 from src.unified import text_cnn as tc
 from src.unified.film_data import PartData, part_inputs  # noqa: F401  (re-exported)
 from src.unified.prepare_web_37 import FEATURES_37
 
 PARTS = ("train", "val", "test")
 EXPECTED_TRAINABLE = 70658            # section A5, embedding not included
+
+# The recipe of the earlier runs (fit_model's defaults); --preset tuned replaces parts of it.
+DEFAULT_RECIPE = {"lr": fm.LR, "patience": fm.PATIENCE, "p_page_hidden": fm.P_PAGE_HIDDEN, "p_text_hidden": fm.P_TEXT_HIDDEN}
+# ADOPTED 2026-11-25 (Franz): the best Proposed configuration of the validation-only tuning (docs/validation_only_improvement_plan.md,
+# Phases E-G, `PG2_ln`: mean validation balanced accuracy .9633 over 15 cells; the earlier recipe .9495). Chosen by the rule written
+# before the runs (highest mean validation balanced accuracy); the baselines get their own tuned configurations
+# (raw_cnn_control.TUNED, concat_control.TUNED).
+TUNED = {"architecture": {"widths": [3, 4, 5], "per_width": 64, "layer_norm": True, "url_branch_units": 64},
+         "options": {"gamma_mode": "free"},
+         "recipe": {"lr": 3e-3, "patience": 8, "p_page_hidden": 0.10, "p_text_hidden": 0.10}}
 
 
 def expected_trainable(embedding_dim: int = 300, num_filters: int = NUM_FILTERS, kernel_size: int = KERNEL_SIZE,
@@ -88,15 +107,59 @@ def trainable_counts(model: FiLMTextCNN) -> tuple[int, int]:
     return total - own, total
 
 
-def build_film(seed: int, fold: int, pilot: bool = False, seq_len: int | None = None,
+def apply_architecture(model: FiLMTextCNN, widths=None, per_width: int | None = None, layer_norm: bool = False,
+                       url_branch_units: int = 0, feature_mean=None, feature_std=None) -> FiLMTextCNN:
+    """The changes made after construction (FiLMTextCNN.use_widths, use_layer_norm, add_url_branch), in the order the validated runs
+    made them. No change when every argument is left at its default. feature_mean / std: the URL branch's train-part statistics
+    (raw_cnn_control.feature_stats); placeholders are fine when the weights are loaded afterwards (they are buffers)."""
+    if widths:
+        model.use_widths(widths, per_width)
+    if layer_norm:
+        model.use_layer_norm()
+    if url_branch_units:
+        mean = torch.zeros(rc.N_FEATURES) if feature_mean is None else torch.as_tensor(feature_mean)
+        std = torch.ones(rc.N_FEATURES) if feature_std is None else torch.as_tensor(feature_std)
+        model.add_url_branch(mean, std, url_branch_units)
+    return model
+
+
+def architecture_of(model: FiLMTextCNN) -> dict:
+    """What apply_architecture needs to rebuild `model` (recorded in the sidecar)."""
+    return {"widths": list(model.widths) if model.widths else None, "per_width": model.per_width, "layer_norm": model.layer_norm,
+            "url_branch_units": model.url_branch_units}
+
+
+def build_film(seed: int, fold: int, pilot: bool = False, seq_len: int | None = None, architecture: dict | None = None,
                **options) -> tuple[FiLMTextCNN, Dict[str, int], int]:
-    """(model, word_to_idx, SEQ_LEN_L) of one seed and fold, untrained. `options` go to FiLMTextCNN (defaults: the plan's).
+    """(model, word_to_idx, SEQ_LEN_L) of one seed and fold, untrained. `options` go to FiLMTextCNN (defaults: the plan's);
+    `architecture` to apply_architecture (TUNED["architecture"] for the adopted model; None = the earlier model).
     seq_len: None = SEQ_LEN_L = 50 (src/config.py, docs/ARCHITECTURE.md 7.1); a number = another length (ablations only)."""
     dataset = tc.dataset_path(pilot)
+    arch = dict(architecture or {})
+    if arch.get("widths"):
+        options["num_filters"] = len(arch["widths"]) * arch["per_width"]
     embedding, word_to_idx, fold_len = tc.fold_text_setup(dataset, seed, fold)      # a fresh layer for this model only
     seq_len = fold_len if seq_len is None else seq_len
+    mean = std = None
+    if arch.get("url_branch_units"):
+        mean, std = rc.feature_stats(load_fold(seed, fold, pilot=pilot)["train"])     # train part only, as CNN-only
     tc.seed_everything(seed)
-    return FiLMTextCNN(embedding, **options), word_to_idx, seq_len
+    model = FiLMTextCNN(embedding, **options)
+    return apply_architecture(model, **arch, feature_mean=mean, feature_std=std), word_to_idx, seq_len
+
+
+def inputs_for(model: FiLMTextCNN, seed: int, fold: int, part: str, word_to_idx: Dict[str, int], seq_len: int,
+               pilot: bool = False) -> PartData:
+    """film_data.part_inputs for `model`. With a URL branch, link_full / link_blank are (n, 43): the usual [P, u, page_missing, has_url]
+    followed by CNN-only's raw (n, 39) [37 features, page_missing, has_url] of the same version (page as inspected / page hidden).
+    Same rows, order, labels and ids as every other model of the study."""
+    base = part_inputs(seed, fold, part, word_to_idx, seq_len, pilot)
+    if not getattr(model, "url_branch_units", 0):
+        return base
+    raw = rc.raw_part_inputs(seed, fold, part, word_to_idx, seq_len, pilot)
+    assert np.array_equal(raw.message_id, base.message_id) and torch.equal(raw.link_full[:, -1], base.link_full[:, 3])
+    return base._replace(link_full=torch.cat([base.link_full, raw.link_full], dim=1),
+                         link_blank=torch.cat([base.link_blank, raw.link_blank], dim=1))
 
 
 def link_rf_path(dataset: Path, seed: int, fold: int) -> Path:
@@ -126,6 +189,8 @@ def predict_messages(model: FiLMTextCNN, link_rf, word_to_idx: Dict[str, int], s
         p[linked], u[linked] = p_and_u(link_rf, scored.loc[linked, FEATURES_37])
     page_missing = 1 - scored["page_fetched"].astype(int).to_numpy()              # blank_page sets page_fetched to 0
     link = torch.tensor(np.column_stack([p, u, page_missing, has_url]), dtype=torch.float32)
+    if getattr(model, "url_branch_units", 0):                                       # the URL branch reads the raw features too
+        link = torch.cat([link, torch.tensor(rc.raw_link_matrix(scored))], dim=1)
     token_ids = encode_batch_tolerant(rows["sms_text"].astype(str).tolist(), word_to_idx, seq_len)
     was_training = model.training
     model.eval()
@@ -233,21 +298,31 @@ def model_options(model: FiLMTextCNN) -> dict:
             "head_link": model.head_link}
 
 
+def sidecar_extra(dataset: Path, seed: int, fold: int, url_branch: bool) -> dict:
+    """The files hashed in the sidecar besides the vocabulary, matrix and weights: the Link RF, and the dataset file when the model
+    reads the raw features (its URL branch's statistics come from it, as CNN-only's)."""
+    return {"link_rf": link_rf_path(dataset, seed, fold), **({"dataset.csv": dataset} if url_branch else {})}
+
+
 def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epochs: int = fm.EPOCHS,
-               seq_len: int | None = None, **options) -> tuple:
-    """Train, save and describe one seed and fold. Returns (summary row, per-epoch log, per-filter table)."""
+               seq_len: int | None = None, architecture: dict | None = None, recipe: dict | None = None, **options) -> tuple:
+    """Train, save and describe one seed and fold. Returns (summary row, per-epoch log, per-filter table).
+    `architecture`: apply_architecture's arguments; `recipe`: lr, patience, p_page_hidden, p_text_hidden (default: DEFAULT_RECIPE)."""
     dataset = tc.dataset_path(pilot)
+    recipe = {**DEFAULT_RECIPE, **(recipe or {})}
     kind = kind_of(warm_start, options.get("bypass_no_link", True)) + (f"_len{seq_len}" if seq_len else "")
-    model, word_to_idx, seq_len = build_film(seed, fold, pilot, seq_len, **options)
+    model, word_to_idx, seq_len = build_film(seed, fold, pilot, seq_len, architecture, **options)
+    if warm_start and (model.widths or model.url_branch_units):
+        raise ValueError("the warm start copies a one-width text CNN; it cannot be combined with Conv widths or the URL branch")
     source = None
     if warm_start:
         source = warm_start_from_baseline(model, dataset, seed, fold)
         if not start_matches_baseline(model, seed, fold, pilot, word_to_idx, seq_len):
             raise AssertionError(f"seed {seed} fold {fold}: at epoch 0 E2's text numbers differ from the baseline's")
-    train, val = (part_inputs(seed, fold, p, word_to_idx, seq_len, pilot) for p in ("train", "val"))
+    train, val = (inputs_for(model, seed, fold, p, word_to_idx, seq_len, pilot) for p in ("train", "val"))
     checkpoint = fm.checkpoint_path(dataset, kind, seed, fold)
     result = fm.fit(model, (train.token_ids, train.link_full, train.link_blank, train.labels),
-                    (val.token_ids, val.link_full, val.labels), seed, checkpoint, epochs=epochs)
+                    (val.token_ids, val.link_full, val.labels), seed, checkpoint, epochs=epochs, **recipe)
     without, with_embedding = trainable_counts(model)
     moved = result.log.iloc[result.best_epoch]
     film = {k: float(moved[k]) for k in ("gamma_dev_mean", "gamma_dev_max", "beta_abs_mean", "beta_abs_max", "lift_abs_mean",
@@ -256,12 +331,15 @@ def train_cell(seed: int, fold: int, pilot: bool, warm_start: bool = True, epoch
     fm.write_sidecar(checkpoint, {
         "kind": kind, "seed": seed, "fold": fold, "options": model_options(model), "num_filters": model.num_filters,
         "kernel_size": model.kernel_size, "link_dim": model.link_dim, "dense_units": model.dense.out_features,
+        "architecture": architecture_of(model),
         "seq_len_l": seq_len, "vocab_size": len(word_to_idx), "embeddings_dir": str(emb_dir.relative_to(tc.ROOT)),
-        "sha256": fm.hashes(fm.sidecar_files(dataset, seed, fold, checkpoint, {"link_rf": link_rf_path(dataset, seed, fold)})),
+        "sha256": fm.hashes(fm.sidecar_files(dataset, seed, fold, checkpoint,
+                                             sidecar_extra(dataset, seed, fold, bool(model.url_branch_units)))),
         "warm_start": source,
-        "recipe": {"optimizer": "adam", "lr": fm.LR, "epochs": epochs, "patience": fm.PATIENCE, "batch": fm.BATCH_SIZE,
+        "recipe": {"optimizer": "adam", "lr": recipe["lr"], "epochs": epochs, "patience": recipe["patience"], "batch": fm.BATCH_SIZE,
                    "label_smoothing": LABEL_SMOOTHING, "class_weights": True, "dense_weight_decay": DENSE_WEIGHT_DECAY,
-                   "generator_weight_decay": DENSE_WEIGHT_DECAY, "p_page_hidden": fm.P_PAGE_HIDDEN, "p_text_hidden": fm.P_TEXT_HIDDEN},
+                   "generator_weight_decay": DENSE_WEIGHT_DECAY, "p_page_hidden": recipe["p_page_hidden"],
+                   "p_text_hidden": recipe["p_text_hidden"]},
         "trainable_without_embedding": without, "trainable_with_embedding": with_embedding,
         "best_epoch": result.best_epoch, "epochs_run": result.epochs_run, "train_seconds": result.seconds,
         "val": {k: result.metrics[k] for k in fm.VAL_METRICS}, "film_at_best_epoch": film})
@@ -281,14 +359,21 @@ TEXT_DROPOUT = "input"
 
 def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, warm_start: bool = True,
               epochs: int = fm.EPOCHS, bypass: bool = True, seq_len: int | None = None,
-              text_dropout: str = TEXT_DROPOUT) -> pd.DataFrame:
+              text_dropout: str = TEXT_DROPOUT, architecture: dict | None = None, recipe: dict | None = None,
+              options: dict | None = None, resume: bool = False, minutes: float | None = None) -> pd.DataFrame:
     dataset = tc.dataset_path(pilot)
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
+    out = fm.out_dir(dataset, ("train" if warm_start else "train_scratch") + ("" if bypass else "_nobypass")
+                     + (f"_len{seq_len}" if seq_len else ""))
+    options = dict(options or {})
+    if resume:
+        return run_train_cells(pilot, seeds, folds, warm_start, epochs, bypass, seq_len, text_dropout, architecture, recipe, options,
+                               minutes, out)
     rows, logs, filters = [], [], []
     for seed in seeds:
         for fold in folds:
-            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, seq_len, bypass_no_link=bypass,
-                                         text_dropout=text_dropout)
+            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, seq_len, architecture, recipe,
+                                         bypass_no_link=bypass, text_dropout=text_dropout, **options)
             rows.append(row)
             logs.append(log)
             filters.append(table)
@@ -296,14 +381,45 @@ def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
                   f"best epoch {row['best_epoch']} of {row['epochs_run']} | {row['train_seconds']:.1f} s | "
                   f"mean |gamma-1| {row['gamma_dev_mean']:.3f}, mean |beta| {row['beta_abs_mean']:.3f}, "
                   f"{row['filters_moved']} of {fm_filters(table)} filters moved", flush=True)
-    out = fm.out_dir(dataset, ("train" if warm_start else "train_scratch") + ("" if bypass else "_nobypass")
-                     + (f"_len{seq_len}" if seq_len else ""))
     out.mkdir(parents=True, exist_ok=True)
     summary = pd.DataFrame(rows)
     summary.to_csv(out / "train_summary.csv", index=False)
     pd.concat(logs, ignore_index=True).to_csv(out / "train_log.csv", index=False)
     pd.concat(filters, ignore_index=True).to_csv(out / "filter_stats.csv", index=False)
     return summary
+
+
+def run_train_cells(pilot, seeds, folds, warm_start, epochs, bypass, seq_len, text_dropout, architecture, recipe, options, minutes,
+                    out: Path) -> pd.DataFrame:
+    """run_train --resume: cell by cell (cell_runs.py). Skips the cells already trained with this configuration, stops before a cell
+    that would end after `minutes`, and writes train_summary / train_log / filter_stats from every finished cell."""
+    signature = {"model": "film", "warm_start": warm_start, "bypass": bypass, "seq_len": seq_len, "text_dropout": text_dropout,
+                 "epochs": epochs, "architecture": architecture or {}, "recipe": {**DEFAULT_RECIPE, **(recipe or {})},
+                 "options": options, "dataset": tc.dataset_path(pilot).stem}
+    budget = cell_runs.Budget(minutes)
+    for seed in seeds:
+        for fold in folds:
+            if cell_runs.cell_done(out, seed, fold, signature):
+                continue
+            if not budget.fits():
+                print(f"TIME BUDGET: stopped before seed {seed} fold {fold}", flush=True)
+                break
+            row, log, table = train_cell(seed, fold, pilot, warm_start, epochs, seq_len, architecture, recipe,
+                                         bypass_no_link=bypass, text_dropout=text_dropout, **options)
+            budget.add(row["train_seconds"])
+            cell_runs.save_cell(out, seed, fold, {"train_summary": pd.DataFrame([row]), "train_log": log, "filter_stats": table},
+                                signature)
+            print(f"seed {seed} fold {fold}: val balanced accuracy {row['val_balanced_accuracy']:.4f} | best epoch {row['best_epoch']} "
+                  f"of {row['epochs_run']} | {row['train_seconds']:.0f} s", flush=True)
+        else:
+            continue
+        break
+    tables, finished = cell_runs.assemble(out, SEEDS if list(seeds) == list(SEEDS) else seeds, folds,
+                                          ["train_summary", "train_log", "filter_stats"], signature)
+    expected = len(seeds) * len(folds)
+    print(f"{finished} of {expected} cells finished with this configuration" + ("" if finished == expected else " (run again)"),
+          flush=True)
+    return tables["train_summary"]
 
 
 def fm_filters(table: pd.DataFrame) -> int:
@@ -322,11 +438,13 @@ def load_film(seed: int, fold: int, pilot: bool = False, warm_start: bool = True
     dataset = tc.dataset_path(pilot)
     checkpoint = fm.checkpoint_path(dataset, kind_of(warm_start, bypass), seed, fold)
     sidecar = fm.read_sidecar(checkpoint)
-    fm.check_hashes(sidecar["sha256"], fm.sidecar_files(dataset, seed, fold, checkpoint, {"link_rf": link_rf_path(dataset, seed, fold)}))
+    fm.check_hashes(sidecar["sha256"], fm.sidecar_files(dataset, seed, fold, checkpoint,
+                                                        sidecar_extra(dataset, seed, fold, "dataset.csv" in sidecar["sha256"])))
     embedding, word_to_idx = tc.frozen_embedding(tc.ROOT / sidecar["embeddings_dir"])
     model = FiLMTextCNN(embedding, sidecar["num_filters"], sidecar["kernel_size"], sidecar["link_dim"], sidecar["dense_units"],
                         **sidecar["options"])
-    model.load_state_dict(torch.load(checkpoint, map_location="cpu"))
+    apply_architecture(model, **(sidecar.get("architecture") or {}))          # earlier sidecars have none: the earlier model
+    model.load_state_dict(torch.load(checkpoint, map_location="cpu"))        # the URL branch's mean / std come back with the weights
     return model.eval(), word_to_idx, sidecar["seq_len_l"], sidecar
 
 
@@ -338,7 +456,7 @@ def run_check(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
     for seed in seeds:
         for fold in folds:
             model, word_to_idx, seq_len, sidecar = load_film(seed, fold, pilot, warm_start, bypass)
-            val = part_inputs(seed, fold, "val", word_to_idx, seq_len, pilot)
+            val = inputs_for(model, seed, fold, "val", word_to_idx, seq_len, pilot)
             again = fm.evaluate(model, val.token_ids, val.link_full, val.labels)
             gap = max(abs(again[k] - sidecar["val"][k]) for k in fm.VAL_METRICS)
             frame = load_fold(seed, fold, pilot=pilot)["val"]
@@ -369,7 +487,14 @@ def main(argv: List[str] | None = None) -> None:
                     help="train: how modality dropout hides the text (default: input, adopted 2026-11-22; pooled = the models before)")
     ap.add_argument("--no-bypass", action="store_true",
                     help="train / check E2 WITHOUT the has_url bypass (the ablation): the generator reads the link numbers of every message")
+    ap.add_argument("--preset", choices=["none", "tuned"], default="none",
+                    help="train: 'tuned' = the configuration adopted 2026-11-25 (TUNED); 'none' = the earlier model and recipe")
+    ap.add_argument("--resume", action="store_true", help="train cell by cell, skipping cells already trained with this configuration")
+    ap.add_argument("--minutes", type=float, default=None, help="with --resume: stop before a cell that would end after this budget")
+    ap.add_argument("--threads", type=int, default=None, help="torch CPU threads (the validated tuning runs used 5)")
     args = ap.parse_args(argv)
+    if args.threads:
+        torch.set_num_threads(args.threads)
     warm = args.warm_start == "baseline"
     if args.step == "build":
         summary = run_build(args.pilot, args.seeds, args.folds)
@@ -381,8 +506,12 @@ def main(argv: List[str] | None = None) -> None:
                 print(f"  seed {r['seed']} fold {r['fold']}: failed {[c for c in checks if not r[c]]}")
             sys.exit(1)
     elif args.step == "train":
+        preset = TUNED if args.preset == "tuned" else {}
         summary = run_train(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass, seq_len=args.seq_len,
-                            text_dropout=args.text_dropout)
+                            text_dropout=args.text_dropout, architecture=preset.get("architecture"), recipe=preset.get("recipe"),
+                            options=preset.get("options"), resume=args.resume, minutes=args.minutes)
+        if args.resume:
+            return
         print(f"\n{len(summary)} E2 models trained; mean val F1 {summary['val_f1'].mean():.3f} (std {summary['val_f1'].std():.3f})")
     else:
         summary = run_check(args.pilot, args.seeds, args.folds, warm, bypass=not args.no_bypass)

@@ -16,6 +16,10 @@ equal the recorded ones exactly. The test part is never read here.
 Usage:
     python -m src.unified.raw_cnn_control train --pilot
     python -m src.unified.raw_cnn_control check --pilot
+    python -m src.unified.raw_cnn_control train --preset tuned --resume --minutes 9
+
+--preset tuned (adopted 2026-11-25, docs/validation_only_improvement_plan.md Phases E-F, `KF1_w345x64`): Conv widths 3, 4, 5 x 64,
+Adam lr 3e-3, patience 8, page hidden 0.10 (text hidden 0.10 as before). --resume / --minutes / --threads as in film.py.
 """
 from __future__ import annotations
 
@@ -29,7 +33,9 @@ import torch
 
 from src.config import CROWD_N_FOLDS, DENSE_WEIGHT_DECAY, LABEL_SMOOTHING, SEEDS
 from src.data.split_crowd import load_fold
+from src.features.model import conv_blocks
 from src.features.model.raw_cnn import BRANCH_WIDTH, FLAGGED, LOG_FEATURES, MISSING, N_FEATURES, RAW_WIDTH, RawFeatureCNN, log_columns
+from src.unified import cell_runs
 from src.unified import fit_model as fm
 from src.unified import link_lane as ll
 from src.unified import text_cnn as tc
@@ -40,13 +46,24 @@ KIND = "cnn_raw"
 
 
 def expected_trainable(embedding_dim: int = 300, num_filters: int = 64, kernel_size: int = 3, branch_units: int = 64,
-                       dense_units: int = 64) -> int:
-    """Trainable parameters without the embedding: conv + URL branch (44 -> 64) + dense (64 + 64 -> 64) + output."""
-    return (embedding_dim * kernel_size * num_filters + num_filters + BRANCH_WIDTH * branch_units + branch_units
+                       dense_units: int = 64, widths=None, per_width: int | None = None) -> int:
+    """Trainable parameters without the embedding: conv + URL branch (44 -> 64) + dense (text + 64 -> 64) + output. With `widths`, the
+    Conv is conv_blocks.MultiWidthConv and there are len(widths) x per_width text numbers."""
+    if widths:
+        num_filters = len(widths) * per_width
+        conv = conv_blocks.conv_parameters(embedding_dim, widths, per_width)
+    else:
+        conv = embedding_dim * kernel_size * num_filters + num_filters
+    return (conv + BRANCH_WIDTH * branch_units + branch_units
             + (num_filters + branch_units) * dense_units + dense_units + dense_units * 2 + 2)
 
 
 EXPECTED_TRAINABLE = expected_trainable()        # 68,930
+KIND_NAME, OUT_NAME = KIND, KIND
+# ADOPTED 2026-11-25 (Franz): the tuned CNN-only of the validation-only tuning (docs/validation_only_improvement_plan.md, Phases E-F,
+# `KF1_w345x64`: mean validation balanced accuracy .9647; the earlier recipe .9482), trained with --preset tuned.
+TUNED = {"architecture": {"widths": [3, 4, 5], "per_width": 64}, "recipe": {"lr": 3e-3, "patience": 8, "p_page_hidden": 0.10}}
+DEFAULT_RECIPE = {"lr": fm.LR, "patience": fm.PATIENCE, "p_page_hidden": fm.P_PAGE_HIDDEN, "p_text_hidden": fm.P_TEXT_HIDDEN}
 
 
 # ------------------------------------------------------------------ inputs
@@ -87,14 +104,21 @@ def raw_part_inputs(seed: int, fold: int, part: str, word_to_idx: Dict[str, int]
 
 
 # ------------------------------------------------------------------ the model
-def build_raw(seed: int, fold: int, pilot: bool = False, **options) -> tuple[RawFeatureCNN, Dict[str, int], int]:
+def build_raw(seed: int, fold: int, pilot: bool = False, architecture: dict | None = None,
+              **options) -> tuple[RawFeatureCNN, Dict[str, int], int]:
     """(model, word_to_idx, SEQ_LEN_L) of one seed and fold, untrained, with a fresh embedding layer of its own and the train part's
-    feature mean / std."""
+    feature mean / std. architecture: {"widths", "per_width"} for several Conv widths (TUNED), None for the earlier one-width model."""
+    arch = dict(architecture or {})
+    if arch.get("widths"):
+        options["num_filters"] = len(arch["widths"]) * arch["per_width"]
     dataset = tc.dataset_path(pilot)
     embedding, word_to_idx, seq_len = tc.fold_text_setup(dataset, seed, fold)
     mean, std = feature_stats(load_fold(seed, fold, pilot=pilot)["train"])
     tc.seed_everything(seed)
-    return RawFeatureCNN(embedding, torch.tensor(mean), torch.tensor(std), **options), word_to_idx, seq_len
+    model = RawFeatureCNN(embedding, torch.tensor(mean), torch.tensor(std), **options)
+    if arch.get("widths"):
+        model.use_widths(arch["widths"], arch["per_width"])
+    return model, word_to_idx, seq_len
 
 
 def trainable_counts(model: RawFeatureCNN) -> tuple[int, int]:
@@ -107,27 +131,30 @@ def sidecar_extra(pilot: bool) -> dict:
     return {"dataset.csv": tc.dataset_path(pilot)}
 
 
-def train_cell(seed: int, fold: int, pilot: bool, epochs: int = fm.EPOCHS) -> tuple[dict, pd.DataFrame]:
+def train_cell(seed: int, fold: int, pilot: bool, epochs: int = fm.EPOCHS, architecture: dict | None = None,
+               recipe: dict | None = None) -> tuple[dict, pd.DataFrame]:
     dataset = tc.dataset_path(pilot)
-    model, word_to_idx, seq_len = build_raw(seed, fold, pilot)
+    recipe = {**DEFAULT_RECIPE, **(recipe or {})}
+    model, word_to_idx, seq_len = build_raw(seed, fold, pilot, architecture)
     train, val = (raw_part_inputs(seed, fold, p, word_to_idx, seq_len, pilot) for p in ("train", "val"))
     checkpoint = fm.checkpoint_path(dataset, KIND, seed, fold)
     result = fm.fit(model, (train.token_ids, train.link_full, train.link_blank, train.labels),
-                    (val.token_ids, val.link_full, val.labels), seed, checkpoint, epochs=epochs)
+                    (val.token_ids, val.link_full, val.labels), seed, checkpoint, epochs=epochs, **recipe)
     without, with_embedding = trainable_counts(model)
-    assert without == EXPECTED_TRAINABLE
+    assert without == expected_trainable(widths=model.widths, per_width=model.per_width)
     emb_dir = tc.embeddings_dir(dataset, seed, fold)
     fm.write_sidecar(checkpoint, {
         "kind": KIND, "seed": seed, "fold": fold, "num_filters": model.num_filters, "kernel_size": model.kernel_size,
         "branch_units": model.branch_units, "dense_units": model.dense.out_features, "freeze_embedding": model.freeze_embedding,
+        "architecture": {"widths": list(model.widths) if model.widths else None, "per_width": model.per_width},
         "seq_len_l": seq_len, "vocab_size": len(word_to_idx), "embeddings_dir": str(emb_dir.relative_to(tc.ROOT)),
         "sha256": fm.hashes(fm.sidecar_files(dataset, seed, fold, checkpoint, sidecar_extra(pilot))),
         "inputs": "text + 37 URL/page features + page_missing + has_url; no Link RF", "warm_start": None,
         "feature_preparation": {"log1p": LOG_FEATURES, "standardise": "train part, real values only", "missing": "-1 -> 0 + flags",
                                 "missing_flags": ["page_missing"] + FLAGGED, "clip": 5.0, "branch_inputs": BRANCH_WIDTH},
-        "recipe": {"optimizer": "adam", "lr": fm.LR, "epochs": epochs, "patience": fm.PATIENCE, "batch": fm.BATCH_SIZE,
+        "recipe": {"optimizer": "adam", "lr": recipe["lr"], "epochs": epochs, "patience": recipe["patience"], "batch": fm.BATCH_SIZE,
                    "label_smoothing": LABEL_SMOOTHING, "class_weights": True, "dense_weight_decay": DENSE_WEIGHT_DECAY,
-                   "p_page_hidden": fm.P_PAGE_HIDDEN, "p_text_hidden": fm.P_TEXT_HIDDEN},
+                   "p_page_hidden": recipe["p_page_hidden"], "p_text_hidden": recipe["p_text_hidden"]},
         "trainable_without_embedding": without, "trainable_with_embedding": with_embedding,
         "best_epoch": result.best_epoch, "epochs_run": result.epochs_run, "train_seconds": result.seconds,
         "val": {k: result.metrics[k] for k in fm.VAL_METRICS}})
@@ -138,13 +165,17 @@ def train_cell(seed: int, fold: int, pilot: bool, epochs: int = fm.EPOCHS) -> tu
     return row, result.log.assign(seed=seed, fold=fold)
 
 
-def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, epochs: int = fm.EPOCHS) -> pd.DataFrame:
+def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = None, epochs: int = fm.EPOCHS,
+              architecture: dict | None = None, recipe: dict | None = None, resume: bool = False,
+              minutes: float | None = None) -> pd.DataFrame:
     dataset = tc.dataset_path(pilot)
     folds = list(range(CROWD_N_FOLDS)) if folds is None else folds
+    if resume:
+        return run_train_cells(pilot, seeds, folds, False, epochs, architecture, recipe, minutes)
     rows, logs = [], []
     for seed in seeds:
         for fold in folds:
-            row, log = train_cell(seed, fold, pilot, epochs)
+            row, log = train_cell(seed, fold, pilot, epochs, architecture, recipe)
             rows.append(row)
             logs.append(log)
             print(f"seed {seed} fold {fold}: val F1 {row['val_f1']:.3f}, balanced accuracy {row['val_balanced_accuracy']:.3f} | "
@@ -157,6 +188,38 @@ def run_train(pilot: bool, seeds: List[int] = SEEDS, folds: List[int] | None = N
     return summary
 
 
+def run_train_cells(pilot: bool, seeds: List[int], folds: List[int], warm_start: bool, epochs: int, architecture: dict | None,
+                    recipe: dict | None, minutes: float | None) -> pd.DataFrame:
+    """run_train --resume: cell by cell (cell_runs.py), skipping cells already trained with this configuration and stopping before a cell
+    that would end after `minutes`; writes train_summary / train_log from every finished cell."""
+    dataset = tc.dataset_path(pilot)
+    out = fm.out_dir(dataset, OUT_NAME)
+    signature = {"model": KIND_NAME, "warm_start": warm_start, "epochs": epochs, "architecture": architecture or {},
+                 "recipe": {**DEFAULT_RECIPE, **(recipe or {})}, "dataset": dataset.stem}
+    budget = cell_runs.Budget(minutes)
+    stop = False
+    for seed in seeds:
+        for fold in folds:
+            if cell_runs.cell_done(out, seed, fold, signature):
+                continue
+            if not budget.fits():
+                print(f"TIME BUDGET: stopped before seed {seed} fold {fold}", flush=True)
+                stop = True
+                break
+            row, log = train_cell(seed, fold, pilot, epochs, architecture, recipe)
+            budget.add(row["train_seconds"])
+            cell_runs.save_cell(out, seed, fold, {"train_summary": pd.DataFrame([row]), "train_log": log}, signature)
+            print(f"seed {seed} fold {fold}: val balanced accuracy {row['val_balanced_accuracy']:.4f} | best epoch {row['best_epoch']} "
+                  f"of {row['epochs_run']} | {row['train_seconds']:.0f} s", flush=True)
+        if stop:
+            break
+    tables, finished = cell_runs.assemble(out, seeds, folds, ["train_summary", "train_log"], signature)
+    expected = len(seeds) * len(folds)
+    print(f"{finished} of {expected} cells finished with this configuration" + ("" if finished == expected else " (run again)"),
+          flush=True)
+    return tables["train_summary"]
+
+
 def load_raw(seed: int, fold: int, pilot: bool = False) -> tuple[RawFeatureCNN, Dict[str, int], int, dict]:
     """(model in eval mode, word_to_idx, SEQ_LEN_L, sidecar), rebuilt from the sidecar alone; refuses a changed file."""
     dataset = tc.dataset_path(pilot)
@@ -167,6 +230,9 @@ def load_raw(seed: int, fold: int, pilot: bool = False) -> tuple[RawFeatureCNN, 
     model = RawFeatureCNN(embedding, num_filters=sidecar["num_filters"], kernel_size=sidecar["kernel_size"],
                           branch_units=sidecar["branch_units"], dense_units=sidecar["dense_units"],
                           freeze_embedding=sidecar["freeze_embedding"])
+    arch = sidecar.get("architecture") or {}
+    if arch.get("widths"):
+        model.use_widths(arch["widths"], arch["per_width"])
     model.load_state_dict(torch.load(checkpoint, map_location="cpu"))        # the feature mean / std come back with the weights
     return model.eval(), word_to_idx, sidecar["seq_len_l"], sidecar
 
@@ -195,9 +261,20 @@ def main(argv: List[str] | None = None) -> None:
     ap.add_argument("--pilot", action="store_true", help="the synthetic pilot (a pipeline test only)")
     ap.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
     ap.add_argument("--folds", type=int, nargs="+", default=None)
+    ap.add_argument("--preset", choices=["none", "tuned"], default="none",
+                    help="train: 'tuned' = the configuration adopted 2026-11-25 (TUNED); 'none' = the earlier model and recipe")
+    ap.add_argument("--resume", action="store_true", help="train cell by cell, skipping cells already trained with this configuration")
+    ap.add_argument("--minutes", type=float, default=None, help="with --resume: stop before a cell that would end after this budget")
+    ap.add_argument("--threads", type=int, default=None, help="torch CPU threads (the validated tuning runs used 5)")
     args = ap.parse_args(argv)
+    if args.threads:
+        torch.set_num_threads(args.threads)
+    preset = TUNED if args.preset == "tuned" else {}
     if args.step == "train":
-        summary = run_train(args.pilot, args.seeds, args.folds)
+        summary = run_train(args.pilot, args.seeds, args.folds, architecture=preset.get("architecture"), recipe=preset.get("recipe"),
+                            resume=args.resume, minutes=args.minutes)
+        if args.resume:
+            return
         print(f"\n{len(summary)} CNN-only (text + 37 features) models trained; mean val F1 {summary['val_f1'].mean():.3f} "
               f"(std {summary['val_f1'].std():.3f})")
         return

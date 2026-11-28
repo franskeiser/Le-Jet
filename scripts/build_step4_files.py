@@ -58,6 +58,32 @@ RECIPE = ("Adam lr 0.001, batch 64, up to 30 epochs, early stop after 3 epochs w
           "kept), class weights, label smoothing 0.1, weight decay 1e-4 on Dense 64 (and the generator), modality dropout page 0.25 / "
           "text 0.10 (models that read the link; for the Proposed model the text is hidden before the Conv, so the link's FiLM still acts, "
           "adopted 2026-11-22), from scratch")
+# Descriptions of the configurations trained with --preset tuned (2026-11-25; adopted, then reverted the same day). Used only when a
+# model's sidecar records an "architecture" with several Conv widths.
+TUNED_CONFIG = {
+    "Proposed model (E2: CNN + RF + FiLM)": ("text + Link RF's P, u, page_missing (+ has_url bypass) for FiLM + the 37 URL features "
+                                              "(prepared as CNN-only) for the URL branch",
+                                              "fastText 300 (fine-tuned) -> Conv1D widths 3,4,5 x 64 = 192 -> layer norm -> FiLM (generator "
+                                              "195->384, unbounded gamma) -> ReLU, max-pool -> [192 text + URL branch Dense 44->64] -> "
+                                              "Dense 64 -> 2"),
+    "CNN-only (text + 37 URL features)": ("text + 37 URL features (prepared: log, standardised, missing -> 0 + 6 flags) + has_url",
+                                           "text branch Conv1D widths 3,4,5 x 64 = 192 + URL branch Dense 44->64 -> concatenate -> "
+                                           "Dense 64 -> 2"),
+    "Concatenation fusion": ("text + Link RF's P, u, page_missing, has_url",
+                             "Conv1D widths 3,4,5 x 64 = 192 -> max-pool -> [192 + 4] -> Dense 64 -> 2 (no FiLM)"),
+    "KNN-RF-ETC (Jain et al. 2022)": ("no URL: text; URL: the link string only", "TF-IDF 3,000 -> SMOTE -> vote KNN + RF + Extra Trees | "
+                                      "link tokens -> CountVectorizer -> Logistic Regression"),
+    "Text-only CNN": ("text only", "fastText 300 (fine-tuned) -> Conv1D 64x3 -> max-pool -> Dense 64 -> 2"),
+}
+def recipe_text(sidecar: dict) -> str:
+    """The recipe actually used, read from a run's sidecar (each model kind has its own tuned values since 2026-11-25)."""
+    r = sidecar.get("recipe", {})
+    text_note = (" (the Proposed model hides the text before the Conv, so the link's FiLM still acts, adopted 2026-11-22)"
+                 if sidecar.get("options", {}).get("text_dropout") == "input" else "")
+    return (f"Adam lr {r.get('lr')}, batch {r.get('batch')}, up to {r.get('epochs')} epochs, early stop after {r.get('patience')} epochs "
+            f"without better validation balanced accuracy (best epoch kept), class weights, label smoothing {r.get('label_smoothing')}, "
+            f"weight decay {r.get('dense_weight_decay')} on Dense 64" + (" and the generator" if "generator_weight_decay" in r else "")
+            + f", modality dropout page {r.get('p_page_hidden')} / text {r.get('p_text_hidden')}{text_note}, from scratch")
 RUN_COLUMNS = (["model", "seed", "fold", "status", "n_train", "n_val", "best_epoch", "epochs_run", "stopped_early", "patience",
                 "train_seconds"] + [f"train_{m}" for m in PERF] + [f"val_{m}" for m in PERF]
                + ["val_log_loss", "checkpoint", "checkpoint_exists", "rebuild_check"])
@@ -66,11 +92,9 @@ RUN_COLUMNS = (["model", "seed", "fold", "status", "n_train", "n_val", "best_epo
 def train_performance_neural(loader_name: str, seed: int, fold: int) -> dict:
     """The saved model scored on its own training part, as validation is scored (fit_model.evaluate)."""
     from src.unified import film_compare as fc
-    from src.unified import raw_cnn_control as rc
-    from src.unified.film_data import part_inputs
     name = getattr(fc, loader_name)
     model, w2i, seq_len = fc.LOADERS[name][1](seed, fold, False)
-    data = (rc.raw_part_inputs if loader_name == "RAW_CNN" else part_inputs)(seed, fold, "train", w2i, seq_len)
+    data = fc.inputs_of(name, model, seed, fold, "train", w2i, seq_len)       # raw link for CNN-only, (n, 43) for the tuned Proposed
     m = fm.evaluate(model, data.token_ids, data.link_full, data.labels)
     return {f"train_{k}": m[f"val_{k}"] for k in PERF}
 
@@ -116,7 +140,8 @@ def main() -> int:
         t["checkpoint_exists"] = [(models_dir / f"{stem}_seed{s}_fold{f}{ext}").exists() for s, f in zip(t.seed, t.fold)]
         if prefix:
             t["stopped_early"] = np.where(t["epochs_run"] < fm.EPOCHS, "yes", "no (ran all epochs)")
-            t["patience"] = fm.PATIENCE
+            first = json.loads((models_dir / f"{prefix}_seed{SEEDS[0]}_fold0.json").read_text(encoding="utf-8"))
+            t["patience"] = first.get("recipe", {}).get("patience", fm.PATIENCE)
         else:
             t["best_epoch"] = t["epochs_run"] = t["stopped_early"] = t["patience"] = "n/a (not trained in epochs)"
             t["train_seconds"] = t["fit_seconds"]
@@ -142,14 +167,18 @@ def main() -> int:
         row["runs_stopped_early"] = int((t["stopped_early"] == "yes").sum()) if prefix else "n/a"
         summary.append(row)
         reads, layers = CONFIG[name]
+        sidecar = {}
         if prefix:
             sidecar = json.loads((models_dir / f"{prefix}_seed{SEEDS[0]}_fold0.json").read_text(encoding="utf-8"))
             params, seq = sidecar.get("trainable_without_embedding"), sidecar.get("seq_len_l")
+            if (sidecar.get("architecture") or {}).get("widths") and name in TUNED_CONFIG:
+                reads, layers = TUNED_CONFIG[name]
         else:
             params, seq = "not a neural network", "n/a (TF-IDF)"
         config.append({"model": name, "role": role, "reads": reads, "layers": layers, "trainable_parameters_without_embedding": params,
                        "message_length": seq, "link_rf_trees": LINK_TREES if "RF" in reads else "none",
-                       "recipe": RECIPE if prefix else "scikit-learn defaults (as the paper), fitted on the training part, not tuned",
+                       "recipe": ((recipe_text(sidecar) if "architecture" in sidecar else RECIPE) if prefix
+                                  else "scikit-learn defaults (as the paper), fitted on the training part, not tuned"),
                        "folds": "Stratified Group 5-fold x seeds 42, 123, 2024 (Step 3)",
                        "config_record_per_run": f"models/film/{dataset}/{prefix}_seed<S>_fold<F>.json" if prefix else "inside the .joblib"})
     out = exp / "step4" / "Training_Records.xlsx"

@@ -54,7 +54,8 @@ def main() -> int:
             assert set(val.message_id) == val_ids and set(raw_val.message_id) == val_ids
             link = val.link_full.numpy()
             for name, (model, _, _) in loaded.items():
-                data = raw_val if name == fc.RAW_CNN else val
+                data = raw_val if name == fc.RAW_CNN else (fc.inputs_of(name, model, seed, fold, "val", vocab, seq_len)
+                                                           if getattr(model, "url_branch_units", 0) else val)
                 p = fc.predict(model, name, data, "complete")
                 rows.append(pd.DataFrame({"seed": seed, "fold": fold, "message_id": data.message_id, "label": data.labels.numpy(),
                                           "model": NEURAL[name], "p_smishing": p, "rf_P": link[:, 0], "rf_u": link[:, 1],

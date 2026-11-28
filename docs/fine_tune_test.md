@@ -160,7 +160,7 @@ Rules for all of them: choose on **validation data only**; give the baselines th
 
 ## 10. Test-set reads (be honest about this in Chapter 3)
 
-The test folds were read in **three separate runs**, each a Step 5 plus Step 6 pair (see `experiments/film/lejet_final_dataset/compare/test_reads.log`, six lines): the group mate's original run, the rerun after the gambling relabel, and the rerun after the 16 text rewrites. Step 10 reads no test fold itself; it only uses the Step 5 predictions. All the validation-only work above used validation rows only, and the scripts assert that no test row is written.
+The test folds were read in **three separate runs** at first (later a 4th, section 13; a 5th, the reverted data fix; and a 6th after the validation-only tuning, section 15b: six runs, twelve log lines), each a Step 5 plus Step 6 pair (see `experiments/film/lejet_final_dataset/compare/test_reads.log`, six lines): the group mate's original run, the rerun after the gambling relabel, and the rerun after the 16 text rewrites. Step 10 reads no test fold itself; it only uses the Step 5 predictions. All the validation-only work above used validation rows only, and the scripts assert that no test row is written.
 
 ## 11. How to reproduce
 
@@ -254,3 +254,67 @@ Smishing by main category now: gambling 921, banking 362, payments/billing 327, 
 none 929 (before: gambling about 1,070, none 953). This is still one reader's check, not an independent annotation.
 
 Also fixed: the Step 7 workbook's Method sheet said "6,715" predictions per seed; it now gives the real count (6,714), computed from the data.
+
+## 15b. Tuned configurations adopted: all three neural models retrained (2026-11-25, Franz's decision) — REVERTED the same day
+
+**REVERTED (2026-11-25, Franz: "its still not enough though revert to the last training without fine tuning").** The models and every step result are back to section 13 (D1): restored byte for byte from `D:/LeJetData/model_backups/before_tuned_adoption_20261125/` (all 45 rebuild with a gap of exactly 0). The tuned models and their step results are archived in `D:/LeJetData/model_backups/tuned_adoption_20261125_reverted/`. The 6th test read stays in `compare/test_reads.log` and must still be disclosed. The code keeps `--preset tuned` as an option; without it every module trains the D1 models.
+
+(Numbered 15b because section 15 is the reverted data-fix run, recorded in the memory notes and `docs/data_fix_rules_2026-11-22.md`.)
+
+**What changed.** Each neural model was retrained with the configuration chosen for it by the validation-only tuning
+(`docs/validation_only_improvement_plan.md`, Phases E-G; the rule written before the runs: the highest mean validation balanced accuracy
+over the 15 runs, equal tuning effort for every model). Trained with `--preset tuned` (`TUNED` in `film.py`, `raw_cnn_control.py`,
+`concat_control.py`):
+
+| Model | Architecture | Recipe | Validation bal. acc. (before → after) |
+|---|---|---|---|
+| Proposed | Conv widths 3, 4, 5 × 64 = 192 filters, layer norm before FiLM, unbounded gamma, **URL branch** (the 37 features prepared as in CNN-only, Dense 44 → 64) beside FiLM | Adam 3e-3, patience 8, page hidden 0.10, text hidden 0.10 | .9495 → .9633 |
+| CNN-only | Conv widths 3, 4, 5 × 64 | Adam 3e-3, patience 8, page hidden 0.10 | .9482 → .9646 |
+| Concatenation | Conv widths 3, 4, 5 × 64 | Adam 1e-3, patience 10, text hidden 0.20 | .9464 → .9563 |
+
+The Proposed model now reads the 37 raw features as well as the Link RF's P and u, so **Concatenation is no longer input-matched** (it reads
+P, u, page_missing and has_url only). This is an architecture change from the approved E2: the adviser must agree to it. The code was moved
+from the experiment script into `src/` (`src/features/model/conv_blocks.py`, `FiLMTextCNN.use_widths / use_layer_norm / add_url_branch`,
+`film.inputs_for`, `cell_runs.py`; tests in `tests/test_tuned_models.py`, 20 pass; the whole suite 1,786 passed). The retrained models
+repeat the validated tuning runs exactly (same starting weights, same per-run validation scores), except a few CNN-only runs that the tuning
+had trained with 3 CPU threads instead of 5 (float rounding: CNN-only .9646 here vs .9647 in the tuning). All 45 rebuild from their
+sidecars with a gap of exactly 0. KNN-RF-ETC and the text-only CNN were not retrained (their predictions are unchanged).
+
+**Test folds read a 6th time** (`compare/test_reads.log`, 2026-11-25 23:38 and 23:40). Disclose this in Chapter 3, with the tuning:
+the configurations were chosen on validation rows only, and this was the only test read after the tuning. Old models and step results:
+`D:/LeJetData/model_backups/before_tuned_adoption_20261125/`. Rerun: `bash logs/final_training/rerun_tuned.sh` (train, check, steps4,
+steps5-6, steps7-10; log `rerun_tuned_train.log`).
+
+**Step 7** (test, mean ± SD over 3 seeds):
+
+| Model | Accuracy | Precision | Recall | F1 | Before (section 13) accuracy / F1 |
+|---|---|---|---|---|---|
+| Concatenation Fusion | **.9588 ± .0034** | .9456 | **.9630** | **.9542** | .9511 / .9461 |
+| **Proposed** | .9568 ± .0041 | **.9488** | .9545 | .9516 | .9536 / .9487 |
+| CNN-only | .9533 ± .0016 | .9398 | .9565 | .9481 | .9510 / .9450 |
+| KNN-RF-ETC | .8131 | .7197 | .9507 | .8192 | unchanged |
+
+Every model improved. Per seed the Proposed model has the highest accuracy in seeds 42 (.9580) and 2024 (.9601); Concatenation in seed
+123 (.9628 vs .9522). Validation had ranked CNN-only first and Concatenation last; on the test folds Concatenation is first: the
+validation-to-test difference is about the size of the seed-to-seed spread.
+
+**Step 10, McNemar** (6,714 paired messages per seed; b = Proposed right and baseline wrong, c = the reverse; uncorrected p, then Holm over 9):
+
+| Comparison | Seed 42 | Seed 123 | Seed 2024 |
+|---|---|---|---|
+| vs CNN-only | b 134 / c 97, **p .018** (Holm .089) | 117 / 118, p 1.00 | 122 / 89, **p .028** (Holm .110) |
+| vs Concatenation | 136 / 132, p .85 | 80 / 151, **p < .001, Concatenation better** (Holm < .001) | 119 / 94, p .10 |
+| vs KNN-RF-ETC | p < .001 | p < .001 | p < .001 |
+
+Reading: uncorrected, the Proposed model is significantly better in 5 of 9 tests (all 3 KNN-RF-ETC, CNN-only in seeds 42 and 2024) and
+significantly worse in 1 (Concatenation, seed 123). With Holm or Bonferroni only the KNN-RF-ETC tests stay significant in its favour, and
+Concatenation seed 123 stays significant against it. The goal "significant in all nine" is **not** met.
+
+**Step 6** component checks (test, accuracy / F1): reference .9568 / .9516; text-only CNN .9171 / .9103; FiLM neutralised .9173 / .8993;
+shuffled link evidence .7439 / .7336; webpage features hidden .9575 / .9521. Read "FiLM neutralised" with care: switching FiLM off in a
+trained model also removes FiLM's fixed per-filter scaling, which the network relies on. The validation control that trains FiLM without
+any link input (`PH_static`, plan Phase H) loses only .0020 (.9633 → .9613), so the link-dependent part of FiLM adds little beyond the
+URL branch.
+
+**Step 8** (test F1 by message condition, Proposed vs best other): accessible webpage .9620 vs .9657 (Concatenation); inaccessible webpage
+.9473 vs .9481 (Concatenation); no URL .7609 vs .7759 (CNN-only; 75 smishing only, FiLM is bypassed there).
